@@ -125,15 +125,21 @@ static bool RayIntersectBoundingBox(const Vec3& rayOrigin, const Vec3& rayDir, c
 }
 
 // Recursively traverse BSP tree to find quadblock indexes that could potentially intersect the ray
-static std::vector<size_t> GetPotentialQuadblockIndexes(const std::vector<Quadblock>& quadblocks, const BSP* node, const Vec3& rayOrigin, const Vec3& rayDir)
+static std::vector<size_t> GetPotentialQuadblockIndexes(const std::vector<Quadblock>& quadblocks, const BSP* node, const Vec3& rayOrigin, const Vec3& rayDir, const float maxDist)
 {
 	std::vector<size_t> result;
 
 	// Check if the ray intersects this node's bounding box
-	float dist1, dist2;
-	if (!RayIntersectBoundingBox(rayOrigin, rayDir, node->GetBoundingBox(), dist1, dist2))
+	float tmin, tmax;
+	if (!RayIntersectBoundingBox(rayOrigin, rayDir, node->GetBoundingBox(), tmin, tmax))
 	{
 		// No intersection with bounding box - return empty list
+		return result;
+	}
+
+	if (tmin > maxDist)
+	{
+		// The node is too far away, it will intersect, but won't obstruct the view
 		return result;
 	}
 
@@ -149,13 +155,13 @@ static std::vector<size_t> GetPotentialQuadblockIndexes(const std::vector<Quadbl
 
 	if (leftChild != nullptr)
 	{
-		std::vector<size_t> leftIndexes = GetPotentialQuadblockIndexes(quadblocks, leftChild, rayOrigin, rayDir);
+		std::vector<size_t> leftIndexes = GetPotentialQuadblockIndexes(quadblocks, leftChild, rayOrigin, rayDir, maxDist);
 		result.insert(result.end(), leftIndexes.begin(), leftIndexes.end());
 	}
 
 	if (rightChild != nullptr)
 	{
-		std::vector<size_t> rightIndexes = GetPotentialQuadblockIndexes(quadblocks, rightChild, rayOrigin, rayDir);
+		std::vector<size_t> rightIndexes = GetPotentialQuadblockIndexes(quadblocks, rightChild, rayOrigin, rayDir, maxDist);
 		result.insert(result.end(), rightIndexes.begin(), rightIndexes.end());
 	}
 
@@ -207,7 +213,6 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 			const std::vector<size_t>& quadIndexesA = leaves[leafA]->GetQuadblockIndexes();
 			const std::vector<size_t>& quadIndexesB = leaves[leafB]->GetQuadblockIndexes();
 			std::unordered_set<size_t> leafAQuadSet(quadIndexesA.begin(), quadIndexesA.end());
-			std::unordered_set<size_t> leafBQuadSet(quadIndexesB.begin(), quadIndexesB.end());
 
 			for (const Vec3& pointA : sampleA)
 			{
@@ -226,10 +231,12 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 					if (!RayIntersectBoundingBox(pointA, directionVector, bboxB, tmin, tmax))
 					{
 						// Ray doesn't intersect leafB's bounding box at all
+						// This should never happen because of directionVector being directed toward pointB
+						printf("Unexpected scenario : %d/%d\n", static_cast<int>(leafA), static_cast<int>(leafB));
 						continue;
 					}
 
-					std::vector<size_t> potentialQuads = GetPotentialQuadblockIndexes(quadblocks, root, pointA, directionVector);
+					std::vector<size_t> potentialQuads = GetPotentialQuadblockIndexes(quadblocks, root, pointA, directionVector, tmax);
 
 					float closestDist = std::numeric_limits<float>::max();
 					size_t closestLeaf = leafA;
@@ -241,11 +248,14 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 #pragma omp parallel for
 					for (int i = 0; i < static_cast<int>(potentialQuads.size()); i++)
 					{
+						if (foundBlockingQuad)
+						{
+							break;
+						}
 						size_t testQuadIndex = potentialQuads[i];
 
 						// Skip quads from leafA or leafB
-						if (leafAQuadSet.find(testQuadIndex) != leafAQuadSet.end() ||
-							leafBQuadSet.find(testQuadIndex) != leafBQuadSet.end())
+						if (leafAQuadSet.find(testQuadIndex) != leafAQuadSet.end() )
 						{
 							continue;
 						}
@@ -262,16 +272,20 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 					// Early exit check: if any quad hits before tmin, there's a blocking obstacle
 					for (size_t i = 0; i < potentialQuads.size(); i++)
 					{
+						if (foundBlockingQuad)
+						{
+							break;
+						}
 						size_t testQuadIndex = potentialQuads[i];
 
 						// Skip quads from leafA or leafB
-						if (//leafAQuadSet.find(testQuadIndex) != leafAQuadSet.end() ||
-							leafBQuadSet.find(testQuadIndex) != leafBQuadSet.end())
+						if (leafAQuadSet.find(testQuadIndex) != leafAQuadSet.end())
 						{
 							continue;
 						}
 
-						if (localDists[i] < tmin)
+						bool isInLeafB = (quadIndexesToLeaves[testQuadIndex] == leafB);
+						if (!isInLeafB && localDists[i] < tmin)
 						{
 							// Found a blocking quad before reaching leafB's bounding box
 							foundBlockingQuad = true;
@@ -289,22 +303,6 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 					if (foundBlockingQuad)
 					{
 						continue;
-					}
-
-					// Now check quads from leafB only
-					for (size_t testQuadIndex : quadIndexesB)
-					{
-						float dist = 0.0f;
-						const Quadblock& testQuad = quadblocks[testQuadIndex];
-
-						if (RayIntersectQuadblockTest(pointA, directionVector, testQuad, dist))
-						{
-							if (dist < closestDist)
-							{
-								closestDist = dist;
-								closestLeaf = leafB;
-							}
-						}
 					}
 
 					if (closestLeaf == leafB)
@@ -373,7 +371,7 @@ BitMatrix GenerateVisTreeOLD(const std::vector<Quadblock>& quadblocks, const BSP
 					directionVector.Normalize();
 					float closestDist = std::numeric_limits<float>::max();
 					size_t closestLeaf = leafA;
-					std::vector<size_t> potentialQuads = GetPotentialQuadblockIndexes(quadblocks, root, pointA, directionVector);
+					std::vector<size_t> potentialQuads = GetPotentialQuadblockIndexes(quadblocks, root, pointA, directionVector, std::numeric_limits<float>::max());
 #pragma omp parallel for
 					// Would be better to first calculate the distance between centerA and the Bbox of leafB.
 					// If we ever find a quad from neither leafA or leafB with a smaller distance, we can break here : no visibility from centerA to leafB, because there is an obstacle.
