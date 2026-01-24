@@ -221,6 +221,7 @@ static std::vector<Vec3> GenerateSamplePointLeaf(const std::vector<Quadblock>& q
 
 BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* root, float maxDistanceSquared)
 {
+	//TODO : VERIFY IF QUAD FROM LEAF A REALLY BLOCK THE RAYPATH. THEY MUST.
 	std::vector<const BSP*> leaves = root->GetLeaves();
 	BitMatrix vizMatrix = BitMatrix(leaves.size(), leaves.size());
 
@@ -262,12 +263,11 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 					// Calculate distance range to leafB's bounding box
 					float tmin, tmax;
 					const BoundingBox& bboxB = leaves[leafB]->GetBoundingBox();
-					if (!RayIntersectBoundingBox(pointA, directionVector, bboxB, tmin, tmax))
+					if (!RayIntersectBoundingBox(pointA, directionVector, bboxB, tmin, tmax) || tmin < 0.0f)
 					{
-						// Ray doesn't intersect leafB's bounding box at all
-						// This should never happen because of directionVector being directed toward pointB
-						printf("Unexpected scenario : %d/%d\n", static_cast<int>(leafA), static_cast<int>(leafB));
-						continue;
+						// We are inside the Bbox. 
+						foundLeafABHit = true;
+						break;
 					}
 
 					std::vector<size_t> potentialQuads = GetPotentialQuadblockIndexes(quadblocks, root, pointA, directionVector, tmax);
