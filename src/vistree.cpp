@@ -224,7 +224,7 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 	std::vector<const BSP*> leaves = root->GetLeaves();
 	BitMatrix vizMatrix = BitMatrix(leaves.size(), leaves.size());
 
-	const float cameraHeight = 20.0f;
+	const float cameraHeight = 5.0f;
 
 	const int quadCount = static_cast<int>(quadblocks.size());
 	std::vector<size_t> quadIndexesToLeaves(quadCount);
@@ -239,7 +239,7 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 		printf("Prog: %d/%d\n", static_cast<int>(leafA + 1), static_cast<int>(leaves.size()));
 		vizMatrix.Set(true, leafA, leafA);
 		const std::vector<Vec3> sampleA = GenerateSamplePointLeaf(quadblocks, *leaves[leafA], cameraHeight);
-		for (size_t leafB = leafA + 1; leafB < leaves.size(); leafB++)
+		for (size_t leafB = 0; leafB < leaves.size(); leafB++)
 		{
 			bool foundLeafABHit = false;
 			const std::vector<Vec3> sampleB = GenerateSamplePointLeaf(quadblocks, *leaves[leafB], 0.0f);
@@ -335,7 +335,7 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 			if (foundLeafABHit)
 			{
 				vizMatrix.Set(true, leafA, leafB);
-				vizMatrix.Set(true, leafB, leafA);
+				//vizMatrix.Set(true, leafB, leafA);
 			}
 		}
 	}
