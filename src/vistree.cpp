@@ -212,7 +212,6 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 			// Pre-build sets of quadblock indices for leafA and leafB for quick lookup
 			const std::vector<size_t>& quadIndexesA = leaves[leafA]->GetQuadblockIndexes();
 			const std::vector<size_t>& quadIndexesB = leaves[leafB]->GetQuadblockIndexes();
-			std::unordered_set<size_t> leafAQuadSet(quadIndexesA.begin(), quadIndexesA.end());
 
 			for (const Vec3& pointA : sampleA)
 			{
@@ -254,12 +253,6 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 						}
 						size_t testQuadIndex = potentialQuads[i];
 
-						// Skip quads from leafA or leafB
-						if (leafAQuadSet.find(testQuadIndex) != leafAQuadSet.end() )
-						{
-							continue;
-						}
-
 						float dist = 0.0f;
 						const Quadblock& testQuad = quadblocks[testQuadIndex];
 
@@ -277,17 +270,10 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 							break;
 						}
 						size_t testQuadIndex = potentialQuads[i];
-
-						// Skip quads from leafA or leafB
-						if (leafAQuadSet.find(testQuadIndex) != leafAQuadSet.end())
+						size_t quadLeaf = quadIndexesToLeaves[testQuadIndex];
+						if (quadLeaf != leafA && quadLeaf != leafB && localDists[i] < tmin)
 						{
-							continue;
-						}
-
-						bool isInLeafB = (quadIndexesToLeaves[testQuadIndex] == leafB);
-						if (!isInLeafB && localDists[i] < tmin)
-						{
-							// Found a blocking quad before reaching leafB's bounding box
+							// Early exit: if we find a quad NOT from leafA or leafB that's closer than tmin, it's blocking
 							foundBlockingQuad = true;
 							break;
 						}
