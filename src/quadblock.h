@@ -224,6 +224,7 @@ private:
 	bool m_filter;
 	bool m_checkpointPathable;
 	bool m_checkpointStatus;
+	bool m_visTreeTransparent; // If a quad should intercept light ray in the vis tree.
 	bool m_hide;
 	Vertex m_p[NUM_VERTICES_QUADBLOCK];
 	BoundingBox m_bbox;

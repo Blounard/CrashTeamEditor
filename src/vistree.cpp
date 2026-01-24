@@ -92,8 +92,97 @@ static bool RayIntersectQuadblockTest(const Vec3& worldSpaceRayOrigin, const Vec
 	return false;
 }
 
-BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const std::vector<const BSP*>& leaves, float maxDistance)
+// Ray-AABB intersection test using the slab method
+// Returns true if the ray intersects the bounding box, and sets dist to the distance to the nearest intersection
+static bool RayIntersectBoundingBox(const Vec3& rayOrigin, const Vec3& rayDir, const BoundingBox& bbox, float& dist)
 {
+	constexpr float epsilon = 0.00001f;
+
+	// Compute inverse ray direction for efficiency
+	float invDirX = 1.0f / (std::abs(rayDir.x) < epsilon ? epsilon : rayDir.x);
+	float invDirY = 1.0f / (std::abs(rayDir.y) < epsilon ? epsilon : rayDir.y);
+	float invDirZ = 1.0f / (std::abs(rayDir.z) < epsilon ? epsilon : rayDir.z);
+
+	// Compute intersection distances for each pair of slabs
+	float t1 = (bbox.min.x - rayOrigin.x) * invDirX;
+	float t2 = (bbox.max.x - rayOrigin.x) * invDirX;
+	float t3 = (bbox.min.y - rayOrigin.y) * invDirY;
+	float t4 = (bbox.max.y - rayOrigin.y) * invDirY;
+	float t5 = (bbox.min.z - rayOrigin.z) * invDirZ;
+	float t6 = (bbox.max.z - rayOrigin.z) * invDirZ;
+
+	// Find the min and max for each axis
+	float tmin = std::max(std::max(std::min(t1, t2), std::min(t3, t4)), std::min(t5, t6));
+	float tmax = std::min(std::min(std::max(t1, t2), std::max(t3, t4)), std::max(t5, t6));
+
+	// No intersection if tmax < 0 (box is behind ray) or tmin > tmax (ray misses box)
+	if (tmax < 0.0f || tmin > tmax)
+	{
+		return false;
+	}
+
+	// Set dist to the near intersection distance (tmin), or 0 if ray origin is inside box
+	dist = tmin < 0.0f ? 0.0f : tmin;
+	return true;
+}
+
+// Recursively traverse BSP tree to find quadblock indexes that could potentially intersect the ray
+static std::vector<size_t> GetPotentialQuadblockIndexes(const std::vector<Quadblock>& quadblocks, const BSP* node, const Vec3& rayOrigin, const Vec3& rayDir)
+{
+	std::vector<size_t> result;
+
+	// Check if the ray intersects this node's bounding box
+	float dist;
+	if (!RayIntersectBoundingBox(rayOrigin, rayDir, node->GetBoundingBox(), dist))
+	{
+		// No intersection with bounding box - return empty list
+		return result;
+	}
+
+	// If this is a leaf node, return all quadblock indexes in this leaf
+	if (!node->IsBranch())
+	{
+		return node->GetQuadblockIndexes();
+	}
+
+	// This is a branch node - recursively get indexes from both children
+	const BSP* leftChild = node->GetLeftChildren();
+	const BSP* rightChild = node->GetRightChildren();
+
+	if (leftChild != nullptr)
+	{
+		std::vector<size_t> leftIndexes = GetPotentialQuadblockIndexes(quadblocks, leftChild, rayOrigin, rayDir);
+		result.insert(result.end(), leftIndexes.begin(), leftIndexes.end());
+	}
+
+	if (rightChild != nullptr)
+	{
+		std::vector<size_t> rightIndexes = GetPotentialQuadblockIndexes(quadblocks, rightChild, rayOrigin, rayDir);
+		result.insert(result.end(), rightIndexes.begin(), rightIndexes.end());
+	}
+
+	return result;
+}
+
+static std::vector<Vec3> GenerateSamplePointLeaf(const std::vector<Quadblock>& quadblocks, const BSP& leaf, float camera_raise = 0)
+{
+	// For a leaf node, generate all the points for the vis ray test.
+	// Originally the center of each quad in a node.
+	// The camera raise is currently done with quad's normal. Might change to up vector later
+	std::vector<Vec3> samples;
+	const std::vector<size_t>& quadIndexes = leaf.GetQuadblockIndexes();
+	for (size_t quadID : quadIndexes)
+	{
+		const Quadblock& quad = quadblocks[quadID];
+		Vec3 center = quad.GetCenter();
+		samples.push_back(center + (quad.GetNormal() * camera_raise));
+	}
+	return samples;
+}
+
+BitMatrix GenerateVisTreeOLD(const std::vector<Quadblock>& quadblocks, const BSP* root, float maxDistanceSquared)
+{
+	std::vector<const BSP*> leaves = root->GetLeaves();
 	BitMatrix vizMatrix = BitMatrix(leaves.size(), leaves.size());
 
 	const float cameraHeight = 20.0f;
@@ -111,41 +200,37 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const std::v
 	{
 		printf("Prog: %d/%d\n", static_cast<int>(leafA + 1), static_cast<int>(leaves.size()));
 		vizMatrix.Set(true, leafA, leafA);
+		const std::vector<Vec3> sampleA = GenerateSamplePointLeaf(quadblocks, *leaves[leafA], cameraHeight);
 		for (size_t leafB = leafA + 1; leafB < leaves.size(); leafB++)
 		{
 			bool foundLeafABHit = false;
-			const std::vector<size_t>& quadIndexesA = leaves[leafA]->GetQuadblockIndexes();
-			const std::vector<size_t>& quadIndexesB = leaves[leafB]->GetQuadblockIndexes();
+			const std::vector<Vec3> sampleB = GenerateSamplePointLeaf(quadblocks, *leaves[leafB], 0.0f);
 
-			for (size_t quadIDA : quadIndexesA)
+			for (const Vec3& pointA : sampleA)
 			{
 				if (foundLeafABHit) { break; }
 
-				Quadblock quadA = quadblocks[quadIDA];
-				quadA.Translate(cameraHeight, quadA.GetNormal());
-				const Vec3& centerA = quadA.GetCenter();
-
-				for (size_t quadIDB : quadIndexesB)
+				for (const Vec3& pointB : sampleB)
 				{
 					if (foundLeafABHit) { break; }
-
-					const Quadblock& quadB = quadblocks[quadIDB];
-					const Vec3& centerB = quadB.GetCenter();
-					Vec3 directionVector = centerB - centerA;
-					if (directionVector.LengthSquared() > maxDistance) { continue; }
+					Vec3 directionVector = pointB - pointA;
+					if (directionVector.LengthSquared() > maxDistanceSquared) { continue; }
 					directionVector.Normalize();
 					float closestDist = std::numeric_limits<float>::max();
 					size_t closestLeaf = leafA;
-
+					std::vector<size_t> potentialQuads = GetPotentialQuadblockIndexes(quadblocks, root, pointA, directionVector);
 #pragma omp parallel for
 					// Would be better to first calculate the distance between centerA and the Bbox of leafB.
 					// If we ever find a quad from neither leafA or leafB with a smaller distance, we can break here : no visibility from centerA to leafB, because there is an obstacle.
+					/*for (int i = 0; i < static_cast<int>(potentialQuads.size()); i++)
+					{
+						size_t testQuadIndex = potentialQuads[i];*/
 					for (int testQuadIndex = 0; testQuadIndex < quadCount; testQuadIndex++)
 					{
 						float dist = 0.0f;
 						const Quadblock& testQuad = quadblocks[testQuadIndex];
 
-						if (RayIntersectQuadblockTest(centerA, directionVector, testQuad, dist))
+						if (RayIntersectQuadblockTest(pointA, directionVector, testQuad, dist))
 						{
 							dists[testQuadIndex] = dist;
 						}
@@ -155,6 +240,103 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const std::v
 						}
 					}
 					
+					for (int i = 0; i < quadCount; i++)
+					{
+						if (dists[i] < closestDist)
+						{
+							closestDist = dists[i];
+							closestLeaf = quadIndexesToLeaves[i];
+						}
+					}
+
+					if (closestLeaf == leafB)
+					{
+						foundLeafABHit = true;
+					}
+				}
+			}
+			if (foundLeafABHit)
+			{
+				vizMatrix.Set(true, leafA, leafB);
+				vizMatrix.Set(true, leafB, leafA);
+			}
+		}
+	}
+	int count = 0;
+	for (size_t leafA = 0; leafA < leaves.size(); leafA++)
+	{
+		for (size_t leafB = 0; leafB < leaves.size(); leafB++)
+		{
+			if (vizMatrix.Get(leafA, leafB))
+			{
+				count++;
+			}
+		}
+	}
+	printf("Count: %d\n", count);
+	return vizMatrix;
+}
+
+
+BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* root, float maxDistanceSquared)
+{
+	std::vector<const BSP*> leaves = root->GetLeaves();
+	BitMatrix vizMatrix = BitMatrix(leaves.size(), leaves.size());
+
+	const float cameraHeight = 20.0f;
+
+	const int quadCount = static_cast<int>(quadblocks.size());
+	std::vector<float> dists(quadCount, std::numeric_limits<float>::max());
+	std::vector<size_t> quadIndexesToLeaves(quadCount);
+	for (size_t i = 0; i < leaves.size(); i++)
+	{
+		const std::vector<size_t>& quadIndexes = leaves[i]->GetQuadblockIndexes();
+		for (size_t index : quadIndexes) { quadIndexesToLeaves[index] = i; }
+	}
+
+	for (size_t leafA = 0; leafA < leaves.size(); leafA++)
+	{
+		printf("Prog: %d/%d\n", static_cast<int>(leafA + 1), static_cast<int>(leaves.size()));
+		vizMatrix.Set(true, leafA, leafA);
+		const std::vector<Vec3> sampleA = GenerateSamplePointLeaf(quadblocks, *leaves[leafA], cameraHeight);
+		for (size_t leafB = leafA + 1; leafB < leaves.size(); leafB++)
+		{
+			bool foundLeafABHit = false;
+			const std::vector<Vec3> sampleB = GenerateSamplePointLeaf(quadblocks, *leaves[leafB], 0.0f);
+
+			for (const Vec3& pointA : sampleA)
+			{
+				if (foundLeafABHit) { break; }
+
+				for (const Vec3& pointB : sampleB)
+				{
+					if (foundLeafABHit) { break; }
+					Vec3 directionVector = pointB - pointA;
+					if (directionVector.LengthSquared() > maxDistanceSquared) { continue; }
+					directionVector.Normalize();
+					float closestDist = std::numeric_limits<float>::max();
+					size_t closestLeaf = leafA;
+					std::vector<size_t> potentialQuads = GetPotentialQuadblockIndexes(quadblocks, root, pointA, directionVector);
+
+#pragma omp parallel for
+					// Would be better to first calculate the distance between centerA and the Bbox of leafB.
+					// If we ever find a quad from neither leafA or leafB with a smaller distance, we can break here : no visibility from centerA to leafB, because there is an obstacle.
+					for (int i = 0; i < static_cast<int>(potentialQuads.size()); i++)
+					{
+						size_t testQuadIndex = potentialQuads[i];
+						float dist = 0.0f;
+						const Quadblock& testQuad = quadblocks[testQuadIndex];
+
+						if (RayIntersectQuadblockTest(pointA, directionVector, testQuad, dist))
+						{
+							dists[testQuadIndex] = dist;
+						}
+						else
+						{
+							dists[testQuadIndex] = std::numeric_limits<float>::max();
+						}
+					}
+
 					for (int i = 0; i < quadCount; i++)
 					{
 						if (dists[i] < closestDist)

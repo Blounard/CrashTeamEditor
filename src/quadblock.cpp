@@ -806,6 +806,7 @@ void Quadblock::SetDefaultValues()
 	m_doubleSided = false;
 	m_checkpointPathable = true;
 	m_checkpointStatus = false;
+	m_visTreeTransparent = true;
 	m_trigger = QuadblockTrigger::NONE;
 	m_turboPadIndex = TURBO_PAD_INDEX_NONE;
 	m_hide = false;

@@ -161,7 +161,7 @@ bool Level::GenerateBSP()
 	{
 		GenerateRenderBspData(m_bsp);
 		std::vector<const BSP*> bspLeaves = m_bsp.GetLeaves();
-		if (m_genVisTree) { m_bspVis = GenerateVisTree(m_quadblocks, bspLeaves, m_distanceFarClip * m_distanceFarClip); }
+		if (m_genVisTree) { m_bspVis = GenerateVisTree(m_quadblocks, &m_bsp, m_distanceFarClip * m_distanceFarClip); }
 		return true;
 	}
 	m_bsp.Clear();
