@@ -429,7 +429,18 @@ bool Quadblock::IsQuadblock() const
 
 const Vec3& Quadblock::GetCenter() const
 {
-	return m_p[4].m_pos;
+	if (m_triblock)
+	{
+		Vec3 v1 = m_p[1].m_pos;
+		Vec3 v2 = m_p[3].m_pos;
+		Vec3 v3 = m_p[4].m_pos;
+		return (v1 + v2 + v3) / (3.0f);
+	}
+	else
+	{
+		return m_p[4].m_pos;
+	}
+	
 }
 
 Vec3 Quadblock::GetNormal() const

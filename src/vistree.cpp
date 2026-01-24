@@ -96,6 +96,8 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const std::v
 {
 	BitMatrix vizMatrix = BitMatrix(leaves.size(), leaves.size());
 
+	const float cameraHeight = 20.0f;
+
 	const int quadCount = static_cast<int>(quadblocks.size());
 	std::vector<float> dists(quadCount, std::numeric_limits<float>::max());
 	std::vector<size_t> quadIndexesToLeaves(quadCount);
@@ -109,66 +111,83 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const std::v
 	{
 		printf("Prog: %d/%d\n", static_cast<int>(leafA + 1), static_cast<int>(leaves.size()));
 		vizMatrix.Set(true, leafA, leafA);
-		for (size_t leafB = 0; leafB < leaves.size(); leafB++)
+		for (size_t leafB = leafA + 1; leafB < leaves.size(); leafB++)
 		{
-			if (vizMatrix.Get(leafA, leafB)) { continue; }
-
 			bool foundLeafABHit = false;
 			const std::vector<size_t>& quadIndexesA = leaves[leafA]->GetQuadblockIndexes();
 			const std::vector<size_t>& quadIndexesB = leaves[leafB]->GetQuadblockIndexes();
 
-			for (size_t quadA : quadIndexesA)
+			for (size_t quadIDA : quadIndexesA)
 			{
 				if (foundLeafABHit) { break; }
 
-				Quadblock sourceQuad = quadblocks[quadA];
-				sourceQuad.Translate(20.0f, sourceQuad.GetNormal());
-				const Vec3& center = sourceQuad.GetUnswizzledVertices()[4].m_pos;
-				const Vec3 sourceNormal = sourceQuad.GetNormal();
-				for (size_t quadB : quadIndexesB)
+				Quadblock quadA = quadblocks[quadIDA];
+				quadA.Translate(cameraHeight, quadA.GetNormal());
+				const Vec3& centerA = quadA.GetCenter();
+
+				for (size_t quadIDB : quadIndexesB)
 				{
 					if (foundLeafABHit) { break; }
 
-					const Quadblock& directionQuad = quadblocks[quadB];
-					const Vec3& directionPos = directionQuad.GetUnswizzledVertices()[4].m_pos;
-					Vec3 directionVector = directionPos - center;
+					const Quadblock& quadB = quadblocks[quadIDB];
+					const Vec3& centerB = quadB.GetCenter();
+					Vec3 directionVector = centerB - centerA;
 					if (directionVector.LengthSquared() > maxDistance) { continue; }
 					directionVector.Normalize();
+					float closestDist = std::numeric_limits<float>::max();
+					size_t closestLeaf = leafA;
 
-					size_t leafHit = leafA;
-					float bestDistPos = std::numeric_limits<float>::max();
 #pragma omp parallel for
+					// Would be better to first calculate the distance between centerA and the Bbox of leafB.
+					// If we ever find a quad from neither leafA or leafB with a smaller distance, we can break here : no visibility from centerA to leafB, because there is an obstacle.
 					for (int testQuadIndex = 0; testQuadIndex < quadCount; testQuadIndex++)
 					{
 						float dist = 0.0f;
 						const Quadblock& testQuad = quadblocks[testQuadIndex];
-						const bool skip = (directionQuad.GetUnswizzledVertices()[4].m_pos - center).LengthSquared() > maxDistance;
-						if (skip || !RayIntersectQuadblockTest(center, directionVector, testQuad, dist))
+
+						if (RayIntersectQuadblockTest(centerA, directionVector, testQuad, dist))
+						{
+							dists[testQuadIndex] = dist;
+						}
+						else
 						{
 							dists[testQuadIndex] = std::numeric_limits<float>::max();
-							continue;
 						}
-						dists[testQuadIndex] = dist;
 					}
-
+					
 					for (int i = 0; i < quadCount; i++)
 					{
-						if (dists[i] < bestDistPos)
+						if (dists[i] < closestDist)
 						{
-							bestDistPos = dists[i];
-							leafHit = quadIndexesToLeaves[i];
+							closestDist = dists[i];
+							closestLeaf = quadIndexesToLeaves[i];
 						}
 					}
 
-					if (!vizMatrix.Get(leafA, leafHit))
+					if (closestLeaf == leafB)
 					{
-						vizMatrix.Set(true, leafA, leafHit);
-						vizMatrix.Set(true, leafHit, leafA);
-						if (leafHit == leafB) { foundLeafABHit = true; }
+						foundLeafABHit = true;
 					}
 				}
 			}
+			if (foundLeafABHit)
+			{
+				vizMatrix.Set(true, leafA, leafB);
+				vizMatrix.Set(true, leafB, leafA);
+			}
 		}
 	}
+	int count = 0;
+	for (size_t leafA = 0; leafA < leaves.size(); leafA++)
+	{
+		for (size_t leafB = 0; leafB < leaves.size(); leafB++)
+		{
+			if (vizMatrix.Get(leafA, leafB))
+			{
+				count++;
+			}
+		}
+	}
+	printf("Count: %d\n", count);
 	return vizMatrix;
 }
