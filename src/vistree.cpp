@@ -204,7 +204,7 @@ static std::vector<size_t> GetPotentialQuadblockIndexes(
 			{
 				// Ideally, a quad has 8 normal, but I just test 2
 				// Fix for triblocks please
-				if (quad.GetDrawDoubleSided() || (quad.ComputeNormalVector(0, 2, 6).Dot(rayDir) < 0 && quad.ComputeNormalVector(2, 8, 6).Dot(rayDir)))
+				if (true)//(quad.GetDrawDoubleSided() || quad.ComputeNormalVector(0, 2, 6).Dot(rayDir) < 0 || quad.ComputeNormalVector(2, 8, 6).Dot(rayDir) < 0 )
 				{
 					result.push_back(quadID);
 				}
@@ -226,32 +226,51 @@ static std::vector<Vec3> GenerateSamplePointLeaf(const std::vector<Quadblock>& q
 	// Consider only sampling ground quad ?
 	std::vector<Vec3> samples;
 	const std::vector<size_t>& quadIndexes = leaf.GetQuadblockIndexes();
-	//const Vec3 up = Vec3(0.0f, 1.0f, 0.0f);
+	const Vec3 up = Vec3(0.0f, 1.0f, 0.0f);
+	const float dedupeThreshold = 0.5f;
+	const float dedupeThresholdSquared = dedupeThreshold * dedupeThreshold;
+
+	// Helper to check if a point already exists in samples
+	auto isDuplicate = [&samples, dedupeThresholdSquared](const Vec3& point) {
+		for (const Vec3& existing : samples)
+		{
+			if ((existing - point).LengthSquared() < dedupeThresholdSquared) {return true;}
+		}
+		return false;
+		};
+
+	// Helper to add point if not duplicate
+	auto addIfUnique = [&samples, &isDuplicate](const Vec3& point) {if (!isDuplicate(point)) { samples.push_back(point); }};
+
 	for (size_t quadID : quadIndexes)
 	{
-		const Quadblock& quad = quadblocks[quadID];
-		const Vec3 up = quad.GetNormal();
+		Quadblock quad = quadblocks[quadID];
+		const Vec3 normal = quad.GetNormal();
+		float up_dist = 0.0f;
+		if (normal.y * normal.y > 0.5)
+		{
+			up_dist = camera_raise;
+		}
 		Vec3 center = quad.GetCenter();
-		samples.push_back(center + (up * camera_raise));
+		addIfUnique(center + (up * up_dist));
 		if (!simpleVisTree)
 		{
 			if (quad.IsQuadblock())
 			{
 				const Vertex* verts = quad.GetUnswizzledVertices();
-				samples.push_back(verts[0].m_pos + (up * camera_raise));
-				samples.push_back(verts[2].m_pos + (up * camera_raise));
-				samples.push_back(verts[6].m_pos + (up * camera_raise));
-				samples.push_back(verts[8].m_pos + (up * camera_raise));
+				addIfUnique(verts[0].m_pos + (up * up_dist));
+				addIfUnique(verts[2].m_pos + (up * up_dist));
+				addIfUnique(verts[6].m_pos + (up * up_dist));
+				addIfUnique(verts[8].m_pos + (up * up_dist));
 			}
 			else
 			{
 				const Vertex* verts = quad.GetUnswizzledVertices();
-				samples.push_back(verts[0].m_pos + (up * camera_raise));
-				samples.push_back(verts[2].m_pos + (up * camera_raise));
-				samples.push_back(verts[6].m_pos + (up * camera_raise));
+				addIfUnique(verts[0].m_pos + (up * up_dist));
+				addIfUnique(verts[2].m_pos + (up * up_dist));
+				addIfUnique(verts[6].m_pos + (up * up_dist));
 			}
 		}
-
 	}
 	return samples;
 }
