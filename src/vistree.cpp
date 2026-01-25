@@ -319,6 +319,7 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 		const std::vector<Vec3> sampleA = GenerateSamplePointLeaf(quadblocks, *leaves[leafA], cameraHeight, simpleVisTree);
 		for (size_t leafB = 0; leafB < leaves.size(); leafB++)
 		{
+			bool printer = (leaves[leafA]->GetId() == 693) && ((leaves[leafB]->GetId() == 541) || (leaves[leafB]->GetId() == 541));
 			bool foundLeafABHit = false;
 			const std::vector<Vec3> sampleB = GenerateSamplePointLeaf(quadblocks, *leaves[leafB], 0.0f, simpleVisTree);
 
@@ -331,6 +332,7 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 			if (minDistance > -0.0001f && minDistance * minDistance >= distBboxsquared)
 			{
 				foundLeafABHit = true;
+				if (printer) { printf("Hit by minDist"); }
 			}
 
 			for (const Vec3& pointA : sampleA)
@@ -347,10 +349,17 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 					// Calculate distance range to leafB's bounding box
 					float tmin, tmax;
 					const BoundingBox& bboxB = leaves[leafB]->GetBoundingBox();
-					if (!RayIntersectBoundingBox(pointA, directionVector, bboxB, tmin, tmax) || tmin < 0.0f)
+					bool intersect = RayIntersectBoundingBox(pointA, directionVector, bboxB, tmin, tmax);
+					if (!intersect)
+					{
+						// Weird edge case that shouldn't happen, but still does...
+						continue;
+					}
+					if (tmin < 0.0f)
 					{
 						// We are inside the Bbox. 
 						foundLeafABHit = true;
+						if (printer) { printf("Hit by pointA : %f,%f,%f inside BBoxB to pointB : %f,%f,%f, at tmin = %f\n", pointA.x, pointA.y, pointA.z, pointB.x, pointB.y, pointB.z, tmin); }
 						break;
 					}
 
@@ -400,6 +409,9 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 					if (closestLeaf == leafB)
 					{
 						foundLeafABHit = true;
+						if (printer) { printf("Hit by pointA : %f,%f,%f and pointB :  %f,%f,%f", pointA.x, pointA.y, pointA.z, pointB.x, pointB.y, pointB.z);
+						}
+
 					}
 				}
 			}
