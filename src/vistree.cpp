@@ -225,8 +225,11 @@ static std::vector<Vec3> GenerateSamplePointLeaf(const std::vector<Quadblock>& q
 BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* root, float maxDistanceSquared)
 {
 	auto start_time = std::chrono::high_resolution_clock::now();
-	//TODO : VERIFY IF QUAD FROM LEAF A REALLY BLOCK THE RAYPATH. THEY MUST.
+	//TODO : VERIFY IF QUAD FROM LEAFA REALLY BLOCK THE RAYPATH. THEY MUST.
 	// IF NEEDED : MAKE SURE A VERTICAL WALL STILL BLOCK EVEN IF DISTANCE IS SLIGHTLY NEGATIVE
+
+	// TODO CONSIDER A MIN ANGLE FOR CAMERA
+	//TODO : ADD A MINIMUM FOR VISIBILTY GUARANTEED
 	std::vector<const BSP*> leaves = root->GetLeaves();
 	BitMatrix vizMatrix = BitMatrix(leaves.size(), leaves.size());
 
