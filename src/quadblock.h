@@ -161,6 +161,7 @@ public:
 	bool GetAnimated() const;
 	bool GetFilter() const;
 	const Color& GetFilterColor() const;
+	bool GetDrawDoubleSided() const;
 	bool GetCheckpointStatus() const;
 	bool GetCheckpointPathable() const;
 	bool GetVisTreeTransparent() const;

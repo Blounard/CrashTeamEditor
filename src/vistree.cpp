@@ -62,8 +62,7 @@ static bool WorldspaceRayTriIntersection(const Vec3& worldSpaceRayOrigin, const 
 	if ((v < 0 && std::abs(v) > epsilon) || (u + v > 1 && std::abs(u + v - 1) > epsilon)) { return false; } //fails a barycentric test
 
 	float t = inv_det * edge_2.Dot(s_cross_e1); // time value (interpolant)
-	// TODO : TRY t > -epsilon
-	if (t > epsilon) { dist = t; return true; }
+	if (t > -epsilon) { dist = t; return true; } // Using -epsilon to make the self view blocking more frequent.
 	return false;
 }
 
@@ -198,9 +197,22 @@ static std::vector<size_t> GetPotentialQuadblockIndexes(
 	std::vector<size_t> result;
 	for (const auto& leaf : leavesWithDist)
 	{
+		for (size_t quadID : leaf.quadIndexes)
+		{
+			const Quadblock& quad = quadblocks[quadID]; 
+			if (!quad.GetVisTreeTransparent())
+			{
+				// Ideally, a quad has 8 normal, but I just test 2
+				// Fix for triblocks please
+				if (quad.GetDrawDoubleSided() || (quad.ComputeNormalVector(0, 2, 6).Dot(rayDir) < 0 && quad.ComputeNormalVector(2, 8, 6).Dot(rayDir)))
+				{
+					result.push_back(quadID);
+				}
+			}
+		}
 		// TODO HERE : FILTER QUAD THAT DONT OBSTRUCT THE VIEW BY QUADFLAG
 		// HANDLE DOUBLE SIDED QUAD
-		result.insert(result.end(), leaf.quadIndexes.begin(), leaf.quadIndexes.end());
+		//result.insert(result.end(), leaf.quadIndexes.begin(), leaf.quadIndexes.end());
 	}
 
 	return result;
@@ -303,8 +315,6 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 							// Early exit check: if quad hits before tmin and is not from leafB, it's blocking
 							if (quadLeaf != leafB && dist < tmin)
 							{
-								// TODO ; try if we allow the blocking quad to be from leafA
-								// Early exit: if we find a quad NOT from leafA or leafB that's closer than tmin, it's blocking
 								foundBlockingQuad = true;
 								break;
 							}

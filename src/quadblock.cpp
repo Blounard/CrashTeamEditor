@@ -500,6 +500,11 @@ const Color& Quadblock::GetFilterColor() const
 	return m_filterColor;
 }
 
+bool Quadblock::GetDrawDoubleSided() const
+{
+	return m_doubleSided;
+}
+
 bool Quadblock::GetCheckpointStatus() const
 {
 	return m_checkpointStatus;
