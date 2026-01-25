@@ -61,7 +61,8 @@ static bool WorldspaceRayTriIntersection(const Vec3& worldSpaceRayOrigin, const 
 	if ((v < 0 && std::abs(v) > epsilon) || (u + v > 1 && std::abs(u + v - 1) > epsilon)) { return false; } //fails a barycentric test
 
 	float t = inv_det * edge_2.Dot(s_cross_e1); // time value (interpolant)
-	if (t > epsilon) { dist = std::abs(t); return true; }
+	// TODO : TRY t > -epsilon
+	if (t > epsilon) { dist = t; return true; }
 	return false;
 }
 
@@ -222,6 +223,7 @@ static std::vector<Vec3> GenerateSamplePointLeaf(const std::vector<Quadblock>& q
 BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* root, float maxDistanceSquared)
 {
 	//TODO : VERIFY IF QUAD FROM LEAF A REALLY BLOCK THE RAYPATH. THEY MUST.
+	// IF NEEDED : MAKE SURE A VERTICAL WALL STILL BLOCK EVEN IF DISTANCE IS SLIGHTLY NEGATIVE
 	std::vector<const BSP*> leaves = root->GetLeaves();
 	BitMatrix vizMatrix = BitMatrix(leaves.size(), leaves.size());
 
@@ -308,6 +310,7 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 						size_t quadLeaf = quadIndexesToLeaves[testQuadIndex];
 						if (quadLeaf != leafA && quadLeaf != leafB && localDists[i] < tmin)
 						{
+							// TODO ; try if we allow the blocking quad to be from leafA
 							// Early exit: if we find a quad NOT from leafA or leafB that's closer than tmin, it's blocking
 							foundBlockingQuad = true;
 							break;
