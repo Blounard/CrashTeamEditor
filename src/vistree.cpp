@@ -218,18 +218,40 @@ static std::vector<size_t> GetPotentialQuadblockIndexes(
 	return result;
 }
 
-static std::vector<Vec3> GenerateSamplePointLeaf(const std::vector<Quadblock>& quadblocks, const BSP& leaf, float camera_raise = 0)
+static std::vector<Vec3> GenerateSamplePointLeaf(const std::vector<Quadblock>& quadblocks, const BSP& leaf, float camera_raise, bool simpleVisTree)
 {
 	// For a leaf node, generate all the points for the vis ray test.
 	// Originally the center of each quad in a node.
 	// The camera raise is currently done with quad's normal. Might change to up vector later
+	// Consider only sampling ground quad ?
 	std::vector<Vec3> samples;
 	const std::vector<size_t>& quadIndexes = leaf.GetQuadblockIndexes();
+	//const Vec3 up = Vec3(0.0f, 1.0f, 0.0f);
 	for (size_t quadID : quadIndexes)
 	{
 		const Quadblock& quad = quadblocks[quadID];
+		const Vec3 up = quad.GetNormal();
 		Vec3 center = quad.GetCenter();
-		samples.push_back(center + (quad.GetNormal() * camera_raise));
+		samples.push_back(center + (up * camera_raise));
+		if (!simpleVisTree)
+		{
+			if (quad.IsQuadblock())
+			{
+				const Vertex* verts = quad.GetUnswizzledVertices();
+				samples.push_back(verts[0].m_pos + (up * camera_raise));
+				samples.push_back(verts[2].m_pos + (up * camera_raise));
+				samples.push_back(verts[6].m_pos + (up * camera_raise));
+				samples.push_back(verts[8].m_pos + (up * camera_raise));
+			}
+			else
+			{
+				const Vertex* verts = quad.GetUnswizzledVertices();
+				samples.push_back(verts[0].m_pos + (up * camera_raise));
+				samples.push_back(verts[2].m_pos + (up * camera_raise));
+				samples.push_back(verts[6].m_pos + (up * camera_raise));
+			}
+		}
+
 	}
 	return samples;
 }
@@ -248,7 +270,7 @@ float GetLeafDistanceSquared(const BSP& leaf1, const BSP& leaf2)
 	return (dx * dx + dy * dy + dz * dz);
 }
 
-BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* root, float minDistance, float maxDistance)
+BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* root, bool simpleVisTree, float minDistance, float maxDistance)
 {
 	auto start_time = std::chrono::high_resolution_clock::now();
 	//TODO : VERIFY IF QUAD FROM LEAFA REALLY BLOCK THE RAYPATH. THEY MUST.
@@ -275,11 +297,11 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 	{
 		printf("Prog: %d/%d\n", static_cast<int>(leafA + 1), static_cast<int>(leaves.size()));
 		vizMatrix.Set(true, leafA, leafA);
-		const std::vector<Vec3> sampleA = GenerateSamplePointLeaf(quadblocks, *leaves[leafA], cameraHeight);
+		const std::vector<Vec3> sampleA = GenerateSamplePointLeaf(quadblocks, *leaves[leafA], cameraHeight, simpleVisTree);
 		for (size_t leafB = 0; leafB < leaves.size(); leafB++)
 		{
 			bool foundLeafABHit = false;
-			const std::vector<Vec3> sampleB = GenerateSamplePointLeaf(quadblocks, *leaves[leafB], 0.0f);
+			const std::vector<Vec3> sampleB = GenerateSamplePointLeaf(quadblocks, *leaves[leafB], 0.0f, simpleVisTree);
 
 			// Pre-build sets of quadblock indices for leafA and leafB for quick lookup
 			const std::vector<size_t>& quadIndexesA = leaves[leafA]->GetQuadblockIndexes();

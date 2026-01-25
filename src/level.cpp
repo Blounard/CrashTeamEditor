@@ -69,6 +69,7 @@ void Level::Clear(bool clearErrors)
 	m_rendererQueryPoint = Vec3();
 	m_rendererSelectedQuadblockIndexes.clear();
 	m_genVisTree = false;
+	m_simpleVisTree = false;
 	m_bspVis.Clear();
 	m_maxQuadPerLeaf = 31;
 	m_maxLeafAxisLength = 64.0f;
@@ -162,7 +163,7 @@ bool Level::GenerateBSP()
 	if (m_bsp.IsValid())
 	{
 		GenerateRenderBspData(m_bsp);
-		if (m_genVisTree) { m_bspVis = GenerateVisTree(m_quadblocks, &m_bsp, m_distanceNearClip, m_distanceFarClip); }
+		if (m_genVisTree) { m_bspVis = GenerateVisTree(m_quadblocks, &m_bsp, m_simpleVisTree, m_distanceNearClip, m_distanceFarClip); }
 		return true;
 	}
 	m_bsp.Clear();

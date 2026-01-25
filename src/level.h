@@ -86,6 +86,7 @@ private:
 	bool m_showLogWindow;
 	bool m_showHotReloadWindow;
 	bool m_loaded;
+	bool m_simpleVisTree;
 	bool m_genVisTree;
 	int m_maxQuadPerLeaf;
 	float m_maxLeafAxisLength;

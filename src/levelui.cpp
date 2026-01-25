@@ -756,6 +756,8 @@ void Level::RenderUI()
 				ImGui::SetItemTooltip("Minimum drawing distance. Higher values decrease performance and speed up the vis tree generation.");
 				if (ImGui::InputFloat("Far Clip Distance", &m_distanceFarClip)) { m_distanceFarClip = std::max(m_distanceFarClip, 0.0f); }
 				ImGui::SetItemTooltip("Maximum drawing distance. Lower values improve performance and speed up the vis tree generation.");
+				ImGui::Checkbox("Simple Vis Tree", &m_simpleVisTree);
+				ImGui::SetItemTooltip("The vis tree will be generated faster, but will be less precise");
 				ImGui::Checkbox("Generate Vis Tree", &m_genVisTree);
 				ImGui::SetItemTooltip("Generating the vis tree may take several minutes, but the gameplay will be more performant.");
 				ImGui::TreePop();
