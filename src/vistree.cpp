@@ -2,7 +2,9 @@
 #include <omp.h>
 #include <cmath>
 #include <unordered_set>
+#include <chrono>
 #include <algorithm>
+using namespace std::chrono;
 
 bool BitMatrix::Get(size_t x, size_t y) const
 {
@@ -198,6 +200,7 @@ static std::vector<size_t> GetPotentialQuadblockIndexes(
 	for (const auto& leaf : leavesWithDist)
 	{
 		// TODO HERE : FILTER QUAD THAT DONT OBSTRUCT THE VIEW BY QUADFLAG
+		// HANDLE DOUBLE SIDED QUAD
 		result.insert(result.end(), leaf.quadIndexes.begin(), leaf.quadIndexes.end());
 	}
 
@@ -222,6 +225,7 @@ static std::vector<Vec3> GenerateSamplePointLeaf(const std::vector<Quadblock>& q
 
 BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* root, float maxDistanceSquared)
 {
+	auto start_time = std::chrono::high_resolution_clock::now();
 	//TODO : VERIFY IF QUAD FROM LEAF A REALLY BLOCK THE RAYPATH. THEY MUST.
 	// IF NEEDED : MAKE SURE A VERTICAL WALL STILL BLOCK EVEN IF DISTANCE IS SLIGHTLY NEGATIVE
 	std::vector<const BSP*> leaves = root->GetLeaves();
@@ -353,6 +357,15 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 			}
 		}
 	}
-	printf("Count: %d\n", count);
+	int max = leaves.size() * leaves.size();
+	float ratio = 100.0 * count / max;
+	printf("Count: %d/%d,  %f%%\n", count, max,ratio);
+	auto elapsed = std::chrono::high_resolution_clock::now() - start_time;
+	auto mins = std::chrono::duration_cast<std::chrono::minutes>(elapsed);
+	auto secs = std::chrono::duration_cast<std::chrono::seconds>(elapsed - mins);
+
+	printf("Runtime %lldmin %lldsec\n",
+		static_cast<long long>(mins.count()),
+		static_cast<long long>(secs.count()));
 	return vizMatrix;
 }
