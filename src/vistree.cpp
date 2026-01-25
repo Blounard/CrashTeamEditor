@@ -251,8 +251,7 @@ static std::vector<Vec3> GenerateSamplePointLeaf(const std::vector<Quadblock>& q
 		{
 			up_dist = camera_raise;
 		}
-		Vec3 center = quad.GetCenter();
-		addIfUnique(center + (up * up_dist));
+		addIfUnique(quad.GetCenter() + (up * up_dist));
 		if (!simpleVisTree)
 		{
 			if (quad.IsQuadblock())
