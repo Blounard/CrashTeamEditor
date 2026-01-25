@@ -70,7 +70,9 @@ void Level::Clear(bool clearErrors)
 	m_rendererSelectedQuadblockIndexes.clear();
 	m_genVisTree = false;
 	m_bspVis.Clear();
+	m_maxQuadPerLeaf = 31;
 	m_maxLeafAxisLength = 64.0f;
+	m_distanceNearClip = -1.0f;
 	m_distanceFarClip = 1000.0f;
 	m_pythonConsole.clear();
 	m_saveScript = false;
@@ -156,12 +158,11 @@ bool Level::GenerateBSP()
 	for (size_t i = 0; i < m_quadblocks.size(); i++) { quadIndexes.push_back(i); }
 	m_bsp.Clear();
 	m_bsp.SetQuadblockIndexes(quadIndexes);
-	m_bsp.Generate(m_quadblocks, MAX_QUADBLOCKS_LEAF, m_maxLeafAxisLength);
+	m_bsp.Generate(m_quadblocks, m_maxQuadPerLeaf, m_maxLeafAxisLength);
 	if (m_bsp.IsValid())
 	{
 		GenerateRenderBspData(m_bsp);
-		std::vector<const BSP*> bspLeaves = m_bsp.GetLeaves();
-		if (m_genVisTree) { m_bspVis = GenerateVisTree(m_quadblocks, &m_bsp, m_distanceFarClip * m_distanceFarClip); }
+		if (m_genVisTree) { m_bspVis = GenerateVisTree(m_quadblocks, &m_bsp, m_distanceNearClip, m_distanceFarClip); }
 		return true;
 	}
 	m_bsp.Clear();

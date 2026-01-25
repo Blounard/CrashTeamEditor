@@ -234,7 +234,21 @@ static std::vector<Vec3> GenerateSamplePointLeaf(const std::vector<Quadblock>& q
 	return samples;
 }
 
-BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* root, float maxDistanceSquared)
+float GetLeafDistanceSquared(const BSP& leaf1, const BSP& leaf2)
+{
+	// Return the closest distance between the BBox of leaf1 and leaf2.
+	// Return 0.0f if they are intersecting, or one is included in the other
+	const BoundingBox& a = leaf1.GetBoundingBox();
+	const BoundingBox& b = leaf2.GetBoundingBox();
+
+	float dx = std::max({ 0.0f, b.min.x - a.max.x, a.min.x - b.max.x });
+	float dy = std::max({ 0.0f, b.min.y - a.max.y, a.min.y - b.max.y });
+	float dz = std::max({ 0.0f, b.min.z - a.max.z, a.min.z - b.max.z });
+
+	return (dx * dx + dy * dy + dz * dz);
+}
+
+BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* root, float minDistance, float maxDistance)
 {
 	auto start_time = std::chrono::high_resolution_clock::now();
 	//TODO : VERIFY IF QUAD FROM LEAFA REALLY BLOCK THE RAYPATH. THEY MUST.
@@ -242,6 +256,8 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 
 	// TODO CONSIDER A MIN ANGLE FOR CAMERA
 	//TODO : ADD A MINIMUM FOR VISIBILTY GUARANTEED
+
+	const float maxDistanceSquared = maxDistance * maxDistance;
 	std::vector<const BSP*> leaves = root->GetLeaves();
 	BitMatrix vizMatrix = BitMatrix(leaves.size(), leaves.size());
 
@@ -268,6 +284,13 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 			// Pre-build sets of quadblock indices for leafA and leafB for quick lookup
 			const std::vector<size_t>& quadIndexesA = leaves[leafA]->GetQuadblockIndexes();
 			const std::vector<size_t>& quadIndexesB = leaves[leafB]->GetQuadblockIndexes();
+
+			float distBboxsquared = GetLeafDistanceSquared(*leaves[leafA], *leaves[leafB]);
+			// If minDistance is positive, and bigger than distBbox
+			if (minDistance > -0.0001f && minDistance * minDistance >= distBboxsquared)
+			{
+				foundLeafABHit = true;
+			}
 
 			for (const Vec3& pointA : sampleA)
 			{
