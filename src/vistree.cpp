@@ -312,7 +312,7 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 						}
 						size_t testQuadIndex = potentialQuads[i];
 						size_t quadLeaf = quadIndexesToLeaves[testQuadIndex];
-						if (quadLeaf != leafA && quadLeaf != leafB && localDists[i] < tmin)
+						if (quadLeaf != leafB && localDists[i] < tmin)
 						{
 							// TODO ; try if we allow the blocking quad to be from leafA
 							// Early exit: if we find a quad NOT from leafA or leafB that's closer than tmin, it's blocking
