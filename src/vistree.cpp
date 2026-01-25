@@ -4,7 +4,6 @@
 #include <unordered_set>
 #include <chrono>
 #include <algorithm>
-using namespace std::chrono;
 
 bool BitMatrix::Get(size_t x, size_t y) const
 {
@@ -282,48 +281,36 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 					size_t closestLeaf = leafA;
 					bool foundBlockingQuad = false;
 
-					// Create thread-local storage for distances to avoid conflicts
-					std::vector<float> localDists(potentialQuads.size(), std::numeric_limits<float>::max());
-
-#pragma omp parallel for
-					for (int i = 0; i < static_cast<int>(potentialQuads.size()); i++)
-					{
-						if (foundBlockingQuad)
-						{
-							break;
-						}
-						size_t testQuadIndex = potentialQuads[i];
-
-						float dist = 0.0f;
-						const Quadblock& testQuad = quadblocks[testQuadIndex];
-
-						if (RayIntersectQuadblockTest(pointA, directionVector, testQuad, dist))
-						{
-							localDists[i] = dist;
-						}
-					}
-
-					// Early exit check: if any quad hits before tmin, there's a blocking obstacle
+					// Single loop: test quads and check for blocking simultaneously
 					for (size_t i = 0; i < potentialQuads.size(); i++)
 					{
 						if (foundBlockingQuad)
 						{
 							break;
 						}
+
 						size_t testQuadIndex = potentialQuads[i];
 						size_t quadLeaf = quadIndexesToLeaves[testQuadIndex];
-						if (quadLeaf != leafB && localDists[i] < tmin)
-						{
-							// TODO ; try if we allow the blocking quad to be from leafA
-							// Early exit: if we find a quad NOT from leafA or leafB that's closer than tmin, it's blocking
-							foundBlockingQuad = true;
-							break;
-						}
 
-						if (localDists[i] < closestDist)
+						float dist = 0.0f;
+						const Quadblock& testQuad = quadblocks[testQuadIndex];
+
+						if (RayIntersectQuadblockTest(pointA, directionVector, testQuad, dist))
 						{
-							closestDist = localDists[i];
-							closestLeaf = quadIndexesToLeaves[testQuadIndex];
+							// Early exit check: if quad hits before tmin and is not from leafB, it's blocking
+							if (quadLeaf != leafB && dist < tmin)
+							{
+								// TODO ; try if we allow the blocking quad to be from leafA
+								// Early exit: if we find a quad NOT from leafA or leafB that's closer than tmin, it's blocking
+								foundBlockingQuad = true;
+								break;
+							}
+
+							if (dist < closestDist)
+							{
+								closestDist = dist;
+								closestLeaf = quadLeaf;
+							}
 						}
 					}
 
@@ -357,15 +344,15 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 			}
 		}
 	}
-	int max = leaves.size() * leaves.size();
-	float ratio = 100.0 * count / max;
-	printf("Count: %d/%d,  %f%%\n", count, max,ratio);
-	auto elapsed = std::chrono::high_resolution_clock::now() - start_time;
-	auto mins = std::chrono::duration_cast<std::chrono::minutes>(elapsed);
-	auto secs = std::chrono::duration_cast<std::chrono::seconds>(elapsed - mins);
+	int max = static_cast<int>(leaves.size() * leaves.size());
+	float ratio = 100.0f * static_cast<float>(count) / static_cast<float>(max);
+	printf("Count: %d/%d,  %f%%\n", count, max, ratio);
 
-	printf("Runtime %lldmin %lldsec\n",
-		static_cast<long long>(mins.count()),
-		static_cast<long long>(secs.count()));
+	auto elapsed = std::chrono::high_resolution_clock::now() - start_time;
+	long long total_seconds = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
+	long long mins = total_seconds / 60;
+	long long secs = total_seconds % 60;
+
+	printf("Runtime %lldmin %lldsec\n", mins, secs);
 	return vizMatrix;
 }
