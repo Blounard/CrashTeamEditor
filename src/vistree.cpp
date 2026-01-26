@@ -340,6 +340,7 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 	BitMatrix vizMatrix = BitMatrix(leaves.size(), leaves.size());
 
 	const float cameraHeight = 5.0f;
+	const float failsafe = 0.5f;
 
 	const int quadCount = static_cast<int>(quadblocks.size());
 	std::vector<size_t> quadIndexesToLeaves(quadCount);
@@ -423,13 +424,13 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 						if (RayIntersectQuadblockTest(pointA, directionVector, testQuad, dist))
 						{
 							// Early exit check: if quad hits before tmin and is not from leafB, it's blocking
-							if (quadLeaf != leafB && dist < tmin)
+							if (quadLeaf != leafB && (dist + failsafe < tmin))
 							{
 								foundBlockingQuad = true;
 								break;
 							}
 
-							if (dist < closestDist)
+							if (dist - (quadLeaf == leafB ? failsafe : 0.0f) < closestDist - (closestLeaf == leafB ? failsafe : 0.0f))
 							{
 								closestDist = dist;
 								closestLeaf = quadLeaf;
