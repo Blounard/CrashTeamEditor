@@ -215,6 +215,7 @@ static std::vector<size_t> GetPotentialQuadblockIndexes(
 	const BSP* node,
 	const Vec3& rayOrigin,
 	const Vec3& rayDir,
+	const size_t leafBID,
 	const float maxDist)
 {
 	std::vector<LeafWithDistance> leavesWithDist;
@@ -224,26 +225,24 @@ static std::vector<size_t> GetPotentialQuadblockIndexes(
 	std::sort(leavesWithDist.begin(), leavesWithDist.end(),
 		[](const LeafWithDistance& a, const LeafWithDistance& b) { return a.tmax < b.tmax; });
 
-	// Flatten: extract all quad indices maintaining the leaf ordering
 	std::vector<size_t> result;
 	for (const auto& leaf : leavesWithDist)
 	{
 		for (size_t quadID : leaf.quadIndexes)
 		{
 			const Quadblock& quad = quadblocks[quadID]; 
-			if (!quad.GetVisTreeTransparent())
+			if (quad.GetBSPID() == leafBID || !quad.GetVisTreeTransparent())
 			{
 				// Ideally, a quad has 8 normal, but I just test 2
 				// Fix for triblocks please
-				if (quad.GetDrawDoubleSided() || quad.ComputeNormalVector(0, 2, 6).Dot(rayDir) < 0 || quad.ComputeNormalVector(2, 8, 6).Dot(rayDir) < 0 )
+				if (quad.GetDrawDoubleSided() || quad.ComputeNormalVector(0, 2, 6).Dot(rayDir) < 0 || quad.ComputeNormalVector(2, 8, 6).Dot(rayDir) < 0)
 				{
 					result.push_back(quadID);
 				}
 			}
+			
+			
 		}
-		// TODO HERE : FILTER QUAD THAT DONT OBSTRUCT THE VIEW BY QUADFLAG
-		// HANDLE DOUBLE SIDED QUAD
-		//result.insert(result.end(), leaf.quadIndexes.begin(), leaf.quadIndexes.end());
 	}
 
 	return result;
@@ -401,7 +400,7 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 						break;
 					}
 
-					std::vector<size_t> potentialQuads = GetPotentialQuadblockIndexes(quadblocks, root, pointA, directionVector, tmax);
+					std::vector<size_t> potentialQuads = GetPotentialQuadblockIndexes(quadblocks, root, pointA, directionVector, leaves[leafB]->GetId() , tmax);
 
 					float closestDist = std::numeric_limits<float>::max();
 					size_t closestLeaf = leafA;
