@@ -40,6 +40,7 @@ void BitMatrix::Clear()
 static bool WorldspaceRayTriIntersection(const Vec3& worldSpaceRayOrigin, const Vec3& worldSpaceRayDir, const Vec3* tri, float& dist)
 {
 	constexpr float epsilon = 0.00001f;
+	constexpr float failsafe = 0.5f;
 
 	//moller-trumbore intersection test
 	//https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
@@ -62,7 +63,7 @@ static bool WorldspaceRayTriIntersection(const Vec3& worldSpaceRayOrigin, const 
 	if ((v < 0 && std::abs(v) > epsilon) || (u + v > 1 && std::abs(u + v - 1) > epsilon)) { return false; } //fails a barycentric test
 
 	float t = inv_det * edge_2.Dot(s_cross_e1); // time value (interpolant)
-	if (t > -epsilon) { dist = t; return true; } // Using -epsilon to make the self view blocking more frequent.
+	if (t > -failsafe) { dist = t; return true; } // Using -failsafe to make the self view blocking more frequent.
 	return false;
 }
 
@@ -100,6 +101,7 @@ static bool RayIntersectQuadblockTest(const Vec3& worldSpaceRayOrigin, const Vec
 static bool RayIntersectBoundingBox(const Vec3& rayOrigin, const Vec3& rayDir, const BoundingBox& bbox, float& tmin, float& tmax)
 {
 	constexpr float epsilon = 0.00001f;
+	constexpr float failsafe = 0.5f;
 
 	// Compute inverse ray direction for efficiency
 	float invDirX = 1.0f / (std::abs(rayDir.x) < epsilon ? epsilon : rayDir.x);
@@ -118,6 +120,14 @@ static bool RayIntersectBoundingBox(const Vec3& rayOrigin, const Vec3& rayDir, c
 	tmin = std::max(std::max(std::min(t1, t2), std::min(t3, t4)), std::min(t5, t6));
 	tmax = std::min(std::min(std::max(t1, t2), std::max(t3, t4)), std::max(t5, t6));
 
+	// Failsafe : if the rayOrigin is almost inside the BBox, we return true
+	if (bbox.min.x - failsafe < rayOrigin.x && rayOrigin.x < bbox.max.x + failsafe
+		&& bbox.min.y - failsafe < rayOrigin.y && rayOrigin.y < bbox.max.y + failsafe
+		&& bbox.min.z - failsafe < rayOrigin.z && rayOrigin.z < bbox.max.z + failsafe)
+	{
+		tmin = -1.0f; // We fake tmin negative with a true return to say we are inside
+		return true; 
+	}
 	// No intersection if tmax < 0 (box is behind ray) or tmin > tmax (ray misses box)
 	if (tmax < 0.0f || tmin > tmax)
 	{
@@ -325,7 +335,7 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 		const std::vector<Vec3> sampleA = GenerateSamplePointLeaf(quadblocks, *leaves[leafA], cameraHeight, simpleVisTree);
 		for (size_t leafB = 0; leafB < leaves.size(); leafB++)
 		{
-			bool printer = (leaves[leafA]->GetId() == 713) && ((leaves[leafB]->GetId() == 391) || (leaves[leafB]->GetId() == 391));
+			bool printer = (leaves[leafA]->GetId() == 713) && (leaves[leafB]->GetId() == 391);
 			bool foundLeafABHit = false;
 			const std::vector<Vec3> sampleB = GenerateSamplePointLeaf(quadblocks, *leaves[leafB], 0.0f, simpleVisTree);
 
