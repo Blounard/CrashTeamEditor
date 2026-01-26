@@ -223,7 +223,8 @@ static std::vector<Vec3> GenerateSamplePointLeaf(const std::vector<Quadblock>& q
 	// For a leaf node, generate all the points for the vis ray test.
 	// Originally the center of each quad in a node.
 	// The camera raise is currently done with quad's normal. Might change to up vector later
-	// Consider only sampling ground quad ?
+	// 
+	// TODO : only raise middle of ground quad.
 	std::vector<Vec3> samples;
 	const std::vector<size_t>& quadIndexes = leaf.GetQuadblockIndexes();
 	const Vec3 up = Vec3(0.0f, 1.0f, 0.0f);
@@ -240,34 +241,40 @@ static std::vector<Vec3> GenerateSamplePointLeaf(const std::vector<Quadblock>& q
 		};
 
 	// Helper to add point if not duplicate
-	auto addIfUnique = [&samples, &isDuplicate](const Vec3& point) {if (!isDuplicate(point)) { samples.push_back(point); }};
+	auto addIfUnique = [&samples, &isDuplicate](const Vec3& point, bool end) 
+		{
+			if (!isDuplicate(point)) 
+			{
+				if (end) { samples.push_back(point); }
+				else { samples.insert(samples.begin(),point); }
+			}
+		};
 
 	for (size_t quadID : quadIndexes)
 	{
 		Quadblock quad = quadblocks[quadID];
-		const Vec3 normal = quad.GetNormal();
 		float up_dist = 0.0f;
-		if (normal.y * normal.y > 0.5)
+		if (quad.GetFlags() & QuadFlags::GROUND)
 		{
 			up_dist = camera_raise;
 		}
-		addIfUnique(quad.GetCenter() + (up * up_dist));
+		addIfUnique(quad.GetCenter() + (up * up_dist), false);
 		if (!simpleVisTree)
 		{
 			if (quad.IsQuadblock())
 			{
 				const Vertex* verts = quad.GetUnswizzledVertices();
-				addIfUnique(verts[0].m_pos + (up * up_dist));
-				addIfUnique(verts[2].m_pos + (up * up_dist));
-				addIfUnique(verts[6].m_pos + (up * up_dist));
-				addIfUnique(verts[8].m_pos + (up * up_dist));
+				addIfUnique(verts[0].m_pos, true);
+				addIfUnique(verts[2].m_pos, true);
+				addIfUnique(verts[6].m_pos, true);
+				addIfUnique(verts[8].m_pos, true);
 			}
 			else
 			{
 				const Vertex* verts = quad.GetUnswizzledVertices();
-				addIfUnique(verts[0].m_pos + (up * up_dist));
-				addIfUnique(verts[2].m_pos + (up * up_dist));
-				addIfUnique(verts[6].m_pos + (up * up_dist));
+				addIfUnique(verts[0].m_pos, true);
+				addIfUnique(verts[2].m_pos, true);
+				addIfUnique(verts[6].m_pos, true);
 			}
 		}
 	}
@@ -318,7 +325,7 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 		const std::vector<Vec3> sampleA = GenerateSamplePointLeaf(quadblocks, *leaves[leafA], cameraHeight, simpleVisTree);
 		for (size_t leafB = 0; leafB < leaves.size(); leafB++)
 		{
-			bool printer = (leaves[leafA]->GetId() == 693) && ((leaves[leafB]->GetId() == 541) || (leaves[leafB]->GetId() == 541));
+			bool printer = (leaves[leafA]->GetId() == 713) && ((leaves[leafB]->GetId() == 391) || (leaves[leafB]->GetId() == 391));
 			bool foundLeafABHit = false;
 			const std::vector<Vec3> sampleB = GenerateSamplePointLeaf(quadblocks, *leaves[leafB], 0.0f, simpleVisTree);
 
