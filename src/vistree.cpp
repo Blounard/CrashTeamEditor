@@ -40,8 +40,8 @@ void BitMatrix::Clear()
 static bool WorldspaceRayTriIntersection(const Vec3& worldSpaceRayOrigin, const Vec3& worldSpaceRayDir, const Vec3* tri, float& dist)
 {
 	constexpr float epsilon = 0.00001f;
-	constexpr float failsafe = 0.5f; // Allow hits up to 0.5 units behind the ray origin
-	constexpr float barycentricTolerance = 0.5f; // Allow points 0.5 units outside triangle edges
+	constexpr float failsafe = 0.5f; 
+	constexpr float barycentricTolerance = 0.5f; 
 
 	//moller-trumbore intersection test
 	//https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
@@ -157,7 +157,7 @@ static bool RayIntersectBoundingBox(const Vec3& rayOrigin, const Vec3& rayDir, c
 	return true;
 }
 
-// Helper structure to store leaf data with its distance
+// Helper structure to store leaf data with its tmax value
 struct LeafWithDistance
 {
 	std::vector<size_t> quadIndexes; // All quads in this leaf
@@ -173,31 +173,22 @@ static void GetPotentialLeavesRecursive(
 	const float maxDist,
 	std::vector<LeafWithDistance>& result)
 {
-	// Check if the ray intersects this node's bounding box
 	float tmin, tmax;
-	if (!RayIntersectBoundingBox(rayOrigin, rayDir, node->GetBoundingBox(), tmin, tmax))
-	{
-		// No intersection with bounding box
-		return;
-	}
+	// Check if the ray intersects this node's bounding box
+	if (!RayIntersectBoundingBox(rayOrigin, rayDir, node->GetBoundingBox(), tmin, tmax)) { return; }
 
-	if (tmin > maxDist)
-	{
-		// The node is too far away
-		return;
-	}
+	// Check if the node's bounding box is too far away
+	if (tmin > maxDist) { return; }
 
-	// If this is a leaf node, add it with all its quadblocks and the tmax distance
+	// If this is a leaf node, add it's LeafWithDistance
 	if (!node->IsBranch())
 	{
 		result.push_back({ node->GetQuadblockIndexes(), tmax });
 		return;
 	}
 
-	// This is a branch node - recursively traverse children
 	const BSP* leftChild = node->GetLeftChildren();
 	const BSP* rightChild = node->GetRightChildren();
-
 	if (leftChild != nullptr)
 	{
 		GetPotentialLeavesRecursive(quadblocks, leftChild, rayOrigin, rayDir, maxDist, result);
@@ -209,7 +200,6 @@ static void GetPotentialLeavesRecursive(
 	}
 }
 
-// Main function that returns quadblock indexes sorted by their leaf's tmax
 static std::vector<size_t> GetPotentialQuadblockIndexes(
 	const std::vector<Quadblock>& quadblocks,
 	const BSP* node,
@@ -218,10 +208,11 @@ static std::vector<size_t> GetPotentialQuadblockIndexes(
 	const size_t leafBID,
 	const float maxDist)
 {
+	// Return all the quadblock that can potentially block the ray, sorted by leaf's Bbox tmax. (close quads have higher chance to block the ray)
+
 	std::vector<LeafWithDistance> leavesWithDist;
 	GetPotentialLeavesRecursive(quadblocks, node, rayOrigin, rayDir, maxDist, leavesWithDist);
 
-	// Sort leaves by tmax (ascending order - closer leaves first)
 	std::sort(leavesWithDist.begin(), leavesWithDist.end(),
 		[](const LeafWithDistance& a, const LeafWithDistance& b) { return a.tmax < b.tmax; });
 
@@ -240,8 +231,6 @@ static std::vector<size_t> GetPotentialQuadblockIndexes(
 					result.push_back(quadID);
 				}
 			}
-			
-			
 		}
 	}
 
@@ -251,10 +240,6 @@ static std::vector<size_t> GetPotentialQuadblockIndexes(
 static std::vector<Vec3> GenerateSamplePointLeaf(const std::vector<Quadblock>& quadblocks, const BSP& leaf, float camera_raise, bool simpleVisTree)
 {
 	// For a leaf node, generate all the points for the vis ray test.
-	// Originally the center of each quad in a node.
-	// The camera raise is currently done with quad's normal. Might change to up vector later
-	// 
-	// TODO : only raise middle of ground quad.
 	std::vector<Vec3> samples;
 	const std::vector<size_t>& quadIndexes = leaf.GetQuadblockIndexes();
 	const Vec3 up = Vec3(0.0f, 1.0f, 0.0f);
@@ -328,11 +313,6 @@ float GetLeafDistanceSquared(const BSP& leaf1, const BSP& leaf2)
 BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* root, bool simpleVisTree, float minDistance, float maxDistance)
 {
 	auto start_time = std::chrono::high_resolution_clock::now();
-	//TODO : VERIFY IF QUAD FROM LEAFA REALLY BLOCK THE RAYPATH. THEY MUST.
-	// IF NEEDED : MAKE SURE A VERTICAL WALL STILL BLOCK EVEN IF DISTANCE IS SLIGHTLY NEGATIVE
-
-	// TODO CONSIDER A MIN ANGLE FOR CAMERA
-	//TODO : ADD A MINIMUM FOR VISIBILTY GUARANTEED
 
 	const float maxDistanceSquared = maxDistance * maxDistance;
 	std::vector<const BSP*> leaves = root->GetLeaves();
