@@ -204,7 +204,7 @@ static std::vector<size_t> GetPotentialQuadblockIndexes(
 			{
 				// Ideally, a quad has 8 normal, but I just test 2
 				// Fix for triblocks please
-				if (true)//(quad.GetDrawDoubleSided() || quad.ComputeNormalVector(0, 2, 6).Dot(rayDir) < 0 || quad.ComputeNormalVector(2, 8, 6).Dot(rayDir) < 0 )
+				if (quad.GetDrawDoubleSided() || quad.ComputeNormalVector(0, 2, 6).Dot(rayDir) < 0 || quad.ComputeNormalVector(2, 8, 6).Dot(rayDir) < 0 )
 				{
 					result.push_back(quadID);
 				}
