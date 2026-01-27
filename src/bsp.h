@@ -56,6 +56,7 @@ public:
 	std::vector<const BSP*> GetLeaves() const;
 	void SetQuadblockIndexes(const std::vector<size_t>& quadblockIndexes);
 	void Clear();
+	void SplitLeaf(const std::vector<Quadblock>& quadblocks, const AxisSplit axis, const float midpoint);
 	void Generate(const std::vector<Quadblock>& quadblocks, const size_t maxQuadsPerLeaf, const float maxAxisLength);
 	std::vector<uint8_t> Serialize(size_t offQuads) const;
 	void RenderUI(const std::vector<Quadblock>& quadblocks);
