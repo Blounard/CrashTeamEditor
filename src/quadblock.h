@@ -169,6 +169,10 @@ public:
 	std::vector<uint8_t> Serialize(size_t id, size_t offTextures, const std::vector<size_t>& vertexIndexes) const;
 	bool RenderUI(size_t checkpointCount, bool& resetBsp);
 	Vec3 ComputeNormalVector(size_t id0, size_t id1, size_t id2) const;
+	void SetRawTextureOffsets(const uint32_t midTextures[4], uint32_t lowTexture);
+	bool HasRawTextureOffsets() const;
+	const uint32_t* GetRawMidTextureOffsets() const;
+	uint32_t GetRawLowTextureOffset() const;
 
 private:
 	void ResetUVs();
@@ -211,6 +215,10 @@ private:
 	std::filesystem::path m_texPath;
 	size_t m_renderPrimitiveIndex = RENDER_INDEX_NONE;
 	UpdateFilterCallback m_filterCallback;
+
+	uint32_t m_rawOffMidTextures[4];
+	uint32_t m_rawOffLowTexture;
+	bool m_hasRawTextureOffsets;
 };
 
 class QuadException : public std::exception
