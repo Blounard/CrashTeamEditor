@@ -45,6 +45,8 @@ public:
 	void ResetFilter();
 	void ResetRendererSelection();
 	void UpdateRendererCheckpoints();
+	bool GenerateVisTreeAlone(bool simpleVisTree, float distanceNearClip, float distanceFarClip);
+
 
 private:
 	void ManageTurbopad(Quadblock& quadblock);
@@ -148,4 +150,8 @@ private:
 	Vec3 m_rendererQueryPoint;
 	std::vector<size_t> m_rendererSelectedQuadblockIndexes;
 	size_t m_lastAnimTextureCount;
+
+	std::vector<PSX::TextureGroup> m_rawTexGroups;
+	std::vector<uint8_t> m_rawAnimData;
+	bool m_hasRawTextureData;
 };

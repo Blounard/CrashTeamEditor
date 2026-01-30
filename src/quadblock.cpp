@@ -8,6 +8,7 @@
 
 Quadblock::Quadblock(const std::string& name, Tri& t0, Tri& t1, Tri& t2, Tri& t3, const Vec3& normal, const std::string& material, bool hasUV, UpdateFilterCallback filterCallback)
 {
+	m_hasRawTextureOffsets = false;
 	std::unordered_map<Vec3, unsigned> vRefCount;
 	for (size_t i = 0; i < 3; i++)
 	{
@@ -210,6 +211,7 @@ Quadblock::Quadblock(const std::string& name, Tri& t0, Tri& t1, Tri& t2, Tri& t3
 
 Quadblock::Quadblock(const std::string& name, Quad& q0, Quad& q1, Quad& q2, Quad& q3, const Vec3& normal, const std::string& material, bool hasUV, UpdateFilterCallback filterCallback)
 {
+	m_hasRawTextureOffsets = false;
 	std::unordered_map<Vec3, unsigned> vRefCount;
 	for (size_t i = 0; i < 4; i++)
 	{
@@ -390,6 +392,7 @@ Quadblock::Quadblock(const std::string& name, Quad& q0, Quad& q1, Quad& q2, Quad
 
 Quadblock::Quadblock(const PSX::Quadblock& quadblock, const std::vector<PSX::Vertex>& vertices, UpdateFilterCallback filterCallback)
 {
+	m_hasRawTextureOffsets = false;
 	uint16_t reverseIndexMapping[NUM_VERTICES_QUADBLOCK] = { 0, 2, 6, 8, 1, 3, 4, 5, 7 };
 	for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++)
 	{
@@ -757,9 +760,21 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 		uint32_t packedFace = m_faceRotateFlip[i] | (m_faceDrawMode[i] << 3);
 		quadblock.drawOrderLow |= packedFace << (8 + i * 5);
 	}
+
 	quadblock.drawOrderHigh = 0;
-	if (m_animated)
+
+	// NEW: Use raw texture offsets if available (pass-through mode)
+	if (m_hasRawTextureOffsets)
 	{
+		for (size_t i = 0; i < 4; i++)
+		{
+			quadblock.offMidTextures[i] = m_rawOffMidTextures[i];
+		}
+		quadblock.offLowTexture = m_rawOffLowTexture;
+	}
+	else if (m_animated)
+	{
+		// Existing animated texture code
 		quadblock.offMidTextures[0] = static_cast<uint32_t>(m_animTexOffset[0] | 1);
 		quadblock.offMidTextures[1] = static_cast<uint32_t>(m_animTexOffset[1] | 1);
 		quadblock.offMidTextures[2] = static_cast<uint32_t>(m_animTexOffset[2] | 1);
@@ -843,6 +858,29 @@ Vec3 Quadblock::ComputeNormalVector(size_t id0, size_t id1, size_t id2) const
 	Vec3 a = m_p[id0].m_pos - m_p[id1].m_pos;
 	Vec3 b = m_p[id2].m_pos - m_p[id0].m_pos;
 	return a.Cross(b);
+}
+
+void Quadblock::SetRawTextureOffsets(const uint32_t midTextures[4], uint32_t lowTexture)
+{
+	for (size_t i = 0; i < 4; i++)
+		m_rawOffMidTextures[i] = midTextures[i];
+	m_rawOffLowTexture = lowTexture;
+	m_hasRawTextureOffsets = true;
+}
+
+bool Quadblock::HasRawTextureOffsets() const
+{ 
+	return m_hasRawTextureOffsets; 
+}
+
+const uint32_t* Quadblock::GetRawMidTextureOffsets() const
+{
+	return m_rawOffMidTextures; 
+}
+
+uint32_t Quadblock::GetRawLowTextureOffset() const
+{ 
+	return m_rawOffLowTexture; 
 }
 
 void Quadblock::ResetUVs()
