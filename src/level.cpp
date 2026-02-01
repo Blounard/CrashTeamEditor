@@ -730,22 +730,23 @@ void Level::ManageTurbopad(Quadblock& quadblock)
 bool Level::LoadLEV(const std::filesystem::path& levFile)
 {
 	std::ifstream file(levFile, std::ios::binary);
-
 	uint32_t offPointerMap;
 	Read(file, offPointerMap);
-
 	std::streampos offLev = file.tellg();
+
 	PSX::LevHeader header = {};
 	Read(file, header);
 
 	m_configFlags = header.config;
 	m_clearColor = ConvertColor(header.clear);
 	m_stars = ConvertStars(header.stars);
+
 	for (size_t i = 0; i < m_spawn.size(); i++)
 	{
 		m_spawn[i].pos = ConvertPSXVec3(header.driverSpawn[i].pos, FP_ONE_GEO);
 		m_spawn[i].rot = ConvertPSXAngle(header.driverSpawn[i].rot);
 	}
+
 	for (size_t i = 0; i < NUM_GRADIENT; i++)
 	{
 		m_skyGradient[i].posFrom = ConvertFP(header.skyGradient[i].posFrom, 1u);
@@ -758,7 +759,11 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	file.seekg(offLev + std::streampos(header.offMeshInfo));
 	Read(file, meshInfo);
 
-	// Temporary solution : store raw data for texture and animated texture
+	// Store raw MeshInfo unknown fields
+	m_rawMeshInfoUnk1 = meshInfo.unk1;
+	m_rawMeshInfoUnk2 = meshInfo.unk2;
+
+	// Read and store raw texture groups
 	file.seekg(offLev + std::streampos(header.offMeshInfo + sizeof(PSX::MeshInfo)));
 	uint32_t texGroupsStart = header.offMeshInfo + sizeof(PSX::MeshInfo);
 	uint32_t texGroupsEnd = header.offAnimTex;
@@ -770,6 +775,8 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	{
 		Read(file, m_rawTexGroups[i]);
 	}
+
+	// Read and store raw animated texture data
 	m_rawAnimData.clear();
 	if (header.offAnimTex > 0 && meshInfo.offQuadblocks > header.offAnimTex)
 	{
@@ -778,8 +785,10 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		m_rawAnimData.resize(animDataSize);
 		file.read(reinterpret_cast<char*>(m_rawAnimData.data()), animDataSize);
 	}
+
 	m_hasRawTextureData = !m_rawTexGroups.empty();
 
+	// Read vertices
 	std::vector<PSX::Vertex> vertices;
 	vertices.reserve(meshInfo.numVertices);
 	file.seekg(offLev + std::streampos(meshInfo.offVertices));
@@ -790,18 +799,22 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		vertices.push_back(vertex);
 	}
 
+	// Read quadblocks
 	file.seekg(offLev + std::streampos(meshInfo.offQuadblocks));
 	for (uint32_t i = 0; i < meshInfo.numQuadblocks; i++)
 	{
 		PSX::Quadblock quadblock = {};
 		Read(file, quadblock);
 		m_quadblocks.emplace_back(quadblock, vertices, [this](const Quadblock& qb) { UpdateFilterRenderData(qb); });
-		// Temporary solution : Store raw texture offset into quads
 		Quadblock& quad = m_quadblocks.back();
-		quad.SetRawTextureOffsets(quadblock.offMidTextures, quadblock.offLowTexture);
+		quad.SetRawQuadblock(quadblock);  
 		m_materialToQuadblocks["default"].push_back(i);
 	}
 
+	m_originalVertices = std::vector<Vertex>(vertices.begin(), vertices.end()); // Store the original PSX::Vertex array converted to Vertex
+	m_hasOriginalVertices = true;
+
+	// Read BSP tree
 	m_bsp.Clear();
 	file.seekg(offLev + std::streampos(meshInfo.offBSPNodes));
 	std::vector<BSP*> bspArray;
@@ -809,6 +822,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	{
 		bspArray.push_back(new BSP());
 	}
+
 	for (uint32_t i = 0; i < meshInfo.numBSPNodes; i++)
 	{
 		uint16_t flag;
@@ -829,8 +843,9 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 			bspArray[branch.id]->PopulateBranch(branch, bspArray, meshInfo.offBSPNodes);
 		}
 	}
-	if (bspArray.size()) 
-	{ 
+
+	if (bspArray.size())
+	{
 		m_bsp = *(bspArray[0]);
 		m_bsp.PopulateBranchQuadIndexes();
 		if (m_bsp.IsValid()) { GenerateRenderBspData(m_bsp); }
@@ -838,7 +853,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	}
 	else { m_bsp.Clear(); }
 
-
+	// Read checkpoints
 	file.seekg(offLev + std::streampos(header.offCheckpointNodes));
 	for (uint32_t i = 0; i < header.numCheckpointNodes; i++)
 	{
@@ -847,6 +862,104 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		m_checkpoints.emplace_back(checkpoint, static_cast<int>(i));
 	}
 	GenerateRenderCheckpointData(m_checkpoints);
+
+	// Read ghost data if present
+	m_tropyGhost.clear();
+	m_oxideGhost.clear();
+
+	if (header.offExtra > 0)
+	{
+		file.seekg(offLev + std::streampos(header.offExtra));
+		PSX::LevelExtraHeader extraHeader = {};
+		Read(file, extraHeader);
+
+		// Read N. Tropy Ghost
+		if (extraHeader.count >= PSX::LevelExtra::N_TROPY_GHOST + 1 &&
+			extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST] > 0)
+		{
+			file.seekg(offLev + std::streampos(extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST]));
+
+			// Determine size
+			size_t ghostSize = 0;
+			if (extraHeader.count > PSX::LevelExtra::N_OXIDE_GHOST &&
+				extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST] > 0)
+			{
+				ghostSize = extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST] -
+					extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST];
+			}
+			else
+			{
+				ghostSize = header.offLevNavTable - extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST];
+			}
+
+			m_tropyGhost.resize(ghostSize);
+			file.read(reinterpret_cast<char*>(m_tropyGhost.data()), ghostSize);
+		}
+
+		// Read N. Oxide Ghost
+		if (extraHeader.count >= PSX::LevelExtra::N_OXIDE_GHOST + 1 &&
+			extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST] > 0)
+		{
+			file.seekg(offLev + std::streampos(extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST]));
+
+			size_t ghostSize = header.offLevNavTable - extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST];
+
+			m_oxideGhost.resize(ghostSize);
+			file.read(reinterpret_cast<char*>(m_oxideGhost.data()), ghostSize);
+		}
+	}
+
+	// Read navigation headers
+	m_navHeaders.clear();
+	if (header.offLevNavTable > 0)
+	{
+		file.seekg(offLev + std::streampos(header.offLevNavTable));
+		constexpr size_t BOT_PATH_COUNT = 3;
+		m_navHeaders.resize(BOT_PATH_COUNT);
+		for (size_t i = 0; i < BOT_PATH_COUNT; i++)
+		{
+			Read(file, m_navHeaders[i]);
+		}
+	}
+
+	// Read visual memory data
+	m_rawVisMemNodes.clear();
+	m_rawVisMemQuads.clear();
+	m_rawVisMemBSP.clear();
+
+	if (header.offVisMem > 0)
+	{
+		file.seekg(offLev + std::streampos(header.offVisMem));
+		PSX::VisualMem visMem = {};
+		Read(file, visMem);
+
+		// Read visMemNodes
+		if (visMem.offNodes[0] > 0)
+		{
+			file.seekg(offLev + std::streampos(visMem.offNodes[0]));
+			size_t visNodeSize = static_cast<size_t>(std::ceil(static_cast<float>(meshInfo.numBSPNodes) / 32.0f));
+			m_rawVisMemNodes.resize(visNodeSize);
+			file.read(reinterpret_cast<char*>(m_rawVisMemNodes.data()), visNodeSize * sizeof(uint32_t));
+		}
+
+		// Read visMemQuads
+		if (visMem.offQuads[0] > 0)
+		{
+			file.seekg(offLev + std::streampos(visMem.offQuads[0]));
+			size_t visQuadSize = static_cast<size_t>(std::ceil(static_cast<float>(meshInfo.numQuadblocks) / 32.0f));
+			m_rawVisMemQuads.resize(visQuadSize);
+			file.read(reinterpret_cast<char*>(m_rawVisMemQuads.data()), visQuadSize * sizeof(uint32_t));
+		}
+
+		// Read visMemBSP
+		if (visMem.offBSP[0] > 0)
+		{
+			file.seekg(offLev + std::streampos(visMem.offBSP[0]));
+			size_t visBSPSize = meshInfo.numBSPNodes * 2;
+			m_rawVisMemBSP.resize(visBSPSize);
+			file.read(reinterpret_cast<char*>(m_rawVisMemBSP.data()), visBSPSize * sizeof(uint32_t));
+		}
+	}
 
 	m_loaded = true;
 	file.close();
@@ -1133,28 +1246,56 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 	std::vector<const Quadblock*> orderedQuads;
 	std::unordered_map<Vertex, size_t> vertexMap;
 	std::vector<Vertex> orderedVertices;
+	if (m_hasOriginalVertices && m_hasRawTextureData)
+	{
+		orderedVertices = m_originalVertices;
+
+		// Build vertex map for quick lookup
+		for (size_t i = 0; i < orderedVertices.size(); i++)
+		{
+			vertexMap[orderedVertices[i]] = i;
+		}
+	}
+
 	size_t bspSize = 0;
 	for (const BSP* bsp : orderedBSPNodes)
 	{
 		serializedBSPs.push_back(bsp->Serialize(currOffset));
 		bspSize += serializedBSPs.back().size();
 		if (bsp->IsBranch()) { continue; }
+
 		const std::vector<size_t>& quadIndexes = bsp->GetQuadblockIndexes();
 		for (const size_t index : quadIndexes)
 		{
 			const Quadblock& quadblock = m_quadblocks[index];
-			std::vector<Vertex> quadVertices = quadblock.GetVertices();
 			std::vector<size_t> verticesIndexes;
-			for (const Vertex& vertex : quadVertices)
+
+			// NEW: Use original quadblock data if available (pass-through mode)
+			if (quadblock.HasRawQuadblock() && m_hasOriginalVertices)
 			{
-				if (!vertexMap.contains(vertex))
+				// Extract vertex indices from raw quadblock
+				const PSX::Quadblock& rawQuad = quadblock.GetRawQuadblock();
+				for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++)
 				{
-					size_t vertexIndex = orderedVertices.size();
-					orderedVertices.push_back(vertex);
-					vertexMap[vertex] = vertexIndex;
+					verticesIndexes.push_back(rawQuad.index[i]);
 				}
-				verticesIndexes.push_back(vertexMap[vertex]);
 			}
+			else
+			{
+				// Generate vertex indices (deduplication or new geometry)
+				std::vector<Vertex> quadVertices = quadblock.GetVertices();
+				for (const Vertex& vertex : quadVertices)
+				{
+					if (!vertexMap.contains(vertex))
+					{
+						size_t vertexIndex = orderedVertices.size();
+						orderedVertices.push_back(vertex);
+						vertexMap[vertex] = vertexIndex;
+					}
+					verticesIndexes.push_back(vertexMap[vertex]);
+				}
+			}
+
 			size_t quadIndex = serializedQuads.size();
 			serializedQuads.push_back(quadblock.Serialize(quadIndex, offTexture, verticesIndexes));
 			orderedQuads.push_back(&quadblock);
@@ -1268,7 +1409,8 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 	meshInfo.numVertices = static_cast<uint32_t>(serializedVertices.size());
 	meshInfo.offQuadblocks = static_cast<uint32_t>(offQuadblocks);
 	meshInfo.offVertices = static_cast<uint32_t>(offVertices);
-	meshInfo.unk2 = 0;
+	meshInfo.unk1 = m_rawMeshInfoUnk1;
+	meshInfo.unk2 = m_rawMeshInfoUnk2;
 	meshInfo.offBSPNodes = static_cast<uint32_t>(offBSP);
 	meshInfo.numBSPNodes = static_cast<uint32_t>(serializedBSPs.size());
 
@@ -1304,21 +1446,35 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 	const size_t offExtraHeader = currOffset;
 	currOffset += sizeof(extraHeader);
 
-	constexpr size_t BOT_PATH_COUNT = 3;
-	std::vector<PSX::NavHeader> navHeaders(BOT_PATH_COUNT);
+	// Use stored navigation headers if available
+	std::vector<PSX::NavHeader> navHeaders;
+	if (!m_navHeaders.empty())
+	{
+		navHeaders = m_navHeaders;
+	}
+	else
+	{
+		constexpr size_t BOT_PATH_COUNT = 3;
+		navHeaders.resize(BOT_PATH_COUNT);
+	}
 
 	const size_t offNavHeaders = currOffset;
 	currOffset += navHeaders.size() * sizeof(PSX::NavHeader);
 
-	std::vector<uint32_t> visMemNodesP1(visNodeSize);
+	std::vector<uint32_t> visMemNodesP1;
+	std::vector<uint32_t> visMemQuadsP1;
+	std::vector<uint32_t> visMemBSPP1;
+
+	visMemNodesP1.resize(visNodeSize);
+	visMemQuadsP1.resize(visQuadSize);
+	visMemBSPP1.resize(bspNodes.size() * 2);
+
 	const size_t offVisMemNodesP1 = currOffset;
 	currOffset += visMemNodesP1.size() * sizeof(uint32_t);
 
-	std::vector<uint32_t> visMemQuadsP1(visQuadSize);
 	const size_t offVisMemQuadsP1 = currOffset;
 	currOffset += visMemQuadsP1.size() * sizeof(uint32_t);
 
-	std::vector<uint32_t> visMemBSPP1(bspNodes.size() * 2);
 	const size_t offVisMemBSPP1 = currOffset;
 	currOffset += visMemBSPP1.size() * sizeof(uint32_t);
 
@@ -1396,7 +1552,9 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 	{
 		if (orderedBSPNodes[i]->IsBranch()) { offCurrNode += serializedBSPs[i].size(); continue; }
 		size_t visMemListIndex = 2 * i + 1;
+
 		visMemBSPP1[visMemListIndex] = static_cast<uint32_t>(offCurrNode);
+
 		pointerMap.push_back(static_cast<uint32_t>(offVisMemBSPP1 + visMemListIndex * sizeof(uint32_t)));
 		pointerMap.push_back(CALCULATE_OFFSET(PSX::BSPLeaf, offQuads, offCurrNode));
 		offCurrNode += serializedBSPs[i].size();
@@ -1452,9 +1610,13 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 	return true;
 }
 
+
+
 bool Level::LoadOBJ(const std::filesystem::path& objFile)
 {
 	m_hasRawTextureData = false;
+	m_rawMeshInfoUnk1 = 0;
+	m_rawMeshInfoUnk2 = 0;
 	std::string line;
 	std::ifstream file(objFile);
 	m_name = objFile.filename().replace_extension().string();

@@ -154,4 +154,17 @@ private:
 	std::vector<PSX::TextureGroup> m_rawTexGroups;
 	std::vector<uint8_t> m_rawAnimData;
 	bool m_hasRawTextureData;
+
+	std::vector<PSX::NavHeader> m_navHeaders;
+
+	std::vector<uint32_t> m_rawVisMemNodes;
+	std::vector<uint32_t> m_rawVisMemQuads;
+	std::vector<uint32_t> m_rawVisMemBSP;
+
+	uint32_t m_rawMeshInfoUnk1;
+	uint32_t m_rawMeshInfoUnk2;
+
+	std::vector<Vertex> m_originalVertices;
+	bool m_hasOriginalVertices;
 };
+
