@@ -1359,6 +1359,9 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 	const size_t offExtraHeader = currOffset;
 	currOffset += sizeof(extraHeader);
 
+	constexpr size_t BOT_PATH_COUNT = 3;
+	std::vector<PSX::NavHeader> navHeaders(BOT_PATH_COUNT);
+
 	const size_t offNavHeaders = currOffset;
 	currOffset += navHeaders.size() * sizeof(PSX::NavHeader);
 
