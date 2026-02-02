@@ -48,7 +48,9 @@ struct std::hash<Vertex>
 	{
 		PSX::Vec3 pos = ConvertVec3(key.m_pos, FP_ONE_GEO);
 		std::size_t seed = 0;
-		HashCombine(seed, pos);
+		HashCombine(seed, pos.x);
+		HashCombine(seed, pos.y);
+		HashCombine(seed, pos.z);
 		HashCombine(seed, key.m_flags);
 		HashCombine(seed, key.m_colorHigh);
 		HashCombine(seed, key.m_colorLow);

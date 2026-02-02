@@ -836,7 +836,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	{
 		m_bsp = *(bspArray[0]);
 		m_bsp.PopulateBranchQuadIndexes();
-		if (m_bsp.IsValid()) { GenerateRenderBspData(m_bsp); }
+		if (m_bsp.IsValid()) { GenerateRenderBspData(); }
 		else { m_bsp.Clear(); }
 	}
 	else { m_bsp.Clear(); }
