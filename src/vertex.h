@@ -19,6 +19,7 @@ public:
 	void RenderUI(size_t index, bool& editedPos);
 	std::vector<uint8_t> Serialize() const;
 	Color GetColor(bool high) const;
+	std::vector<Primitive> ToGeometry(bool highColor = true) const;
 	inline bool operator==(const Vertex& v) const {
 		PSX::Vec3 pos1 = ConvertVec3(m_pos, FP_ONE_GEO);
 		PSX::Vec3 pos2 = ConvertVec3(v.m_pos, FP_ONE_GEO);
@@ -43,14 +44,14 @@ private:
 template<>
 struct std::hash<Vertex>
 {
-	inline std::size_t operator()(const Vertex& key) const
+	inline std::size_t operator()(const Vertex& key) const noexcept
 	{
 		PSX::Vec3 pos = ConvertVec3(key.m_pos, FP_ONE_GEO);
-		size_t pos_hash = std::hash<int16_t>()(pos.x) ^
-			(std::hash<int16_t>()(pos.y) << 1) ^
-			(std::hash<int16_t>()(pos.z) << 2);
-		return ((((pos_hash ^ (std::hash<uint16_t>()(key.m_flags) << 1)) >> 1) ^
-			(std::hash<Color>()(key.m_colorHigh) << 1)) >> 2) ^
-			(std::hash<Color>()(key.m_colorLow) << 2);
+		std::size_t seed = 0;
+		HashCombine(seed, pos);
+		HashCombine(seed, key.m_flags);
+		HashCombine(seed, key.m_colorHigh);
+		HashCombine(seed, key.m_colorLow);
+		return seed;
 	}
 };
