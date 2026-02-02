@@ -824,6 +824,7 @@ bool Quadblock::Neighbours(const Quadblock& quadblock, float threshold) const
 
 std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const std::vector<size_t>& vertexIndexes) const
 {
+	// TODO : Rewrite and allow some modifications
 	PSX::Quadblock quadblock = {};
 	std::vector<uint8_t> buffer(sizeof(quadblock));
 
