@@ -847,79 +847,30 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		file.seekg(offLev + std::streampos(header.offExtra));
 		PSX::LevelExtraHeader extraHeader = {};
 		Read(file, extraHeader);
-
 		// Read N. Tropy Ghost
 		if (extraHeader.count >= PSX::LevelExtra::N_TROPY_GHOST + 1 &&
 			extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST] > 0)
 		{
 			file.seekg(offLev + std::streampos(extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST]));
-
-			// Determine size
 			size_t ghostSize = 0;
-			if (extraHeader.count > PSX::LevelExtra::N_OXIDE_GHOST &&
-				extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST] > 0)
+			if (extraHeader.count > PSX::LevelExtra::N_OXIDE_GHOST && extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST] > 0)
 			{
-				ghostSize = extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST] -
-					extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST];
+				ghostSize = extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST] - extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST];
 			}
 			else
 			{
 				ghostSize = header.offLevNavTable - extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST];
 			}
-
 			m_tropyGhost.resize(ghostSize);
 			file.read(reinterpret_cast<char*>(m_tropyGhost.data()), ghostSize);
 		}
-
 		// Read N. Oxide Ghost
-		if (extraHeader.count >= PSX::LevelExtra::N_OXIDE_GHOST + 1 &&
-			extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST] > 0)
+		if (extraHeader.count >= PSX::LevelExtra::N_OXIDE_GHOST + 1 && extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST] > 0)
 		{
 			file.seekg(offLev + std::streampos(extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST]));
-
 			size_t ghostSize = header.offLevNavTable - extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST];
-
 			m_oxideGhost.resize(ghostSize);
 			file.read(reinterpret_cast<char*>(m_oxideGhost.data()), ghostSize);
-		}
-	}
-
-	// Read visual memory data
-	m_rawVisMemNodes.clear();
-	m_rawVisMemQuads.clear();
-	m_rawVisMemBSP.clear();
-
-	if (header.offVisMem > 0)
-	{
-		file.seekg(offLev + std::streampos(header.offVisMem));
-		PSX::VisualMem visMem = {};
-		Read(file, visMem);
-
-		// Read visMemNodes
-		if (visMem.offNodes[0] > 0)
-		{
-			file.seekg(offLev + std::streampos(visMem.offNodes[0]));
-			size_t visNodeSize = static_cast<size_t>(std::ceil(static_cast<float>(meshInfo.numBSPNodes) / 32.0f));
-			m_rawVisMemNodes.resize(visNodeSize);
-			file.read(reinterpret_cast<char*>(m_rawVisMemNodes.data()), visNodeSize * sizeof(uint32_t));
-		}
-
-		// Read visMemQuads
-		if (visMem.offQuads[0] > 0)
-		{
-			file.seekg(offLev + std::streampos(visMem.offQuads[0]));
-			size_t visQuadSize = static_cast<size_t>(std::ceil(static_cast<float>(meshInfo.numQuadblocks) / 32.0f));
-			m_rawVisMemQuads.resize(visQuadSize);
-			file.read(reinterpret_cast<char*>(m_rawVisMemQuads.data()), visQuadSize * sizeof(uint32_t));
-		}
-
-		// Read visMemBSP
-		if (visMem.offBSP[0] > 0)
-		{
-			file.seekg(offLev + std::streampos(visMem.offBSP[0]));
-			size_t visBSPSize = meshInfo.numBSPNodes * 2;
-			m_rawVisMemBSP.resize(visBSPSize);
-			file.read(reinterpret_cast<char*>(m_rawVisMemBSP.data()), visBSPSize * sizeof(uint32_t));
 		}
 	}
 
