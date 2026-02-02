@@ -747,9 +747,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	file.seekg(offLev + std::streampos(header.offMeshInfo));
 	Read(file, meshInfo);
 
-	// Store raw MeshInfo unknown fields
-	m_rawMeshInfoUnk1 = meshInfo.unk1;
-	m_rawMeshInfoUnk2 = meshInfo.unk2;
 
 	// Read and store raw texture groups
 	file.seekg(offLev + std::streampos(header.offMeshInfo + sizeof(PSX::MeshInfo)));
@@ -1397,8 +1394,8 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 	meshInfo.numVertices = static_cast<uint32_t>(serializedVertices.size());
 	meshInfo.offQuadblocks = static_cast<uint32_t>(offQuadblocks);
 	meshInfo.offVertices = static_cast<uint32_t>(offVertices);
-	meshInfo.unk1 = m_rawMeshInfoUnk1;
-	meshInfo.unk2 = m_rawMeshInfoUnk2;
+	meshInfo.unk1 = 0;
+	meshInfo.unk2 = 0;
 	meshInfo.offBSPNodes = static_cast<uint32_t>(offBSP);
 	meshInfo.numBSPNodes = static_cast<uint32_t>(serializedBSPs.size());
 
@@ -1603,8 +1600,6 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 bool Level::LoadOBJ(const std::filesystem::path& objFile)
 {
 	m_hasRawTextureData = false;
-	m_rawMeshInfoUnk1 = 0;
-	m_rawMeshInfoUnk2 = 0;
 	std::string line;
 	std::ifstream file(objFile);
 	m_name = objFile.filename().replace_extension().string();
