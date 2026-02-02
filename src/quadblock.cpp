@@ -418,6 +418,8 @@ Quadblock::Quadblock(const PSX::Quadblock& quadblock, const std::vector<PSX::Ver
 	m_material = "default";
 	m_triblock = false;
 	m_filterCallback = filterCallback;
+	m_bbox.min = ConvertPSXVec3(quadblock.bbox.min, FP_ONE_GEO);
+	m_bbox.max = ConvertPSXVec3(quadblock.bbox.max, FP_ONE_GEO);
 }
 
 const std::string& Quadblock::GetName() const
@@ -828,22 +830,12 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 	PSX::Quadblock quadblock = {};
 	std::vector<uint8_t> buffer(sizeof(quadblock));
 
-	if (m_hasRawQuadblock)
-	{
+	if (m_hasRawQuadblock) 
+	{ 
 		quadblock = m_rawQuadblock; 
-		// Only update vertex indices (they might have changed if vertices were reordered)
-		for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++)
-		{
-			quadblock.index[i] = static_cast<uint16_t>(vertexIndexes[i]);
-		}
 	}
 	else
 	{
-		for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++)
-		{
-			quadblock.index[i] = static_cast<uint16_t>(vertexIndexes[i]);
-		}
-		quadblock.flags = m_flags;
 		quadblock.drawOrderLow = m_doubleSided ? (1 << 31) : 0;
 		for (size_t i = 0; i < NUM_FACES_QUADBLOCK; i++)
 		{
@@ -867,15 +859,10 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 			quadblock.offMidTextures[3] = static_cast<uint32_t>(offTextures + (m_textureIDs[3] * sizeof(PSX::TextureGroup)));
 			quadblock.offLowTexture = static_cast<uint32_t>(offTextures + (m_textureIDs[4] * sizeof(PSX::TextureGroup)));
 		}
-		quadblock.bbox.min = ConvertVec3(m_bbox.min, FP_ONE_GEO);
-		quadblock.bbox.max = ConvertVec3(m_bbox.max, FP_ONE_GEO);
-		quadblock.terrain = m_terrain;
 		quadblock.weatherIntensity = 0;
-		quadblock.weatherVanishRate = 0;
-		quadblock.speedImpact = static_cast<int8_t>(m_downforce);
+		quadblock.weatherVanishRate = 0;	
 		const size_t idVis = id / 32;
 		quadblock.id = static_cast<uint16_t>((32 * idVis) + (31 - (id % 32)));
-		quadblock.checkpointIndex = static_cast<uint8_t>(m_checkpointIndex);
 		quadblock.triNormalVecBitshift = static_cast<uint8_t>(std::round(std::log2(std::max(ComputeNormalVector(0, 2, 6).Length(), ComputeNormalVector(2, 8, 6).Length()) * 512.0f)));
 		auto CalculateNormalDividend = [this](size_t id0, size_t id1, size_t id2, float scaler) -> int16_t
 			{
@@ -894,6 +881,16 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 		quadblock.triNormalVecDividend[8] = CalculateNormalDividend(0, 2, 6, scaler);
 	}
 
+	for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++)
+	{
+		quadblock.index[i] = static_cast<uint16_t>(vertexIndexes[i]);
+	}
+	quadblock.flags = m_flags;
+	quadblock.speedImpact = static_cast<int8_t>(m_downforce);
+	quadblock.terrain = m_terrain;
+	quadblock.checkpointIndex = static_cast<uint8_t>(m_checkpointIndex);
+	quadblock.bbox.min = ConvertVec3(m_bbox.min, FP_ONE_GEO);
+	quadblock.bbox.max = ConvertVec3(m_bbox.max, FP_ONE_GEO);
 	std::memcpy(buffer.data(), &quadblock, sizeof(quadblock));
 	return buffer;
 }
