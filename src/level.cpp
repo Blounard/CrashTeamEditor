@@ -728,13 +728,11 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	m_configFlags = header.config;
 	m_clearColor = ConvertColor(header.clear);
 	m_stars = ConvertStars(header.stars);
-
 	for (size_t i = 0; i < m_spawn.size(); i++)
 	{
 		m_spawn[i].pos = ConvertPSXVec3(header.driverSpawn[i].pos, FP_ONE_GEO);
 		m_spawn[i].rot = ConvertPSXAngle(header.driverSpawn[i].rot);
 	}
-
 	for (size_t i = 0; i < NUM_GRADIENT; i++)
 	{
 		m_skyGradient[i].posFrom = ConvertFP(header.skyGradient[i].posFrom, 1u);
@@ -748,12 +746,11 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	Read(file, meshInfo);
 
 
-	// Read and store raw texture groups
+	// Store raw texture groups (not CTE editable)
 	file.seekg(offLev + std::streampos(header.offMeshInfo + sizeof(PSX::MeshInfo)));
 	uint32_t texGroupsStart = header.offMeshInfo + sizeof(PSX::MeshInfo);
 	uint32_t texGroupsEnd = header.offAnimTex;
 	uint32_t numTexGroups = (texGroupsEnd - texGroupsStart) / sizeof(PSX::TextureGroup);
-
 	m_rawTexGroups.clear();
 	m_rawTexGroups.resize(numTexGroups);
 	for (uint32_t i = 0; i < numTexGroups; i++)
@@ -761,7 +758,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		Read(file, m_rawTexGroups[i]);
 	}
 
-	// Read and store raw animated texture data
+	// Store raw animated texture data (not CTE editable)
 	m_rawAnimData.clear();
 	if (header.offAnimTex > 0 && meshInfo.offQuadblocks > header.offAnimTex)
 	{
@@ -770,10 +767,8 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		m_rawAnimData.resize(animDataSize);
 		file.read(reinterpret_cast<char*>(m_rawAnimData.data()), animDataSize);
 	}
-
 	m_hasRawTextureData = !m_rawTexGroups.empty();
 
-	// Read vertices
 	std::vector<PSX::Vertex> vertices;
 	vertices.reserve(meshInfo.numVertices);
 	file.seekg(offLev + std::streampos(meshInfo.offVertices));
@@ -784,7 +779,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		vertices.push_back(vertex);
 	}
 
-	// Read quadblocks
 	file.seekg(offLev + std::streampos(meshInfo.offQuadblocks));
 	for (uint32_t i = 0; i < meshInfo.numQuadblocks; i++)
 	{
@@ -796,10 +790,9 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		m_materialToQuadblocks["default"].push_back(i);
 	}
 
-	m_originalVertices = std::vector<Vertex>(vertices.begin(), vertices.end()); // Store the original PSX::Vertex array converted to Vertex
+	m_originalVertices = std::vector<Vertex>(vertices.begin(), vertices.end()); // Store the original PSX::Vertex array
 	m_hasOriginalVertices = true;
 
-	// Read BSP tree
 	m_bsp.Clear();
 	file.seekg(offLev + std::streampos(meshInfo.offBSPNodes));
 	std::vector<BSP*> bspArray;
@@ -838,7 +831,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	}
 	else { m_bsp.Clear(); }
 
-	// Read checkpoints
 	file.seekg(offLev + std::streampos(header.offCheckpointNodes));
 	for (uint32_t i = 0; i < header.numCheckpointNodes; i++)
 	{
@@ -848,10 +840,8 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	}
 	UpdateRenderCheckpointData();
 
-	// Read ghost data if present
 	m_tropyGhost.clear();
 	m_oxideGhost.clear();
-
 	if (header.offExtra > 0)
 	{
 		file.seekg(offLev + std::streampos(header.offExtra));
@@ -891,19 +881,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 
 			m_oxideGhost.resize(ghostSize);
 			file.read(reinterpret_cast<char*>(m_oxideGhost.data()), ghostSize);
-		}
-	}
-
-	// Read navigation headers
-	m_navHeaders.clear();
-	if (header.offLevNavTable > 0)
-	{
-		file.seekg(offLev + std::streampos(header.offLevNavTable));
-		constexpr size_t BOT_PATH_COUNT = 3;
-		m_navHeaders.resize(BOT_PATH_COUNT);
-		for (size_t i = 0; i < BOT_PATH_COUNT; i++)
-		{
-			Read(file, m_navHeaders[i]);
 		}
 	}
 
@@ -1430,18 +1407,6 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 
 	const size_t offExtraHeader = currOffset;
 	currOffset += sizeof(extraHeader);
-
-	// Use stored navigation headers if available
-	std::vector<PSX::NavHeader> navHeaders;
-	if (!m_navHeaders.empty())
-	{
-		navHeaders = m_navHeaders;
-	}
-	else
-	{
-		constexpr size_t BOT_PATH_COUNT = 3;
-		navHeaders.resize(BOT_PATH_COUNT);
-	}
 
 	const size_t offNavHeaders = currOffset;
 	currOffset += navHeaders.size() * sizeof(PSX::NavHeader);
