@@ -190,7 +190,7 @@ void Mesh::Bind() const
 		}
 		{
 			GLenum err = glGetError();
-			if (err != GL_NO_ERROR) { fprintf(stderr, "Error a! %d\n", err); }
+			//if (err != GL_NO_ERROR) { fprintf(stderr, "Error a! %d\n", err); }
 		}
 	}
 
@@ -243,7 +243,7 @@ void Mesh::Unbind() const
 	glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 	{
 		GLenum err = glGetError();
-		if (err != GL_NO_ERROR) { fprintf(stderr, "Error b! %d\n", err); }
+		//if (err != GL_NO_ERROR) { fprintf(stderr, "Error b! %d\n", err); }
 	}
 }
 

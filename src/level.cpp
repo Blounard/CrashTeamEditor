@@ -1101,59 +1101,43 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 		animPtrMapOffsets.clear();
 		if (!animData.empty())
 		{
-			// Parse through animData to find pointer locations
-			// The first uint32 is the end marker pointer
-			animPtrMapOffsets.push_back(0);
-
-			// We need to reconstruct pointer map offsets
-			// For now, we'll scan through animData looking for pointer-like values
-			// This is a heuristic but should work for pass-through
 			size_t offset = 0;
 			while (offset + 4 <= animData.size())
 			{
 				uint32_t value;
 				std::memcpy(&value, &animData[offset], sizeof(uint32_t));
-
-				// Check if this looks like a pointer (points within reasonable range)
-				// Pointers in anim data typically point to texture groups
 				if (value >= offTexture && value < offTexture + (texGroups.size() * sizeof(PSX::TextureGroup)) + animData.size())
 				{
-					// This might be a pointer location
 					animPtrMapOffsets.push_back(offset);
 				}
-
 				offset += 4;
 			}
 		}
 		else
 		{
-			// Empty anim data - create minimal structure
 			for (size_t i = 0; i < sizeof(uint32_t); i++) { animData.push_back(0); }
 			std::memcpy(&animData[0], &offAnimData, sizeof(uint32_t));
 			animPtrMapOffsets.push_back(0);
 		}
-		
-		
 	}
 
 	currOffset += (sizeof(PSX::TextureGroup) * texGroups.size()) + animData.size();
 
 	const size_t offQuadblocks = currOffset;
-	std::vector<std::vector<uint8_t>> serializedBSPs;
-	std::vector<std::vector<uint8_t>> serializedQuads;
-	std::vector<const Quadblock*> orderedQuads;
 	std::unordered_map<Vertex, size_t> vertexMap;
 	std::vector<Vertex> orderedVertices;
 	if (m_hasOriginalVertices && m_hasRawTextureData)
 	{
 		orderedVertices = m_originalVertices;
-
-		// Build vertex map for quick lookup
 		for (size_t i = 0; i < orderedVertices.size(); i++)
 		{
 			vertexMap[orderedVertices[i]] = i;
 		}
 	}
+
+	std::vector<std::vector<uint8_t>> serializedBSPs;
+	std::vector<std::vector<uint8_t>> serializedQuads;
+	std::vector<const Quadblock*> orderedQuads;
 
 	size_t bspSize = 0;
 	for (const BSP* bsp : orderedBSPNodes)
@@ -1161,17 +1145,13 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 		serializedBSPs.push_back(bsp->Serialize(currOffset));
 		bspSize += serializedBSPs.back().size();
 		if (bsp->IsBranch()) { continue; }
-
 		const std::vector<size_t>& quadIndexes = bsp->GetQuadblockIndexes();
 		for (const size_t index : quadIndexes)
 		{
 			const Quadblock& quadblock = m_quadblocks[index];
 			std::vector<size_t> verticesIndexes;
-
-			// NEW: Use original quadblock data if available (pass-through mode)
 			if (quadblock.HasRawQuadblock() && m_hasOriginalVertices)
 			{
-				// Extract vertex indices from raw quadblock
 				const PSX::Quadblock& rawQuad = quadblock.GetRawQuadblock();
 				for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++)
 				{
@@ -1180,7 +1160,6 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 			}
 			else
 			{
-				// Generate vertex indices (deduplication or new geometry)
 				std::vector<Vertex> quadVertices = quadblock.GetVertices();
 				for (const Vertex& vertex : quadVertices)
 				{
@@ -1193,7 +1172,6 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 					verticesIndexes.push_back(vertexMap[vertex]);
 				}
 			}
-
 			size_t quadIndex = serializedQuads.size();
 			serializedQuads.push_back(quadblock.Serialize(quadIndex, offTexture, verticesIndexes));
 			orderedQuads.push_back(&quadblock);
