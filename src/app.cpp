@@ -34,10 +34,10 @@ void App::Run()
 
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
-		glClearColor(clearColor.x * clearColor.w, clearColor.y * clearColor.w, clearColor.z * clearColor.w, clearColor.w);
-		glClear(GL_COLOR_BUFFER_BIT);
+		GL_CHECK(glClearColor(clearColor.x * clearColor.w, clearColor.y * clearColor.w, clearColor.z * clearColor.w, clearColor.w));
+		GL_CHECK(glClear(GL_COLOR_BUFFER_BIT));
 		ImGui::NewFrame();
-		glViewport(0, 0, static_cast<int>(io.DisplaySize.x), static_cast<int>(io.DisplaySize.y));
+		GL_CHECK(glViewport(0, 0, static_cast<int>(io.DisplaySize.x), static_cast<int>(io.DisplaySize.y)));
 		glfwGetWindowSize(m_window, &Windows::w_width, &Windows::w_height);
 		ui.Render();
 		ImGui::Render();
@@ -48,7 +48,7 @@ void App::Run()
 
 void App::Close()
 {
-	SaveUISettings();
+	SaveUISettings(false);
 	CloseImGui();
 }
 
@@ -135,7 +135,7 @@ void App::InitUISettings()
 {
 	if (!std::filesystem::exists(m_configFile))
 	{
-		SaveUISettings();
+		SaveUISettings(true);
 		return;
 	}
 	nlohmann::json json = nlohmann::json::parse(std::ifstream(m_configFile));
@@ -182,11 +182,21 @@ void App::InitUISettings()
 	}
 }
 	
-void App::SaveUISettings()
+void App::SaveUISettings(bool useDefault)
 {
 	int width, height, xpos, ypos;
-	glfwGetWindowSize(m_window, &width, &height);
-	glfwGetWindowPos(m_window, &xpos, &ypos);
+	if (useDefault)
+	{
+		width = 600;
+		height = 400;
+		ypos = 50;
+		xpos = 50;
+	}
+	else
+	{
+		glfwGetWindowSize(m_window, &width, &height);
+		glfwGetWindowPos(m_window, &xpos, &ypos);
+	}
 	bool maximized = glfwGetWindowAttrib(m_window, GLFW_MAXIMIZED);
 	nlohmann::json json;
 	json["Width"] = width;
