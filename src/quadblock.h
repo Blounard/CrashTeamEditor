@@ -170,7 +170,10 @@ public:
 	bool RenderUI(size_t checkpointCount, bool& resetBsp);
 	Vec3 ComputeNormalVector(size_t id0, size_t id1, size_t id2) const;
 	void SetRawTextureOffsets(const uint32_t midTextures[4], uint32_t lowTexture);
-	bool HasRawTextureOffsets() const;
+	void SetRawTriNormalVecDividend(const int16_t rawTriNormalVecDividend[10]);
+	void SetRawTriNormalVecBitshift(const uint8_t triNormalVecBitshift);
+	void SetRawData(bool hasRawData);
+	bool HasRawData() const;
 	const uint32_t* GetRawMidTextureOffsets() const;
 	uint32_t GetRawLowTextureOffset() const;
 
@@ -218,7 +221,9 @@ private:
 
 	uint32_t m_rawOffMidTextures[4];
 	uint32_t m_rawOffLowTexture;
-	bool m_hasRawTextureOffsets;
+	uint8_t m_triNormalVecBitshift;
+	int16_t m_rawTriNormalVecDividend[10];
+	bool m_hasRawData;
 };
 
 class QuadException : public std::exception
