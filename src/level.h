@@ -66,6 +66,7 @@ public:
 	void ResetFilter();
 	void ResetRendererSelection();
 	void UpdateRenderCheckpointData();
+	bool GenerateVisTreeAlone(bool simpleVisTree, float distanceNearClip, float distanceFarClip);
 
 private:
 	void ManageTurbopad(Quadblock& quadblock);
