@@ -322,6 +322,19 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 			return true;
 		}
 	}
+	else if constexpr (M == MaterialType::DRAW_ORDER_HIGH)
+	{
+		T& preview = GetPreview(material);
+		ImGui::Checkbox("Draw order high", &preview);
+		ImGui::SameLine();
+
+		static ButtonUI drawOrderHighApplyButton = ButtonUI();
+		if (drawOrderHighApplyButton.Show(("Apply##draw" + material).c_str(), "Draw order high successfully updated.", UnsavedChanges(material)))
+		{
+			Apply(material, quadblockIndexes, quadblocks);
+			return true;
+		}
+		}
 	return false;
 }
 
@@ -553,6 +566,7 @@ void Level::RenderUI(Renderer& renderer)
 					m_propCheckpoints.RenderUI(material, quadblockIndexes, m_quadblocks);
 					m_propCheckpointPathable.RenderUI(material, quadblockIndexes, m_quadblocks);
 					m_propVisTreeTransparent.RenderUI(material, quadblockIndexes, m_quadblocks);
+					m_propDrawOrderHigh.RenderUI(material, quadblockIndexes, m_quadblocks);
 					if (m_propTurboPads.RenderUI(material, quadblockIndexes, m_quadblocks))
 					{
 						for (size_t index : quadblockIndexes) { ManageTurbopad(m_quadblocks[index]); }
@@ -1451,6 +1465,7 @@ bool Quadblock::RenderUI(size_t checkpointCount, bool& resetBsp)
 		ImGui::SameLine();
 		if (ImGui::InputInt("##cp", &m_checkpointIndex)) { m_checkpointIndex = Clamp(m_checkpointIndex, -1, static_cast<int>(checkpointCount)); }
 		ImGui::Checkbox("VisTree Transparency", &m_visTreeTransparent);
+		ImGui::Checkbox("Draw Order High", &m_drawOrderHigh);
 		ImGui::Text("Trigger:");
 		if (ImGui::RadioButton("None", m_trigger == QuadblockTrigger::NONE))
 		{

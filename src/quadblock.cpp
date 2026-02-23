@@ -561,6 +561,11 @@ bool Quadblock::GetVisTreeTransparent() const
 	return m_visTreeTransparent;
 }
 
+uint32_t Quadblock::GetDrawOrderHigh() const
+{
+	return m_drawOrderHigh;
+}
+
 const QuadUV& Quadblock::GetQuadUV(size_t quad) const
 {
 	return m_uvs[quad];
@@ -629,6 +634,11 @@ void Quadblock::SetCheckpointPathable(bool pathable)
 void Quadblock::SetVisTreeTransparent(bool transparent)
 {
 	m_visTreeTransparent = transparent;
+}
+
+void Quadblock::SetDrawOrderHigh(uint32_t drawOrderHigh)
+{
+	m_drawOrderHigh = drawOrderHigh;
 }
 
 void Quadblock::SetName(const std::string& name)
@@ -902,6 +912,7 @@ void Quadblock::SetDefaultValues()
 	m_checkpointPathable = true;
 	m_checkpointStatus = false;
 	m_visTreeTransparent = false;
+	m_drawOrderHigh = 0x0;
 	m_trigger = QuadblockTrigger::NONE;
 	m_turboPadIndex = TURBO_PAD_INDEX_NONE;
 	m_hide = false;
