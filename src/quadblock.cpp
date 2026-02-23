@@ -561,7 +561,7 @@ bool Quadblock::GetVisTreeTransparent() const
 	return m_visTreeTransparent;
 }
 
-uint32_t Quadblock::GetDrawOrderHigh() const
+int Quadblock::GetDrawOrderHigh() const
 {
 	return m_drawOrderHigh;
 }
@@ -636,7 +636,7 @@ void Quadblock::SetVisTreeTransparent(bool transparent)
 	m_visTreeTransparent = transparent;
 }
 
-void Quadblock::SetDrawOrderHigh(uint32_t drawOrderHigh)
+void Quadblock::SetDrawOrderHigh(int drawOrderHigh)
 {
 	m_drawOrderHigh = drawOrderHigh;
 }
@@ -848,7 +848,7 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 		uint32_t packedFace = m_faceRotateFlip[i] | (m_faceDrawMode[i] << 3);
 		quadblock.drawOrderLow |= packedFace << (8 + i * 5);
 	}
-	quadblock.drawOrderHigh = 0;
+	quadblock.drawOrderHigh = m_drawOrderHigh;
 	if (m_animated)
 	{
 		quadblock.offMidTextures[0] = static_cast<uint32_t>(m_animTexOffset[0] | 1);

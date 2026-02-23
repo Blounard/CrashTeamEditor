@@ -1624,7 +1624,7 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile)
 						m_propTurboPads.SetDefaultValue(material, QuadblockTrigger::NONE);
 						m_propCheckpointPathable.SetDefaultValue(material, true);
 						m_propVisTreeTransparent.SetDefaultValue(material, false);
-						m_propDrawOrderHigh.SetDefaultValue(material, 0);
+						m_propDrawOrderHigh.SetDefaultValue(material, static_cast<int>(0));
 						m_propTerrain.RegisterMaterial(this);
 						m_propQuadFlags.RegisterMaterial(this);
 						m_propDoubleSided.RegisterMaterial(this);
