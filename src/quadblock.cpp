@@ -848,7 +848,8 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 		uint32_t packedFace = m_faceRotateFlip[i] | (m_faceDrawMode[i] << 3);
 		quadblock.drawOrderLow |= packedFace << (8 + i * 5);
 	}
-	quadblock.drawOrderHigh = m_drawOrderHigh;
+	uint8_t doh = static_cast<uint8_t>(m_drawOrderHigh);
+	quadblock.drawOrderHigh = doh + (doh << 0x8) + (doh << 0x10) + (doh << 0x18);//(m_flags & QuadFlags::NEVER_USED) ? 0xfcfcfcfc : 0x04040404;
 	if (m_animated)
 	{
 		quadblock.offMidTextures[0] = static_cast<uint32_t>(m_animTexOffset[0] | 1);

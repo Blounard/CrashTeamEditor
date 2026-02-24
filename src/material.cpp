@@ -12,7 +12,7 @@ template class MaterialProperty<QuadblockTrigger, MaterialType::TURBO_PAD>;
 template class MaterialProperty<int, MaterialType::SPEED_IMPACT>;
 template class MaterialProperty<bool, MaterialType::CHECKPOINT_PATHABLE>;
 template class MaterialProperty<bool, MaterialType::VISTREE_TRANSPARENT>;
-template class MaterialProperty<bool, MaterialType::DRAW_ORDER_HIGH>;
+template class MaterialProperty<int, MaterialType::DRAW_ORDER_HIGH>;
 
 static std::unordered_map<Level*, std::vector<MaterialBase*>> g_materials;
 
