@@ -202,6 +202,7 @@ bool Level::GenerateCheckpoints()
 
 	for (const Path& path : m_checkpointPaths) { if (!path.IsReady()) { return false; } }
 
+	ResetFilter();
 	size_t checkpointIndex = 0;
 	std::vector<size_t> linkNodeIndexes;
 	std::vector<std::vector<Checkpoint>> pathCheckpoints;
@@ -243,6 +244,20 @@ bool Level::GenerateCheckpoints()
 		{
 			size_t linkUp = (i + 1) % linkNodeIndexes.size();
 			node.UpdateUp(static_cast<int>(linkNodeIndexes[linkUp]));
+		}
+	}
+
+	for (Path& path : m_checkpointPaths)
+	{
+		const Checkpoint& middleStart = m_checkpoints[path.GetStart()];
+		const Checkpoint& middleEnd = m_checkpoints[path.GetEnd()];
+
+		Path* sides[2] = { path.GetLeft(), path.GetRight() };
+		for (Path* side : sides)
+		{
+			if (!side) { continue; }
+			m_checkpoints[side->GetStart()].UpdateDown(middleStart.GetDown());
+			m_checkpoints[side->GetEnd()].UpdateUp(middleEnd.GetUp());
 		}
 	}
 

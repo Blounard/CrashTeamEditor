@@ -17,6 +17,8 @@ public:
 	size_t GetIndex() const;
 	size_t GetStart() const;
 	size_t GetEnd() const;
+	Path* GetLeft();
+	Path* GetRight();
 	std::vector<size_t>& GetStartIndexes();
 	std::vector<size_t>& GetEndIndexes();
 	std::vector<size_t>& GetIgnoreIndexes();

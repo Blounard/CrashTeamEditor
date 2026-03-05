@@ -88,6 +88,17 @@ size_t Path::GetEnd() const
 	return m_end;
 }
 
+Path* Path::GetLeft()
+{
+	return m_left;
+}
+
+Path* Path::GetRight()
+{
+	return m_right;
+}
+
+
 std::vector<size_t>& Path::GetStartIndexes()
 {
 	return m_quadIndexesStart;
