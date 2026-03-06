@@ -19,7 +19,7 @@ static constexpr size_t RENDER_INDEX_NONE = std::numeric_limits<size_t>::max();
 
 struct QuadFlags
 {
-	static constexpr uint16_t INVISIBLE = 1 << 0;
+	static constexpr uint16_t REFLECTION2 = 1 << 0;
 	static constexpr uint16_t MOON_GRAVITY = 1 << 1;
 	static constexpr uint16_t REFLECTION = 1 << 2;
 	static constexpr uint16_t KICKERS = 1 << 3;
@@ -37,11 +37,11 @@ struct QuadFlags
 	static constexpr uint16_t INVISIBLE_TRIGGER = 1 << 15;
 	static constexpr uint16_t DEFAULT = GROUND | COLLISION_TRIGGER;
 	static inline const std::unordered_map<std::string, uint16_t> LABELS = {
-		{"Invisible", INVISIBLE}, {"Moon Gravity", MOON_GRAVITY}, {"Reflection", REFLECTION},
+		{"Reflection 2", REFLECTION2}, {"Moon Gravity", MOON_GRAVITY}, {"Reflection 1", REFLECTION},
 		{"Kickers (?)", KICKERS}, {"Out of Bounds", OUT_OF_BOUNDS}, {"Never Used (?)", NEVER_USED},
 		{"Trigger Script", TRIGGER_SCRIPT }, {"Reverb", REVERB}, {"Kickers Two (?)", KICKERS_TWO},
 		{"Mask Grab", MASK_GRAB }, {"Tiger Temple Door", TIGER_TEMPLE_DOOR}, {"Collision Trigger", COLLISION_TRIGGER},
-		{"Ground", GROUND}, {"Wall", WALL}, {"No Colision", NO_COLLISION}, {"Invisible Trigger", INVISIBLE_TRIGGER}
+		{"Ground", GROUND}, {"Wall", WALL}, {"No Collision", NO_COLLISION}, {"Invisible Trigger", INVISIBLE_TRIGGER}
 	};
 };
 

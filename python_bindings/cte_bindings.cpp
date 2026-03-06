@@ -285,7 +285,7 @@ void init_crashteameditor(py::module_& m)
 		.export_values();
 
 	py::class_<QuadFlags>(m, "QuadFlags")
-		.def_readonly_static("INVISIBLE", &QuadFlags::INVISIBLE)
+		.def_readonly_static("REFLECTION_2", &QuadFlags::REFLECTION2)
 		.def_readonly_static("MOON_GRAVITY", &QuadFlags::MOON_GRAVITY)
 		.def_readonly_static("REFLECTION", &QuadFlags::REFLECTION)
 		.def_readonly_static("KICKERS", &QuadFlags::KICKERS)

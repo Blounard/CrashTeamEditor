@@ -1127,7 +1127,7 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 	for (size_t i = 0; i < bspLeaves.size(); i++) { leafToMatrix[bspLeaves[i]] = i; }
 	for (const Quadblock* quad : orderedQuads)
 	{
-		if (quad->GetFlags() & (QuadFlags::INVISIBLE | QuadFlags::INVISIBLE_TRIGGER))
+		if (quad->GetFlags() & QuadFlags::INVISIBLE_TRIGGER)
 		{
 			visibleQuadsAll[quadIndex / BITS_PER_SLOT] &= ~(1 << (quadIndex % BITS_PER_SLOT));
 		}
