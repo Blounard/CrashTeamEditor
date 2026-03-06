@@ -82,6 +82,8 @@ void Level::Clear(bool clearErrors)
 	m_lastAnimTextureCount = 0;
 	DeleteMaterials(this);
 	m_skybox.Clear();
+	m_splitLines[0] = 0.0;
+	m_splitLines[1] = 0.0;
 
 	for (Model* model : m_models)
 	{
@@ -732,6 +734,8 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	m_configFlags = header.config;
 	m_clearColor = ConvertColor(header.clear);
 	m_stars = ConvertStars(header.stars);
+	m_splitLines[0] = ConvertFP(header.splitLines[0], FP_ONE_GEO);
+	m_splitLines[1] = ConvertFP(header.splitLines[1], FP_ONE_GEO);
 	for (size_t i = 0; i < m_spawn.size(); i++)
 	{
 		m_spawn[i].pos = ConvertPSXVec3(header.driverSpawn[i].pos, FP_ONE_GEO);
@@ -1299,6 +1303,8 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 		header.skyGradient[i].colorTo = ConvertColor(m_skyGradient[i].colorTo);
 	}
 	header.stars = ConvertStars(m_stars);
+	header.splitLines[0] = ConvertFloat(m_splitLines[0], FP_ONE_GEO);
+	header.splitLines[1] = ConvertFloat(m_splitLines[1], FP_ONE_GEO);
 	header.offExtra = static_cast<uint32_t>(offExtraHeader);
 	header.numCheckpointNodes = static_cast<uint32_t>(m_checkpoints.size());
 	header.offCheckpointNodes = static_cast<uint32_t>(offCheckpoints);
