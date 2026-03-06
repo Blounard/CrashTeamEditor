@@ -522,7 +522,7 @@ void Level::RenderUI(Renderer& renderer)
 				ImGui::InputFloat("##sl1", &m_splitLines[0]);
 				ImGui::SetItemTooltip("Reflection 1 flag\n");
 				ImGui::SameLine();
-				if (ImGui::Button(("Set from selection##")))
+				if (ImGui::Button(("Set from selection##1")))
 				{
 					m_splitLines[0] = m_rendererQueryPoint.y;
 				}
@@ -532,7 +532,7 @@ void Level::RenderUI(Renderer& renderer)
 				ImGui::InputFloat("##sl2", &m_splitLines[1]);
 				ImGui::SetItemTooltip("Reflection 2 flag + water\n");
 				ImGui::SameLine();
-				if (ImGui::Button(("Set from selection##")))
+				if (ImGui::Button(("Set from selection##2")))
 				{
 					m_splitLines[1] = m_rendererQueryPoint.y;
 				}
