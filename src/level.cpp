@@ -422,6 +422,11 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 		if (json.contains("skyGradient")) { m_skyGradient = json["skyGradient"]; }
 		if (json.contains("clearColor")) { m_clearColor = json["clearColor"]; }
 		if (json.contains("stars")) { json["stars"].get_to(m_stars); }
+		if (json.contains("splitLines"))
+		{
+			m_splitLines[0] = json["splitLines"][0];
+			m_splitLines[1] = json["splitLines"][1];
+		}
 		if (json.contains("skyboxObjPath"))
 		{
 			std::string skyboxPath = json["skyboxObjPath"];
@@ -579,6 +584,7 @@ bool Level::SavePreset(const std::filesystem::path& path)
 	levelJson["skyGradient"] = m_skyGradient;
 	levelJson["clearColor"] = m_clearColor;
 	levelJson["stars"] = m_stars;
+	levelJson["splitLines"] = { m_splitLines[0], m_splitLines[1] };
 	if (!m_skybox.m_objPath.empty()) { levelJson["skyboxObjPath"] = m_skybox.m_objPath.string(); }
 	SaveJSON(dirPath / "level.json", levelJson);
 
