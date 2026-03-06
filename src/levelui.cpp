@@ -530,7 +530,7 @@ void Level::RenderUI(Renderer& renderer)
 				ImGui::Text("SplitLine 2:");
 				ImGui::SameLine();
 				ImGui::InputFloat("##sl2", &m_splitLines[1]);
-				ImGui::SetItemTooltip("Reflection 2 flag + water\n");
+				ImGui::SetItemTooltip("Reflection 2 flag\n");
 				ImGui::SameLine();
 				if (ImGui::Button(("Set from selection##2")))
 				{
