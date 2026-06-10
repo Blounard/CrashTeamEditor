@@ -1371,6 +1371,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	}
 
 	m_bsp.Clear();
+	//Must reset the BSP global IDs
 	file.seekg(offLev + std::streampos(meshInfo.offBSPNodes));
 	std::vector<BSP*> bspArray;
 	for (uint32_t i = 0; i < meshInfo.numBSPNodes; i++)
