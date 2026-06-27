@@ -1374,6 +1374,46 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		}
 	}
 
+
+	m_rawWaterColors.clear();
+	m_rawWaterVertices.clear();
+	// Loading water
+	if (header.offEnvironmentMap != 0)
+	{
+		file.seekg(offLev + std::streampos(header.offEnvironmentMap));
+		Read(file, m_rawWaterLayout);
+	}
+	if (header.offWaterVertices != 0)
+	{
+		file.seekg(offLev + std::streampos(header.offWaterVertices));
+		for (uint32_t i = 0; i < header.numWaterVertices; i++)
+		{
+			PSX::WaterVertex wv;
+			Read(file, wv);
+			std::streampos currentPos = file.tellg();
+			if (wv.offVertex > 0)
+			{
+				file.seekg(offLev + std::streampos(wv.offVertex));
+				PSX::Vertex v;
+				Read(file, v);
+				m_rawWaterVertices.push_back(v);
+			}
+			else
+				printf("ERROR : WaterVertex with nullptr at vertex number %d\n", i);
+			if (wv.offOceanVertex > 0)
+			{
+				file.seekg(offLev + std::streampos(wv.offOceanVertex));
+				PSX::OceanVertex v;
+				Read(file, v);
+				m_rawWaterColors.push_back(v);
+			}
+			else
+				printf("ERROR : WaterVertex with nullptr at vertex number %d\n", i);
+			file.seekg(currentPos);
+		}
+	}
+	
+
 	m_bsp.Clear();
 	file.seekg(offLev + std::streampos(meshInfo.offBSPNodes));
 	std::vector<BSP*> bspArray;

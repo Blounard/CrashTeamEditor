@@ -156,6 +156,9 @@ private:
 	std::unordered_map<uint32_t, PSX::TextureGroup> m_rawTextureGroup;
 	std::unordered_map<uint32_t, PSX::AnimTex> m_rawAnimTex;
 	std::unordered_map<uint32_t, std::vector<uint32_t>> m_rawAnimTexFrames;
+	PSX::TextureLayout m_rawWaterLayout;
+	std::vector<PSX::Vertex> m_rawWaterVertices;
+	std::vector<PSX::OceanVertex> m_rawWaterColors;
 	std::map<std::string, std::vector<size_t>> m_materialToQuadblocks;
 	std::unordered_map<std::string, Texture> m_materialToTexture;
 	MaterialProperty<std::string, MaterialType::TERRAIN> m_propTerrain;

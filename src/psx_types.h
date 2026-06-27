@@ -173,7 +173,7 @@ namespace PSX
 		uint32_t offWaterVertices; // 0x38
 		uint32_t offIconsLookup; // 0x3C
 		uint32_t offIcons; // 0x40
-		uint32_t offEnvironmentMap; // 0x44
+		uint32_t offEnvironmentMap; // 0x44 // Texture layout pointer according to penta
 		PSX::ColorGradient skyGradient[NUM_GRADIENT]; // 0x48
 		PSX::Spawn driverSpawn[NUM_DRIVERS]; // 0x6C
 		uint32_t offUnk_0xCC; // 0xCC
@@ -244,6 +244,17 @@ namespace PSX
 		uint16_t flags; // 0x6
 		PSX::Color colorHi; // 0x8
 		PSX::Color colorLo; // 0xC
+	};
+
+	struct WaterVertex
+	{
+		uint32_t offVertex;  // pointer to Vertex
+		uint32_t offOceanVertex; //pointer to OceanVertex
+	};
+
+	struct OceanVertex
+	{
+		int16_t data[2]; // colors ?
 	};
 
 	struct Quadblock
