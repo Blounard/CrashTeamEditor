@@ -122,6 +122,7 @@ public:
 	std::array<Vec3, 3> GetTriFace(size_t id0, size_t id1, size_t id2) const;
 	uint8_t GetTerrain() const;
 	uint16_t GetFlags() const;
+	bool GetWater() const;
 	QuadblockTrigger GetTrigger() const;
 	size_t GetTurboPadIndex() const;
 	size_t GetBSPID() const;
@@ -144,6 +145,7 @@ public:
 	void SetRenderPrimitiveIndex(size_t triangleIndex);
 	void SetTerrain(uint8_t terrain);
 	void SetFlag(uint16_t flag);
+	void SetWater(bool isWater);
 	void SetCheckpoint(int index);
 	int GetCheckpoint() const;
 	void SetDrawDoubleSided(bool active);
@@ -209,6 +211,7 @@ private:
 	uint16_t m_flags;
 	uint8_t m_terrain;
 	QuadblockTrigger m_trigger;
+	bool m_water; //water as in animated water vertices, not water terrain.
 	int m_downforce;
 	size_t m_turboPadIndex;
 	Color m_filterColor;

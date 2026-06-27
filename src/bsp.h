@@ -23,13 +23,16 @@ struct BSPFlags
 	static constexpr uint16_t WATER = 1 << 1;
 	static constexpr uint16_t SUBDIV_4_1 = 1 << 3;
 	static constexpr uint16_t SUBDIV_4_2 = 1 << 4;
-	static constexpr uint16_t INVISIBLE = 1 << 6;
+	static constexpr uint16_t SUBDIV_DYNAMIC = 1 << 5;
+	static constexpr uint16_t INVISIBLE = 1 << 6; // ??
 	static constexpr uint16_t NO_COLLISION = 1 << 7;
 };
 
 struct BSPID
 {
+	static constexpr uint16_t ID_MASK = 0x3FFF;
 	static constexpr uint16_t LEAF = 0x4000;
+	static constexpr uint16_t INVISIBLE = 0x8000;
 	static constexpr uint16_t EMPTY = 0xFFFF;
 };
 
@@ -38,7 +41,7 @@ class BSP
 public:
 	BSP();
 	BSP(BSPNode type, const std::vector<size_t>& quadblockIndexes, BSP* parent, const std::vector<Quadblock>& quadblocks);
-	void PopulateLeaf(PSX::BSPLeaf& leaf, std::vector<BSP*>& bspArray, const std::vector<Quadblock>& quadblocks, uint32_t offQuadblocks, size_t global_id);
+	void PopulateLeaf(PSX::BSPLeaf& leaf, std::vector<BSP*>& bspArray, std::vector<Quadblock>& quadblocks, uint32_t offQuadblocks, size_t global_id);
 	void PopulateBranch(PSX::BSPBranch& branch, std::vector<BSP*>& bspArray, size_t global_id);
 	void PopulateBranchQuadIndexes();
 	size_t GetId() const;
@@ -60,7 +63,7 @@ public:
 	void Clear();
 	void SplitLeaf(const std::vector<Quadblock>& quadblocks, const AxisSplit axis, const float midpoint);
 	void Generate(const std::vector<Quadblock>& quadblocks, const size_t maxQuadsPerLeaf, const float maxAxisLength);
-	std::vector<uint8_t> Serialize(size_t offQuads) const;
+	std::vector<uint8_t> Serialize(size_t offQuads, const std::vector<Quadblock>& quadblocks) const;
 	void RenderUI(const std::vector<Quadblock>& quadblocks);
 
 private:
@@ -68,7 +71,8 @@ private:
 	BoundingBox ComputeBoundingBox(const std::vector<Quadblock>& quadblocks, const std::vector<size_t>& quadblockIndexes) const;
 	float Split(std::vector<size_t>& left, std::vector<size_t>& right, const AxisSplit axis, const std::vector<Quadblock>& quadblocks) const;
 	void GenerateOffspring(std::vector<size_t>& left, std::vector<size_t>& right, const std::vector<Quadblock>& quadblocks, const size_t maxQuadsPerLeaf, const float maxAxisLength);
-	std::vector<uint8_t> SerializeBranch() const;
+	bool IsInvisible(const std::vector<Quadblock>& quadblocks);
+	std::vector<uint8_t> SerializeBranch(const std::vector<Quadblock>& quadblocks) const;
 	std::vector<uint8_t> SerializeLeaf(size_t offQuads) const;
 
 private:
@@ -78,9 +82,7 @@ private:
 	AxisSplit m_axis;
 	uint16_t m_flags;
 	BSP* m_left;
-	size_t m_leftFlag;
 	BSP* m_right;
-	size_t m_rightFlag;
 	BSP* m_parent;
 	BoundingBox m_bbox;
 	std::vector<size_t> m_quadblockIndexes;

@@ -517,6 +517,11 @@ uint16_t Quadblock::GetFlags() const
 	return m_flags;
 }
 
+bool Quadblock::GetWater() const
+{
+	return m_water;
+}
+
 QuadblockTrigger Quadblock::GetTrigger() const
 {
 	return m_trigger;
@@ -625,6 +630,11 @@ void Quadblock::SetTerrain(uint8_t terrain)
 void Quadblock::SetFlag(uint16_t flag)
 {
 	m_flags = flag;
+}
+
+void Quadblock::SetWater(bool isWater)
+{
+	m_water = isWater;
 }
 
 void Quadblock::SetCheckpoint(int index)
@@ -1003,6 +1013,7 @@ void Quadblock::SetDefaultValues()
 	m_hasRawTexture = false;
 	m_filterColor = GuiRenderSettings::defaultFilterColor;
 	m_renderPrimitiveIndex = RENDER_INDEX_NONE;
+	m_water = false;
 }
 
 Vec3 Quadblock::ComputeNormalVector(size_t id0, size_t id1, size_t id2) const
