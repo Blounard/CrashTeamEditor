@@ -3,6 +3,8 @@
 #include "geo.h"
 #include "psx_types.h"
 #include "quadblock.h"
+#include "texture.h"
+#include "levdataextractor.h"
 #include <filesystem>
 #include <string>
 #include <cstdint>
@@ -287,7 +289,27 @@ enum class ModelId : int32_t
 	NUM_TYPES = 0xE2
 };
 
-class InstanceModel
+
+
+class InstanceModelHeader
+{
+public:
+	InstanceModelHeader() = default;
+	InstanceModelHeader(PSX::ModelHeader modelheader);
+	std::vector<std::string> m_texNames; // We don't store immediately a Texture, because it's probably shared for many models
+	//std::vector <RawUV> m_rawUVs; // only useful for loadLev to be converted to QuadUV later.
+	std::vector <QuadUV> m_uvs; // UVs for each texture (same count as texNames)
+	std::vector<size_t> m_textureLayoutID; // array of texLayout ID for serial
+private:
+	std::string m_name;
+	float m_maxDistLOD;
+	uint16_t m_flags;
+	Vec3 m_scale;
+	//int16_t scaleOrPad ;
+
+
+};
+class InstanceModel // group of models ?
 {
 public:
 	InstanceModel() = default;
@@ -300,12 +322,18 @@ public:
 	std::vector<Primitive>& GetParsedGeometry() { return m_parsedGeometry; }
 	bool IsParsed() const { return m_parsed; }
 	void SetParsed(bool parsed) { m_parsed = parsed; }
+	void LoadPSXData(const PSX::Model&, const std::vector<PSX::ModelHeader>&);
+	std::vector<InstanceModelHeader> m_headers;
+	std::vector<uint8_t> Serialize(std::unordered_map<std::string, size_t>& modelOffsets, std::vector<ModelTextureForVRM>& modelTexturesInVRAM, std::vector<PSX::TextureLayout> layouts) const;
+
 
 private:
 	std::string m_name;
 	std::vector<uint8_t> m_rawData;
 	std::vector<Primitive> m_parsedGeometry;
 	bool m_parsed = false;
+	
+	bool m_hasPSXData;
 };
 
 

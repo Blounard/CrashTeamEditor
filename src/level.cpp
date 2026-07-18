@@ -1291,6 +1291,91 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	}
 
 
+
+
+
+	//Load preset models
+	std::filesystem::path folderPath(Settings::m_lastOpenedModelFolder);
+	if (std::filesystem::exists(folderPath) && std::filesystem::is_directory(folderPath))
+	{
+		for (const auto& entry : std::filesystem::directory_iterator(folderPath))
+		{
+			if (!entry.is_regular_file())
+				continue;
+
+			if (entry.path().extension() == ".ctrmodel")
+			{
+				ImportModel(entry.path());
+			}
+		}
+	}
+
+	// Collect unique model offsets referenced by instances (quick pass: read only offModel per InstDef)
+	std::unordered_set<uint32_t> uniqueModelOffsets;
+	std::vector<uint32_t> instPtrs;
+	if (header.numInstances > 0 && header.offInstancePtrArray != 0)
+	{
+		file.seekg(offLev + std::streampos(header.offInstancePtrArray));
+		instPtrs.resize(header.numInstances);
+		for (uint32_t i = 0; i < header.numInstances; i++)
+		{
+			Read(file, instPtrs[i]);
+		}
+
+		for (uint32_t i = 0; i < header.numInstances; i++)
+		{
+			if (instPtrs[i] == 0) { break; }
+			// Read just the offModel field (at offset 0x30 in PSX::InstDef)
+			file.seekg(offLev + std::streampos(instPtrs[i]) + static_cast<std::streamoff>(offsetof(PSX::InstDef, offModel)));
+			uint32_t offModel = 0;
+			Read(file, offModel);
+			if (offModel != 0) { uniqueModelOffsets.insert(offModel); }
+		}
+	}
+
+	// Auto-extract models from LEV data into .ctrmodel files and import them
+	if (!uniqueModelOffsets.empty())
+	{
+		std::filesystem::path modelCacheDir = levFile.parent_path() / "extracted_models";
+		std::filesystem::create_directories(modelCacheDir);
+
+		// Extract all models using existing LevDataExtractor
+		{
+			std::filesystem::path extVrmPath = levFile;
+			extVrmPath.replace_extension(".vrm");
+			LevDataExtractor extractor(levFile, extVrmPath);
+			extractor.ExtractModels();
+		}
+
+		for (uint32_t modelOff : uniqueModelOffsets)
+		{
+			if (modelOff == 0) continue;
+
+			// Read model name from LEV using file stream
+			PSX::Model psxModel;
+			file.seekg(offLev + std::streampos(modelOff));
+			Read(file, psxModel);
+			std::string modelName(psxModel.name, strnlen(psxModel.name, sizeof(psxModel.name)));
+			if (modelName.empty())
+				modelName = "LEV_Model_0x" + std::to_string(modelOff);
+
+			// Skip if already imported
+			if (m_instanceModels.find(modelName) != m_instanceModels.end())
+				continue;
+
+			std::filesystem::path ctrmodelPath = modelCacheDir / (modelName + ".ctrmodel");
+			if (!std::filesystem::exists(ctrmodelPath))
+				continue;
+
+			ImportModel(ctrmodelPath);
+
+		}
+	}
+
+
+
+
+
 	// Loading textures and animated textures and quadblocks
 	std::filesystem::path vrmPath = levFile;
 	vrmPath.replace_extension(".vrm");
@@ -1403,6 +1488,91 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		file.seekg(currentPosQuad);
 	}
 
+	// 2nd pass : Find TextureLayouts from Instances
+	if (header.offInstances != 0)
+	{
+		file.seekg(offLev + std::streampos(header.offInstances));
+		for (uint32_t i = 0; i < header.numInstances; i++)
+		{
+			PSX::InstDef inst{};
+			Read(file, inst);
+			if (inst.offModel != 0)
+			{
+				std::streampos currentPosInst = file.tellg();
+				file.seekg(offLev + std::streampos(inst.offModel));
+				PSX::Model model{};
+				Read(file, model);
+				std::string modelName(model.name, strnlen(model.name, sizeof(model.name)));
+				if (!m_instanceModels.contains(modelName))
+				{
+					printf("Skipping %s because not loaded\n", modelName.c_str());
+					file.seekg(currentPosInst);
+					continue;
+				}
+				InstanceModel& currentModel = m_instanceModels[modelName];
+				currentModel.m_headers.clear();
+				if (model.offHeaders != 0 && model.numHeaders > 0)
+				{
+					for (uint32_t j = 0; j < model.numHeaders; j++)
+					{
+						file.seekg(offLev + std::streampos(model.offHeaders));
+						PSX::ModelHeader modelHeader{};
+						Read(file, modelHeader);
+						currentModel.m_headers.emplace_back(modelHeader);
+						InstanceModelHeader& currHeader = currentModel.m_headers.back();
+						if (modelHeader.offCommandList != 0 && modelHeader.offTexLayout != 0)
+						{
+							// --- Pass 1: scan command list to find how many texture layouts are actually used ---
+							file.seekg(offLev + std::streampos(modelHeader.offCommandList));
+							uint32_t unkNum = 0;
+							Read(file, unkNum);
+							uint32_t maxTexCoordIndex = 0;
+							while (true)
+							{
+								PSX::InstDrawCommand cmd{};
+								Read(file, cmd);
+								if (cmd.command == 0xFFFFFFFF) break;
+								if (cmd.texCoordIndex > maxTexCoordIndex)
+									maxTexCoordIndex = cmd.texCoordIndex;
+							}
+							// --- Pass 2: read each TextureLayout via the pointer array ---
+							for (uint32_t ti = 0; ti < maxTexCoordIndex; ti++)
+							{
+								file.seekg(offLev + std::streampos(modelHeader.offTexLayout + ti * sizeof(uint32_t)));
+								uint32_t offLayout = 0;
+								Read(file, offLayout);
+								if (offLayout == 0) continue;
+
+								file.seekg(offLev + std::streampos(offLayout));
+								PSX::TextureLayout layout{};
+								Read(file, layout);
+								//
+								LayoutKey key(layout);
+								if (!materialCache.contains(key))
+								{
+									std::string newMatName = "tex_model_" + std::to_string(texCounter++);
+									materialCache[key] = newMatName;
+								}
+								/*printf("Instance %s, Model %s, ModelHeader %s, texturename %s\n",
+									std::string(inst.name, strnlen(inst.name, sizeof(inst.name))).c_str(),
+									std::string(model.name, strnlen(model.name, sizeof(model.name))).c_str(),
+									std::string(modelHeader.name, strnlen(modelHeader.name, sizeof(modelHeader.name))).c_str(),
+									materialCache[key].c_str());*/
+								//
+								RawUV rawUV(layout);
+								textureToPixelBounds[key].Update(rawUV);
+								//currHeader.m_rawUVs.push_back(rawUV);
+								currHeader.m_texNames.push_back(materialCache[key]);
+							}
+						}
+					}
+				}
+				file.seekg(currentPosInst);
+			}
+		}
+	}
+
+
 	// 3rd pass : Create PNGs and Materials
 	for (const auto& [key, bounds] : textureToPixelBounds)
 	{
@@ -1411,6 +1581,69 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		m_materialToTexture[newMatName] = newTexture;
 	}
 
+	// 4.1th pass : Assign QuadUVs to Models/Headers
+	if (header.offInstances != 0)
+	{
+		file.seekg(offLev + std::streampos(header.offInstances));
+		for (uint32_t i = 0; i < header.numInstances; i++)
+		{
+			PSX::InstDef inst{};
+			Read(file, inst);
+			if (inst.offModel != 0)
+			{
+				std::streampos currentPosInst = file.tellg();
+				file.seekg(offLev + std::streampos(inst.offModel));
+				PSX::Model model{};
+				Read(file, model);
+				std::string modelName(model.name, strnlen(model.name, sizeof(model.name)));
+				if (!m_instanceModels.contains(modelName))
+				{
+					file.seekg(currentPosInst);
+					continue;
+				}
+				InstanceModel& currentModel = m_instanceModels[modelName];
+				if (model.offHeaders != 0 && model.numHeaders > 0)
+				{
+					for (uint32_t j = 0; j < model.numHeaders; j++)
+					{
+						file.seekg(offLev + std::streampos(model.offHeaders));
+						PSX::ModelHeader modelHeader{};
+						Read(file, modelHeader);
+						InstanceModelHeader& currHeader = currentModel.m_headers[j];
+						if (modelHeader.offCommandList != 0 && modelHeader.offTexLayout != 0)
+						{
+							for (uint32_t ti = 0; ti < currHeader.m_texNames.size(); ti++)
+							{
+								file.seekg(offLev + std::streampos(modelHeader.offTexLayout + ti * sizeof(uint32_t)));
+								uint32_t offLayout = 0;
+								Read(file, offLayout);
+								if (offLayout == 0) continue;
+
+								file.seekg(offLev + std::streampos(offLayout));
+								PSX::TextureLayout layout{};
+								Read(file, layout);
+								LayoutKey key(layout);
+								const PixelBounds& bounds = textureToPixelBounds[key];
+								RawUV rawUV(layout);
+								float croppedWidth = static_cast<float>(bounds.maxU - bounds.minU);
+								float croppedHeight = static_cast<float>(bounds.maxV - bounds.minV);
+								if (croppedWidth == 0) croppedWidth = 1.0f;
+								if (croppedHeight == 0) croppedHeight = 1.0f;
+								QuadUV uvs = {
+									Vec2((rawUV.u0 - bounds.minU) / croppedWidth, (rawUV.v0 - bounds.minV) / croppedHeight),
+									Vec2((rawUV.u1 - bounds.minU) / croppedWidth, (rawUV.v1 - bounds.minV) / croppedHeight),
+									Vec2((rawUV.u2 - bounds.minU) / croppedWidth, (rawUV.v2 - bounds.minV) / croppedHeight),
+									Vec2((rawUV.u3 - bounds.minU) / croppedWidth, (rawUV.v3 - bounds.minV) / croppedHeight)
+								};
+								currHeader.m_uvs.push_back(uvs);
+							}
+						}
+					}
+				}
+				file.seekg(currentPosInst);
+			}
+		}
+	}
 
 	// 4th pass : create quadblocks with material, UVs and texture	
 	file.seekg(offLev + std::streampos(meshInfo.offQuadblocks));
@@ -1860,82 +2093,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		UpdateRenderBotData();
 	}
 
-	//Load preset models
-	std::filesystem::path folderPath(Settings::m_lastOpenedModelFolder);
-	if (std::filesystem::exists(folderPath) && std::filesystem::is_directory(folderPath))
-	{
-		for (const auto& entry : std::filesystem::directory_iterator(folderPath))
-		{
-			if (!entry.is_regular_file())
-				continue;
-
-			if (entry.path().extension() == ".ctrmodel")
-			{
-				ImportModel(entry.path());
-			}
-		}
-	}
-
-	// Collect unique model offsets referenced by instances (quick pass: read only offModel per InstDef)
-	std::unordered_set<uint32_t> uniqueModelOffsets;
-	std::vector<uint32_t> instPtrs;
-	if (header.numInstances > 0 && header.offInstancePtrArray != 0)
-	{
-		file.seekg(offLev + std::streampos(header.offInstancePtrArray));
-		instPtrs.resize(header.numInstances);
-		for (uint32_t i = 0; i < header.numInstances; i++)
-		{
-			Read(file, instPtrs[i]);
-		}
-
-		for (uint32_t i = 0; i < header.numInstances; i++)
-		{
-			if (instPtrs[i] == 0) { break; }
-			// Read just the offModel field (at offset 0x30 in PSX::InstDef)
-			file.seekg(offLev + std::streampos(instPtrs[i]) + static_cast<std::streamoff>(offsetof(PSX::InstDef, offModel)));
-			uint32_t offModel = 0;
-			Read(file, offModel);
-			if (offModel != 0) { uniqueModelOffsets.insert(offModel); }
-		}
-	}
-
-	// Auto-extract models from LEV data into .ctrmodel files and import them
-	if (!uniqueModelOffsets.empty())
-	{
-		std::filesystem::path modelCacheDir = levFile.parent_path() / "extracted_models";
-		std::filesystem::create_directories(modelCacheDir);
-
-		// Extract all models using existing LevDataExtractor
-		{
-			std::filesystem::path extVrmPath = levFile;
-			extVrmPath.replace_extension(".vrm");
-			LevDataExtractor extractor(levFile, extVrmPath);
-			extractor.ExtractModels();
-		}
-
-		for (uint32_t modelOff : uniqueModelOffsets)
-		{
-			if (modelOff == 0) continue;
-
-			// Read model name from LEV using file stream
-			PSX::Model psxModel;
-			file.seekg(offLev + std::streampos(modelOff));
-			Read(file, psxModel);
-			std::string modelName(psxModel.name, strnlen(psxModel.name, sizeof(psxModel.name)));
-			if (modelName.empty())
-				modelName = "LEV_Model_0x" + std::to_string(modelOff);
-
-			// Skip if already imported
-			if (m_instanceModels.find(modelName) != m_instanceModels.end())
-				continue;
-
-			std::filesystem::path ctrmodelPath = modelCacheDir / (modelName + ".ctrmodel");
-			if (!std::filesystem::exists(ctrmodelPath))
-				continue;
-
-			ImportModel(ctrmodelPath);
-		}
-	}
 
 	// Load instances from .lev
 	std::unordered_map<uint32_t, size_t> offsetToInstancesID;
@@ -2224,6 +2381,9 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	std::vector<PSX::TextureGroup> texGroups;
 	std::vector<PSX::AnimTex> animTexGroups;
 	std::unordered_map<PSX::TextureLayout, size_t> savedLayouts;
+	std::vector<PSX::TextureLayout> modelLayouts;
+	std::unordered_map<PSX::TextureLayout, size_t> modelLayoutsIndexes;
+
 	if (useRawTextures)
 	{
 		std::map<uint32_t, size_t> rawOffsetRemap;
@@ -2340,6 +2500,33 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	{
 		if (UpdateVRM())
 		{
+			std::unordered_map<std::string, std::vector<std::tuple<std::string, size_t, size_t>>> materialToModels; // Material -> List of (Model Name, Header id, Texture id).
+			for (Instance& inst : m_instances)
+			{
+				InstanceModel& model = m_instanceModels.at(inst.GetModelName());
+				std::string modelName = model.GetName();
+				for (size_t header_id = 0; header_id < model.m_headers.size(); header_id++)
+				{
+					InstanceModelHeader& modelHeader = model.m_headers[header_id];
+					modelHeader.m_textureLayoutID.clear();
+					for (size_t texture_id = 0; texture_id < modelHeader.m_texNames.size(); texture_id++)
+					{
+						std::string matName = modelHeader.m_texNames[texture_id];
+						Texture& tex = m_materialToTexture[matName];
+						PSX::TextureLayout layout = tex.Serialize(modelHeader.m_uvs[texture_id]);
+						size_t textureID = 0;
+						if (modelLayoutsIndexes.contains(layout)) { textureID = modelLayoutsIndexes[layout]; }
+						else
+						{
+							textureID = modelLayouts.size();
+							modelLayoutsIndexes[layout] = textureID;
+							modelLayouts.push_back(layout);
+						}
+						modelHeader.m_textureLayoutID.push_back(textureID);
+						//materialToModels[modelHeader.m_texNames[texture_id]].emplace_back(modelName, header_id, texture_id);
+					}
+				}
+			}
 			for (auto& [material, texture] : m_materialToTexture)
 			{
 				std::vector<size_t>& quadIndexes = m_materialToQuadblocks[material];
@@ -2368,6 +2555,8 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 						currQuad.SetTextureID(textureID, i);
 					}
 				}
+
+
 			}
 
 			if (!m_animTextures.empty())
@@ -3132,7 +3321,9 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	// Write Model data with pointer conversion from .ctrmodel to .lev format
 	for (const std::string& modelName : modelOrder)
 	{
-		std::vector<uint8_t> modelData = SerializeModel(modelName, modelOffsets);
+		InstanceModel& model = m_instanceModels[modelName];
+
+		std::vector<uint8_t> modelData = model.Serialize(modelOffsets, m_modelTexturesInVRAM, modelLayouts);
 		Write(file, modelData.data(), modelData.size());
 	}
 
@@ -3904,7 +4095,7 @@ bool Level::UpdateVRM()
 			textures.push_back(texture);
 		}
 	}
-
+	/*
 	// Extract textures from imported models
 	m_modelTexturesInVRAM.clear();
 	for (auto& [modelName, instModel] : m_instanceModels)
@@ -3975,7 +4166,7 @@ bool Level::UpdateVRM()
 
 			m_modelTexturesInVRAM.push_back(std::move(modelTex));
 		}
-	}
+	}*/
 
 	m_vrm = PackVRM(textures, m_modelTexturesInVRAM.empty() ? nullptr : &m_modelTexturesInVRAM);
 	if (m_vrm.empty()) { return false; }

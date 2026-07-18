@@ -1757,16 +1757,37 @@ void Level::RenderUI(Renderer& renderer)
 					std::string modelToDelete;
 					for (const auto& [modelName, instModel] : m_instanceModels)
 					{
-						ImGui::PushID(modelName.c_str());
-						ImGui::Text("%s", modelName.c_str());
-						ImGui::SameLine();
-						ImGui::Text("(%zu bytes)", instModel.GetRawData().size());
-						ImGui::SameLine(ImGui::GetContentRegionAvail().x - 20);
-						if (ImGui::Button("X"))
+						if (ImGui::TreeNode((modelName + "##modelList").c_str()))
 						{
-							modelToDelete = modelName;
+							ImGui::PushID(modelName.c_str());
+							ImGui::Text("%s", modelName.c_str());
+							ImGui::SameLine();
+							ImGui::Text("(%zu bytes)", instModel.GetRawData().size());
+							ImGui::SameLine(ImGui::GetContentRegionAvail().x - 20);
+							if (ImGui::Button("X"))
+							{
+								modelToDelete = modelName;
+							}
+							int i = 0;
+							for (const InstanceModelHeader& header : instModel.m_headers)
+							{
+								for (const std::string& texName : header.m_texNames)
+								{
+									if (ImGui::TreeNode((texName + "##modelListtexture" + std::to_string(i)).c_str()))
+									{
+										m_materialToTexture[texName].RenderUI({}, m_quadblocks, [&]() { this->UpdateAnimationRenderData(); });
+										ImGui::TreePop();
+									}
+									i++;
+								}
+							}
+								
+							
+							
+							ImGui::PopID();
+							ImGui::TreePop();
 						}
-						ImGui::PopID();
+						
 					}
 
 					// Delete the model after iteration to avoid iterator invalidation

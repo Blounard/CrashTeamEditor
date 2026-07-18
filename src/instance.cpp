@@ -1,9 +1,168 @@
 #include "instance.h"
 
+
+InstanceModelHeader::InstanceModelHeader(PSX::ModelHeader modelHeader)
+{
+	m_name = std::string(modelHeader.name, strnlen(modelHeader.name, sizeof(modelHeader.name)));
+	m_maxDistLOD = ConvertFP(modelHeader.maxDistanceLOD, FP_ONE_GEO);
+	m_flags = modelHeader.flags;
+	m_scale = ConvertPSXVec3(modelHeader.scale, FP_ONE);
+	m_texNames.clear();
+	m_uvs.clear();
+}
+
 InstanceModel::InstanceModel(std::string name, std::vector<uint8_t> rawData)
 	: m_name(std::move(name))
 	, m_rawData(std::move(rawData))
 {
+}
+
+void InstanceModel::LoadPSXData(const PSX::Model&, const std::vector<PSX::ModelHeader>&)
+{
+	m_hasPSXData = true;
+
+}
+
+std::vector<uint8_t> InstanceModel::Serialize(std::unordered_map<std::string, size_t>& modelOffsets, std::vector<ModelTextureForVRM>& modelTexturesInVRAM, std::vector<PSX::TextureLayout> layouts) const
+{
+	const std::vector<uint8_t>& ctrmodelData = m_rawData;
+	size_t modelBaseOffset = modelOffsets[m_name];
+
+	// Parse .ctrmodel to get model data and patch table
+	const SH::CtrModel* ctrHeader = reinterpret_cast<const SH::CtrModel*>(ctrmodelData.data());
+	const uint8_t* modelDataSrc = ctrmodelData.data() + ctrHeader->modelOffset;
+	size_t modelDataSize = ctrHeader->modelPatchTableOffset - ctrHeader->modelOffset;
+
+	const uint32_t* patchTablePtr = reinterpret_cast<const uint32_t*>(ctrmodelData.data() + ctrHeader->modelPatchTableOffset);
+	const uint32_t patchCount = *patchTablePtr;
+	const uint32_t* patchOffsets = patchTablePtr + 1;
+
+	// Copy the model data
+	std::vector<uint8_t> modelData(modelDataSrc, modelDataSrc + modelDataSize);
+
+	// Patch TextureLayouts with new VRAM coordinates
+	// Parse Model and ModelHeaders to find TextureLayout arrays
+	const PSX::Model* model = reinterpret_cast<const PSX::Model*>(modelData.data());
+	const uint32_t modelHeadersOffset = model->offHeaders - ctrHeader->modelOffset;
+	const PSX::ModelHeader* modelHeaders = reinterpret_cast<const PSX::ModelHeader*>(modelData.data() + modelHeadersOffset);
+
+	for (uint8_t h = 0; h < model->numHeaders; h++)
+	{
+		const PSX::ModelHeader& modelHdr = modelHeaders[h];
+		if (modelHdr.offTexLayout == 0) { continue; }
+
+		// offTexLayout points to a pointer array, each entry points to a TextureLayout
+		uint32_t ptrArrayOffset = modelHdr.offTexLayout - ctrHeader->modelOffset;
+		const uint32_t* texLayoutPtrs = reinterpret_cast<const uint32_t*>(modelData.data() + ptrArrayOffset);
+
+		// Count TextureLayouts by finding the first null or out-of-range pointer
+		size_t numLayouts = 0;
+		while (texLayoutPtrs[numLayouts] != 0 &&
+			texLayoutPtrs[numLayouts] >= ctrHeader->modelOffset &&
+			texLayoutPtrs[numLayouts] < ctrHeader->modelPatchTableOffset)
+		{
+			numLayouts++;
+		}
+
+		for (size_t i = 0; i < numLayouts; i++)
+		{
+			uint32_t layoutOffset = texLayoutPtrs[i] - ctrHeader->modelOffset;
+			PSX::TextureLayout* layout = reinterpret_cast<PSX::TextureLayout*>(modelData.data() + layoutOffset);
+			if (!layouts.empty() && !m_headers.empty() && !m_headers[h].m_textureLayoutID.empty())
+			{
+				PSX::TextureLayout editedLayout = layouts[m_headers[h].m_textureLayoutID[i]];
+				*layout = editedLayout;
+				continue;
+			}
+
+			// Extract original texpage/clut from layout
+			uint8_t origPageX = layout->texPage.x;
+			uint8_t origPageY = layout->texPage.y;
+			uint8_t origPalX = layout->clut.x;
+			uint16_t origPalY = layout->clut.y;
+
+			// Find matching ModelTextureForVRM
+			for (const ModelTextureForVRM& tex : modelTexturesInVRAM)
+			{
+				if (tex.modelName != m_name) { continue; }
+				if (!tex.placed) { continue; }
+				if (tex.origPageX != origPageX) { continue; }
+				if (tex.origPageY != origPageY) { continue; }
+				if (tex.origPalX != origPalX) { continue; }
+				if (tex.origPalY != origPalY) { continue; }
+
+				// Found matching texture! Update TextureLayout with new coordinates
+				// Internal buffer position -> VRAM position: add 512 to X (VRM is placed at VRAM X=512)
+				size_t vramX = 512 + tex.imageX;
+				size_t vramY = tex.imageY;
+
+				// Calculate new texpage (64x256 pages)
+				layout->texPage.x = static_cast<uint16_t>(vramX / 64);
+				layout->texPage.y = static_cast<uint16_t>(vramY / 256);
+				layout->texPage.blendMode = tex.blendMode;
+				layout->texPage.texpageColors = tex.bpp;
+
+				// Calculate new CLUT coords (if indexed)
+				if (tex.bpp < 2)
+				{
+					size_t clutVramX = 512 + tex.clutX;
+					size_t clutVramY = tex.clutY;
+					layout->clut.x = static_cast<uint16_t>(clutVramX / 16);
+					layout->clut.y = static_cast<uint16_t>(clutVramY);
+				}
+
+				// Calculate UV adjustment
+				// The texture was extracted starting at UV (originU, originV)
+				// Now it's placed at position (vramX % 64, vramY % 256) within the new texpage
+				// UV coordinates are scaled by BPP: 4bpp=4x, 8bpp=2x, 16bpp=1x
+				int uvStretch = (tex.bpp == 0) ? 4 : (tex.bpp == 1) ? 2 : 1;
+				int newOriginU = static_cast<int>((vramX % 64) * uvStretch);
+				int newOriginV = static_cast<int>(vramY % 256);
+				int deltaU = newOriginU - tex.originU;
+				int deltaV = newOriginV - tex.originV;
+
+
+
+				// Adjust all UV coordinates
+				layout->u0 = static_cast<uint8_t>(layout->u0 + deltaU);
+				layout->v0 = static_cast<uint8_t>(layout->v0 + deltaV);
+				layout->u1 = static_cast<uint8_t>(layout->u1 + deltaU);
+				layout->v1 = static_cast<uint8_t>(layout->v1 + deltaV);
+				layout->u2 = static_cast<uint8_t>(layout->u2 + deltaU);
+				layout->v2 = static_cast<uint8_t>(layout->v2 + deltaV);
+				layout->u3 = static_cast<uint8_t>(layout->u3 + deltaU);
+				layout->v3 = static_cast<uint8_t>(layout->v3 + deltaV);
+
+				break; // Found and patched
+			}
+		}
+	}
+
+	// Convert pointers from .ctrmodel format to .lev format
+	// .ctrmodel: absolute offsets pointing directly to targets
+	// .lev: stored offsets where (stored + 4) = actual file position
+	// Since modelBaseOffset is already a stored offset (actual - 4), we just compute:
+	// new_stored_offset = modelBaseOffset + relative_offset_within_model
+	for (uint32_t i = 0; i < patchCount; i++)
+	{
+		uint32_t ctrPatchOffset = patchOffsets[i]; // Absolute offset in .ctrmodel where pointer field is
+		uint32_t relativeOffset = ctrPatchOffset - ctrHeader->modelOffset; // Relative to model data
+
+		if (relativeOffset + sizeof(uint32_t) <= modelData.size())
+		{
+			uint32_t* ptrLocation = reinterpret_cast<uint32_t*>(&modelData[relativeOffset]);
+			uint32_t ctrPointerValue = *ptrLocation; // Absolute in .ctrmodel, points directly to target
+
+			// Transform to .lev stored offset format
+			// Target's relative position within model = ctrPointerValue - ctrModelOffset
+			// Target's stored offset in .lev = modelBaseOffset + relative_position
+			uint32_t levPointerValue = static_cast<uint32_t>(
+				modelBaseOffset + (ctrPointerValue - ctrHeader->modelOffset)
+				);
+			*ptrLocation = levPointerValue;
+		}
+	}
+	return modelData;
 }
 
 Instance::Instance(std::string model)
