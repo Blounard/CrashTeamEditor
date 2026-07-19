@@ -1515,7 +1515,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				{
 					for (uint32_t j = 0; j < model.numHeaders; j++)
 					{
-						file.seekg(offLev + std::streampos(model.offHeaders));
+						file.seekg(offLev + std::streampos(model.offHeaders + j * sizeof(PSX::ModelHeader)));
 						PSX::ModelHeader modelHeader{};
 						Read(file, modelHeader);
 						currentModel.m_headers.emplace_back(modelHeader);
@@ -1606,7 +1606,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				{
 					for (uint32_t j = 0; j < model.numHeaders; j++)
 					{
-						file.seekg(offLev + std::streampos(model.offHeaders));
+						file.seekg(offLev + std::streampos(model.offHeaders + j * sizeof(PSX::ModelHeader)));
 						PSX::ModelHeader modelHeader{};
 						Read(file, modelHeader);
 						InstanceModelHeader& currHeader = currentModel.m_headers[j];
