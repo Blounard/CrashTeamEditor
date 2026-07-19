@@ -617,8 +617,8 @@ void LevDataExtractor::ExtractModels(void)
 				for (auto& [key, group] : textureGroups)
 				{
 					// Calculate dimensions from the combined bounding box
-					int width = group.maxU - group.minU;
-					int height = group.maxV - group.minV;
+					int width = group.maxU - group.minU +1; 
+					int height = group.maxV - group.minV +1;
 
 					int bpp = group.bpp;
 					const char* bppStr = (bpp == 0) ? "4-bit" : (bpp == 1) ? "8-bit" : "16-bit";
