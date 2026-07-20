@@ -306,6 +306,8 @@ private:
 	uint16_t m_flags;
 	Vec3 m_scale;
 	//int16_t scaleOrPad ;
+	std::vector<Tri> faces; // Array of triangle, contain string texture, positions, UVs, and colors.
+	uint32_t unk1;
 
 
 };
@@ -329,6 +331,7 @@ public:
 
 private:
 	std::string m_name;
+	int16_t m_id;
 	std::vector<uint8_t> m_rawData;
 	std::vector<Primitive> m_parsedGeometry;
 	bool m_parsed = false;

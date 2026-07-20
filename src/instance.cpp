@@ -70,9 +70,14 @@ std::vector<uint8_t> InstanceModel::Serialize(std::unordered_map<std::string, si
 			PSX::TextureLayout* layout = reinterpret_cast<PSX::TextureLayout*>(modelData.data() + layoutOffset);
 			if (!layouts.empty() && !m_headers.empty() && !m_headers[h].m_textureLayoutID.empty())
 			{
-				PSX::TextureLayout editedLayout = layouts[m_headers[h].m_textureLayoutID[i]];
-				*layout = editedLayout;
-				continue;
+				if (true)//m_name == "crate_question")// && m_headers[h].m_texNames[i] == "tex_model_308")
+				{
+					printf("Model %s, Header n°%d, HeaderLayout n°%d, material %s\n", m_name.c_str(), h, i, m_headers[h].m_texNames[i].c_str());
+					PSX::TextureLayout editedLayout = layouts[m_headers[h].m_textureLayoutID[i]];
+					*layout = editedLayout;
+					continue;
+				}
+				
 			}
 
 			// Extract original texpage/clut from layout

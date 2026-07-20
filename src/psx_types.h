@@ -249,71 +249,28 @@ namespace PSX
 
 	struct Model
 	{
-		// name of model group
-		// "oxide" for example
-		// 0x0
-		char name[0x10];
-
-		// index of 2160 array
-		// 0x10
-		int16_t id;
-
-		// 0x12
-		uint16_t numHeaders;
-
-		// 0x14
-		uint32_t offHeaders;
+		char name[0x10]; // 0x0 name of model group, "oxide" for example
+		int16_t id; // 0x10 index of 2160 array
+		uint16_t numHeaders; // 0x12
+		uint32_t offHeaders; // 0x14
 	};
 
 	struct ModelHeader
 	{
-		// name of individual model LOD,
-		// "oxide_hi" for example
-		// 0x0
-		char name[0x10];
-
-		// 0x10
-		uint32_t unk1;
-
-		// 0x14
-		uint16_t maxDistanceLOD;
-
-		// 0x16
-		// 0x0 - normal 3D model
-		// 0x1 - always point north
-		// 0x2 - always point to camera (a.k.a. billboarding) (warppad numbers)
-		uint16_t flags;
-
-		// 0x18
-		Vec3 scale;
-
+		char name[0x10]; // 0x0 name of model group, "oxide_hi" for example
+		uint32_t unk1; // 0x10
+		uint16_t maxDistanceLOD; // 0x14
+		uint16_t flags; // 0x16 ; 0x0 - normal 3D model ; 0x1 - always point north ; 0x2 - always point to camera (a.k.a. billboarding) (warppad numbers)
+		Vec3 scale; // 0x18
 		int16_t maybeScaleMaybePadding; // usually 0x0
-
-		// 0x20
-		uint32_t offCommandList;
-
-		// 0x24
-		// null if there are animations
-		uint32_t offFrameData;
-
-		// 0x28
-		uint32_t offTexLayout; // usually same as LEV in vanilla
-
-		// 0x2C
-		uint32_t offColors; // CLUT = color lookup table
-
-		// 0x30
-		// same as anim->0x14
-		uint32_t unk3;
-
-		// 0x34
-		uint32_t numAnimations;
-
-		// 0x38
-		uint32_t offAnimations;
-
-		// 0x3C
-		uint32_t offAnimtex;
+		uint32_t offCommandList; // 0x20
+		uint32_t offFrameData; // 0x24 Null if there are animations
+		uint32_t offTexLayout; // 0x28 , Array of TexLayout, count with commandList texCoordIndex
+		uint32_t offColors; // 0x2C CLUT = color lookup table
+		uint32_t unk3; // 0x30 ; same as anim->0x14
+		uint32_t numAnimations; // 0x34
+		uint32_t offAnimations; // 0x38
+		uint32_t offAnimtex; // 0x3C
 	};
 
 	//see https://github.com/CTR-tools/CTR-tools/blob/master/formats/txt_ctr.txt
