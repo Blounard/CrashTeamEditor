@@ -2138,8 +2138,8 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				PSX::Model model{};
 				Read(file, model);
 				std::string modelName(model.name, strnlen(model.name, sizeof(model.name)));
-				/*if (modelName != "crate_question")
-					continue;*/
+				if (modelName != "startbanner_JAP")
+					continue;
 				if (m_instanceModels.contains(modelName))
 				{	// Model already imported
 					continue;
@@ -2192,14 +2192,15 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 									//printf("noBackfaceFlag:%d, ", cmd.noBackfaceFlag);
 									//printf("unk1:%d, ", cmd.unk1);
 									//printf("unk2:%d, ", cmd.unk2); 
-									printf("texCoordIndex:%d, ", cmd.texCoordIndex);
-									//printf("colorCoordIndex:%d, ", cmd.colorCoordIndex);
+									//printf("texCoordIndex:%d, ", cmd.texCoordIndex);
+									printf("colorCoordIndex:%d, ", cmd.colorCoordIndex);
 									printf("stackWriteLocationIndex:%d, ", cmd.stackWriteLocationIndex);
 									printf("readNextVertFromStackIndexFlag:%d, ", cmd.readNextVertFromStackIndexFlag);
 									//printf("normalFlipFlag:%d, ", cmd.normalFlipFlag);
-									printf("swapFlag:%d, ", cmd.swapFlag);
-									printf("resetFlag:%d, ", cmd.resetFlag);
+									//printf("swapFlag:%d, ", cmd.swapFlag);
+									//printf("resetFlag:%d, ", cmd.resetFlag);
 									printf("\n");
+
 								}
 							}
 									

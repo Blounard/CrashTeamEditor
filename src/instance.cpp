@@ -703,6 +703,14 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 		commands.push_back(cmdC);
 	}
 
+	// Fix for anim flag : 
+	if (m_unkNum > 63)
+	{
+		while (colorPalette.size() < 64)
+		{
+			colorPalette.push_back(static_cast<uint32_t>(0));
+		}
+	}
 	// --- Write command list section: unkNum + commands + terminator ---
 	const size_t commandListOffset = output.size();
 	//unkNum is actually colorPalette size ??
