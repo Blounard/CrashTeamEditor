@@ -442,6 +442,7 @@ static std::vector<ExportTriangle> DecodeModelHeaderTriangles(const std::vector<
 		stripLength++;
 	}
 
+
 	result.reserve(emitted.size());
 	for (const auto& et : emitted)
 	{
@@ -652,7 +653,7 @@ bool Level::ImportModel(const std::filesystem::path& ctrmodelPath)
 	std::string name(model->name, strnlen(model->name, sizeof(model->name)));
 	printf("Imported model: %s (%zu bytes)\n", name.c_str(), ctrmodelData.size());
 
-	std::filesystem::path modelCacheDir = m_parentPath / "extracted_models";
+	std::filesystem::path modelCacheDir = m_parentPath / std::filesystem::path(m_name + "_models");
 	std::filesystem::create_directories(modelCacheDir);
 
 	if (!modelCacheDir.empty())
@@ -1785,6 +1786,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 
 	m_parentPath = levFile.parent_path();
 	m_name = levFile.filename().replace_extension().string() + "_edit";
+	std::filesystem::path modelCacheDir = levFile.parent_path() / (levFile.stem().string() + "_models");
 
 	uint32_t offPointerMap;
 	Read(file, offPointerMap);
@@ -1881,11 +1883,10 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 			if (offModel != 0) { uniqueModelOffsets.insert(offModel); }
 		}
 	}
-
+	
 	// Auto-extract models from LEV data into .ctrmodel files and import them
 	if (!uniqueModelOffsets.empty())
 	{
-		std::filesystem::path modelCacheDir = levFile.parent_path() / "extracted_models";
 		std::filesystem::create_directories(modelCacheDir);
 
 		// Extract all models using existing LevDataExtractor
@@ -1916,7 +1917,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 			if (!std::filesystem::exists(ctrmodelPath))
 				continue;
 
-			ImportModel(ctrmodelPath);
+			//ImportModel(ctrmodelPath);
 
 		}
 	}
@@ -2052,14 +2053,11 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				PSX::Model model{};
 				Read(file, model);
 				std::string modelName(model.name, strnlen(model.name, sizeof(model.name)));
-				if (!m_instanceModels.contains(modelName))
-				{
-					printf("Skipping %s because not loaded\n", modelName.c_str());
+				if (m_instanceModels.contains(modelName))
+				{	// Model already imported
 					file.seekg(currentPosInst);
 					continue;
 				}
-				InstanceModel& currentModel = m_instanceModels[modelName];
-				currentModel.m_headers.clear();
 				if (model.offHeaders != 0 && model.numHeaders > 0)
 				{
 					for (uint32_t j = 0; j < model.numHeaders; j++)
@@ -2067,8 +2065,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 						file.seekg(offLev + std::streampos(model.offHeaders + j * sizeof(PSX::ModelHeader)));
 						PSX::ModelHeader modelHeader{};
 						Read(file, modelHeader);
-						currentModel.m_headers.emplace_back(modelHeader);
-						InstanceModelHeader& currHeader = currentModel.m_headers.back();
 						if (modelHeader.offCommandList != 0 && modelHeader.offTexLayout != 0)
 						{
 							// --- Pass 1: scan command list to find how many texture layouts are actually used ---
@@ -2111,7 +2107,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 								RawUV rawUV(layout);
 								textureToPixelBounds[key].Update(rawUV);
 								//currHeader.m_rawUVs.push_back(rawUV);
-								currHeader.m_texNames.push_back(materialCache[key]);
+								//currHeader.m_texNames.push_back(materialCache[key]);
 							}
 						}
 					}
@@ -2129,29 +2125,28 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		Texture newTexture(key, bounds, vram, newMatName, tempDir, true);
 		m_materialToTexture[newMatName] = newTexture;
 	}
-
-	// Note, might merge this pass with 2nd pass
+	
 	// 4.1th pass : Create Models/Header with UVs and textures Assign QuadUVs to Models/Headers
 	if (header.offInstances != 0)
 	{
-		file.seekg(offLev + std::streampos(header.offInstances));
 		for (uint32_t i = 0; i < header.numInstances; i++)
 		{
+			file.seekg(offLev + std::streampos(header.offInstances + i * sizeof(PSX::InstDef)));
 			PSX::InstDef inst{};
 			Read(file, inst);
 			if (inst.offModel != 0)
 			{
-				std::streampos currentPosInst = file.tellg();
 				file.seekg(offLev + std::streampos(inst.offModel));
 				PSX::Model model{};
 				Read(file, model);
 				std::string modelName(model.name, strnlen(model.name, sizeof(model.name)));
-				if (!m_instanceModels.contains(modelName))
-				{
-					file.seekg(currentPosInst);
+				if (modelName != "crate_question")
+					continue;
+				if (m_instanceModels.contains(modelName))
+				{	// Model already imported
 					continue;
 				}
-				InstanceModel& currentModel = m_instanceModels[modelName];
+				m_instanceModels[modelName] = InstanceModel(model, modelName);
 				if (model.offHeaders != 0 && model.numHeaders > 0)
 				{
 					for (uint32_t j = 0; j < model.numHeaders; j++)
@@ -2159,42 +2154,151 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 						file.seekg(offLev + std::streampos(model.offHeaders + j * sizeof(PSX::ModelHeader)));
 						PSX::ModelHeader modelHeader{};
 						Read(file, modelHeader);
-						InstanceModelHeader& currHeader = currentModel.m_headers[j];
-						if (modelHeader.offCommandList != 0 && modelHeader.offTexLayout != 0)
+						Vec3 modelScale = ConvertPSXVec3(modelHeader.scale, FP_ONE); // Not sure about the conversion factor.
+						if (modelHeader.offCommandList != 0 && modelHeader.offFrameData != 0 && modelHeader.offColors != 0)
 						{
-							for (uint32_t ti = 0; ti < currHeader.m_texNames.size(); ti++)
+							// Step 1 : Decode all commands
+							file.seekg(offLev + std::streampos(modelHeader.offCommandList));
+							uint32_t unkNum = 0;
+							Read(file, unkNum);
+							std::vector<PSX::InstDrawCommand> commandList;
+							while (true)
 							{
-								file.seekg(offLev + std::streampos(modelHeader.offTexLayout + ti * sizeof(uint32_t)));
-								uint32_t offLayout = 0;
-								Read(file, offLayout);
-								if (offLayout == 0) continue;
-
-								file.seekg(offLev + std::streampos(offLayout));
-								PSX::TextureLayout layout{};
-								Read(file, layout);
-								LayoutKey key(layout);
-								const PixelBounds& bounds = textureToPixelBounds[key];
-								RawUV rawUV(layout);
-								float croppedWidth = static_cast<float>(bounds.maxU - bounds.minU);
-								float croppedHeight = static_cast<float>(bounds.maxV - bounds.minV);
-								if (croppedWidth == 0) croppedWidth = 1.0f;
-								if (croppedHeight == 0) croppedHeight = 1.0f;
-								QuadUV uvs = {
-									Vec2((rawUV.u0 - bounds.minU) / croppedWidth, (rawUV.v0 - bounds.minV) / croppedHeight),
-									Vec2((rawUV.u1 - bounds.minU) / croppedWidth, (rawUV.v1 - bounds.minV) / croppedHeight),
-									Vec2((rawUV.u2 - bounds.minU) / croppedWidth, (rawUV.v2 - bounds.minV) / croppedHeight),
-									Vec2((rawUV.u3 - bounds.minU) / croppedWidth, (rawUV.v3 - bounds.minV) / croppedHeight)
-								};
-								currHeader.m_uvs.push_back(uvs);
+								PSX::InstDrawCommand cmd{};
+								Read(file, cmd);
+								if (cmd.command == 0xFFFFFFFF)
+									break;
+								else
+								{	
+									commandList.push_back(cmd);
+									if (j==1)
+										printf("Model %s, header n.%d, colorFromScratchpadOrRamFlag:%d, noBackfaceFlag:%d, unk1:%d, unk2:%d, texCoordIndex:%d, colorCoordIndex:%d, stackWriteLocationIndex:%d, readNextVertFromStackIndexFlag:%d, normalFlipFlag:%d, swapFlag:%d, resetFlag:%d\n", 
+											modelName, j, cmd.colorFromScratchpadOrRamFlag, cmd.noBackfaceFlag, cmd.unk1, cmd.unk2, cmd.texCoordIndex, cmd.colorCoordIndex, cmd.stackWriteLocationIndex, cmd.readNextVertFromStackIndexFlag, cmd.normalFlipFlag, cmd.swapFlag, cmd.resetFlag);
+								}
+									
 							}
+
+
+							// Step 2 : Vertices 
+							int numVerts = 0;
+							for (PSX::InstDrawCommand& command : commandList)
+							{
+								if (!command.readNextVertFromStackIndexFlag)
+									numVerts++;
+							}
+
+							file.seekg(offLev + std::streampos(modelHeader.offFrameData));
+							PSX::ModelFrame modelFrame;
+							Read(file, modelFrame);
+
+							Vec3 frameOrigin = ConvertPSXVec3(modelFrame.pos, 256.0f); // Need to verify this 256 factor
+							
+							std::vector<Point> vertices;
+							for (int vi = 0; vi < numVerts; vi++)
+							{
+								file.seekg(offLev + std::streampos(modelHeader.offFrameData + modelFrame.vertexOffset + vi * sizeof(PSX::Vec3b)));
+								PSX::Vec3b vert;
+								Read(file, vert);
+
+								Vec3 pos;
+								// wtf ? Might need to double check that.
+								pos.x = ((vert.x / 255.0f) + frameOrigin.x) * modelScale.x;
+								pos.y = ((vert.z / 255.0f) + frameOrigin.y) * modelScale.y;
+								pos.z = ((vert.y / 255.0f) + frameOrigin.z) * modelScale.z;
+								pos.x = -pos.x;
+								pos.z = -pos.z;
+
+								Point p{};
+								p.pos = pos;
+								vertices.push_back(p);
+							}
+							// Vertices Stack decode logic
+							std::vector<Point> stack(256);
+							int vertexIndex = 0;
+							int	stripLength = 0;
+							Point temp[4] = {};
+							std::vector<Tri> triList;
+
+							for (PSX::InstDrawCommand& command : commandList)
+							{
+								if (!command.readNextVertFromStackIndexFlag)
+								{
+									stack[command.stackWriteLocationIndex] = vertices[vertexIndex];
+									vertexIndex++;
+								}
+
+								temp[0] = temp[1]; temp[1] = temp[2]; temp[2] = temp[3];
+								temp[3] = stack[command.stackWriteLocationIndex];
+
+								int colorIdx = command.colorCoordIndex;
+								file.seekg(offLev + std::streampos(modelHeader.offColors + colorIdx *sizeof(uint32_t)));
+								PSX::Color psxCol;
+								Read(file, psxCol);
+								temp[3].color =  ConvertColor(psxCol); 
+
+								if (command.swapFlag) { temp[1] = temp[0]; }
+								if (command.resetFlag) { stripLength = 0; }
+
+								if (stripLength >= 2)
+								{
+									Tri tri{};
+
+									std::string texName = "default";
+									QuadUV uvs{};
+									int texIdx = command.texCoordIndex;
+									if (texIdx > 0)
+									{
+										file.seekg(offLev + std::streampos(modelHeader.offTexLayout + (texIdx - 1) * sizeof(uint32_t)));
+										uint32_t offLayout = 0;
+										Read(file, offLayout);
+										if (offLayout == 0) continue;
+										file.seekg(offLev + std::streampos(offLayout));
+										PSX::TextureLayout layout{};
+										Read(file, layout);
+
+										LayoutKey key(layout);
+										PixelBounds& bounds = textureToPixelBounds[key];
+										RawUV rawUV(layout);
+										uvs = MakeUV(bounds, rawUV);
+										texName = materialCache[key];
+									}
+
+
+									
+
+									tri.p[0].pos = temp[3].pos; tri.p[1].pos = temp[2].pos; tri.p[2].pos = temp[1].pos;
+									tri.p[0].color = temp[3].color; tri.p[1].color = temp[2].color; tri.p[2].color = temp[1].color;
+									tri.p[0].uv = uvs[2]; tri.p[1].uv = uvs[1]; tri.p[2].uv = uvs[0];
+									tri.texture = texName;
+									triList.push_back(tri);
+
+									if (command.normalFlipFlag)
+									{
+										Tri& last = triList.back();
+										std::swap(last.p[1].pos, last.p[2].pos);
+										std::swap(last.p[1].color, last.p[2].color);
+										std::swap(last.p[1].uv, last.p[2].uv);
+									}
+								}
+								stripLength++;
+							}
+							m_instanceModels[modelName].m_headers.emplace_back(modelHeader, triList, unkNum);
 						}
 					}
 				}
-				file.seekg(currentPosInst);
 			}
 		}
 	}
 
+	//Export model to modifiable state 
+	std::filesystem::create_directories(modelCacheDir);
+	for (auto& [name, model] : m_instanceModels)
+	{
+		model.Export(modelCacheDir, m_materialToTexture);
+	}
+	std::filesystem::path testvartemptodel = levFile.parent_path() / ("metadata.json");
+	m_instanceModels["crate_question"] = InstanceModel(testvartemptodel, m_materialToTexture);
+	
 	// 4th pass : create quadblocks with material, UVs and texture	
 	file.seekg(offLev + std::streampos(meshInfo.offQuadblocks));
 	for (uint32_t i = 0; i < meshInfo.numQuadblocks; i++)
@@ -3579,24 +3683,26 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	// Write Model data for each unique model
 	std::unordered_map<std::string, size_t> modelOffsets;
 	std::vector<std::string> modelOrder(uniqueModelNames.begin(), uniqueModelNames.end());
+	std::vector<std::vector<uint8_t>> serializedModels(modelOrder.size());
+	std::vector<std::vector<uint32_t>> modelPointerLocations(modelOrder.size());
 
-	for (const std::string& modelName : modelOrder)
+	for (size_t i = 0; i < modelOrder.size(); i++)
 	{
+		const std::string& modelName = modelOrder[i];
 		if (!m_instanceModels.contains(modelName))
 		{
 			printf("Model : %s not in m_instanceModels\n", modelName.c_str());
 			continue;
 		}
-			
-		
-		const std::vector<uint8_t>& ctrmodelData = m_instanceModels.at(modelName).GetRawData();
-		// Parse .ctrmodel to get model data size
-		const SH::CtrModel* ctrHeader = reinterpret_cast<const SH::CtrModel*>(ctrmodelData.data());
-		size_t modelDataSize = ctrHeader->modelPatchTableOffset - ctrHeader->modelOffset;
-		const size_t offModel = currOffset;
+
+		InstanceModel& model = m_instanceModels[modelName];
+		const uint32_t offModel = static_cast<uint32_t>(currOffset);
 		modelOffsets[modelName] = offModel;
-		printf("offModel[%s] = %zx (%zu bytes)\n", modelName.c_str(), offModel, modelDataSize);
-		currOffset += modelDataSize;
+
+		serializedModels[i] = model.Serialize(offModel, m_materialToTexture, modelPointerLocations[i]);
+
+		printf("offModel[%s] = %zx (%zu bytes)\n", modelName.c_str(), (size_t)offModel, serializedModels[i].size());
+		currOffset += serializedModels[i].size();
 	}
 
 	// Write Model pointer array (NULL-terminated)
@@ -3711,26 +3817,13 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	}
 
 	// Add model internal pointers to .lev patch table
-	for (const std::string& modelName : modelOrder)
+	for (size_t i = 0; i < modelOrder.size(); i++)
 	{
-		if (!m_instanceModels.contains(modelName))
+		if (!m_instanceModels.contains(modelOrder[i]))
 			continue;
-		const std::vector<uint8_t>& ctrmodelData = m_instanceModels.at(modelName).GetRawData();
-		size_t modelBaseOffset = modelOffsets[modelName];
-
-		// Parse .ctrmodel to get patch table
-		const SH::CtrModel* ctrHeader = reinterpret_cast<const SH::CtrModel*>(ctrmodelData.data());
-		const uint32_t* patchTablePtr = reinterpret_cast<const uint32_t*>(ctrmodelData.data() + ctrHeader->modelPatchTableOffset);
-		const uint32_t patchCount = *patchTablePtr;
-		const uint32_t* patchOffsets = patchTablePtr + 1;
-
-		// Add each pointer field location to .lev patch table
-		for (uint32_t i = 0; i < patchCount; i++)
+		for (uint32_t loc : modelPointerLocations[i])
 		{
-			uint32_t ctrPatchOffset = patchOffsets[i]; // Absolute offset in .ctrmodel where pointer field is
-			uint32_t relativeOffset = ctrPatchOffset - ctrHeader->modelOffset; // Relative to model data
-			uint32_t levPatchOffset = static_cast<uint32_t>(modelBaseOffset + relativeOffset); // Absolute in .lev
-			pointerMap.push_back(levPatchOffset);
+			pointerMap.push_back(loc);
 		}
 	}
 
@@ -3868,15 +3961,13 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	}
 	Write(file, &nullTerm, sizeof(nullTerm));
 
-	// Write Model data with pointer conversion from .ctrmodel to .lev format
-	for (const std::string& modelName : modelOrder)
+	// Write Model data (already serialized during the sizing pass above)
+	for (size_t i = 0; i < modelOrder.size(); i++)
 	{
-		InstanceModel& model = m_instanceModels[modelName];
-
-		std::vector<uint8_t> modelData = model.Serialize(modelOffsets, m_modelTexturesInVRAM, modelLayouts);
-		Write(file, modelData.data(), modelData.size());
+		if (!m_instanceModels.contains(modelOrder[i]))
+			continue;
+		Write(file, serializedModels[i].data(), serializedModels[i].size());
 	}
-
 	// Write Model pointer array (NULL-terminated, stored offsets - game adds 4 to get actual position)
 	for (const std::string& modelName : modelOrder)
 	{
@@ -4646,6 +4737,7 @@ bool Level::UpdateVRM()
 		}
 	}
 	
+	/*
 	// Extract textures from imported models
 	m_modelTexturesInVRAM.clear();
 	for (auto& [modelName, instModel] : m_instanceModels)
@@ -4717,6 +4809,7 @@ bool Level::UpdateVRM()
 			m_modelTexturesInVRAM.push_back(std::move(modelTex));
 		}
 	}
+	*/
 
 	m_vrm = PackVRM(textures, m_modelTexturesInVRAM.empty() ? nullptr : &m_modelTexturesInVRAM);
 	if (m_vrm.empty()) { return false; }

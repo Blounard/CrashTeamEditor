@@ -10,11 +10,11 @@ namespace PSX
 {
 	static constexpr size_t MAX_NUM_PLAYERS = 4;
 
-	struct Vec3b
+	struct Vec3b //for vertices in ModelFrame Might need to check if it's signed or not
 	{
-		int8_t x;
-		int8_t y;
-		int8_t z;
+		uint8_t x;
+		uint8_t y;
+		uint8_t z;
   };
 
 	struct Vec3
@@ -517,6 +517,7 @@ static constexpr int16_t FP_ONE_ROT = 256;
 static inline int16_t ConvertFloat(float x, int16_t one = FP_ONE) { return static_cast<int16_t>(std::round(x * static_cast<float>(one))); };
 static inline int16_t ConvertAngle(float x, int16_t one = FP_ONE) { return static_cast<int16_t>(std::round((x * static_cast<float>(FP_ONE)) / 360.0f)); }
 static inline float ConvertFP(int16_t fp, int16_t one = FP_ONE) { return static_cast<float>(fp) / static_cast<float>(one); }
+//static inline float ConvertFP(uint8_t fp, int16_t one = FP_ONE) { return static_cast<float>(fp) / static_cast<float>(one); }
 static inline float ConvertFPAngle(int16_t fp, int16_t one = FP_ONE) { return (static_cast<float>(fp) * 360.0f) / static_cast<float>(FP_ONE); }
 
 static inline PSX::Vec3 ConvertAngle(const Vec3& v, int16_t one = FP_ONE)
@@ -547,6 +548,15 @@ static inline PSX::Vec3 ConvertVec3(const Vec3& v, int16_t one = FP_ONE)
 }
 
 static inline Vec3 ConvertPSXVec3(const PSX::Vec3& v, int16_t one = FP_ONE)
+{
+	Vec3 out = {};
+	out.x = ConvertFP(v.x, one);
+	out.y = ConvertFP(v.y, one);
+	out.z = ConvertFP(v.z, one);
+	return out;
+}
+
+static inline Vec3 ConvertPSXVec3b(const PSX::Vec3b& v, int16_t one = FP_ONE)
 {
 	Vec3 out = {};
 	out.x = ConvertFP(v.x, one);

@@ -249,6 +249,7 @@ PSX::TextureLayout Texture::Serialize(const QuadUV& uvs) const
 	size_t y = m_imageY % TEXPAGE_HEIGHT;
 	const float width = static_cast<float>(GetWidth() - 1);
 	const float height = static_cast<float>(GetHeight() - 1);
+	// MIGHT NEED TO CHANGE THIS TO width*U - u==maxU ? 1 : 0
 	size_t u0 = x + static_cast<size_t>(std::round(uvs[0].x * width));	size_t v0 = y + static_cast<size_t>(std::round(uvs[0].y * height));
 	size_t u1 = x + static_cast<size_t>(std::round(uvs[1].x * width));	size_t v1 = y + static_cast<size_t>(std::round(uvs[1].y * height));
 	size_t u2 = x + static_cast<size_t>(std::round(uvs[2].x * width));	size_t v2 = y + static_cast<size_t>(std::round(uvs[2].y * height));

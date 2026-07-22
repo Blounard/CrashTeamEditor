@@ -9,6 +9,7 @@
 #include <string>
 #include <cstdint>
 #include <vector>
+#include <nlohmann/json.hpp>
 
 
 // Per-InstDef settings for emitting a BSP-leaf collision hitbox at save time.
@@ -295,27 +296,39 @@ class InstanceModelHeader
 {
 public:
 	InstanceModelHeader() = default;
-	InstanceModelHeader(PSX::ModelHeader modelheader);
+	InstanceModelHeader(PSX::ModelHeader modelheader, std::vector<Tri> triangles, uint32_t unkNum);
+	InstanceModelHeader(const nlohmann::json& headerJson, const std::filesystem::path& modelDir, std::unordered_map<std::string, Texture>& materialToTexture);
+
+
 	std::vector<std::string> m_texNames; // We don't store immediately a Texture, because it's probably shared for many models
 	//std::vector <RawUV> m_rawUVs; // only useful for loadLev to be converted to QuadUV later.
 	std::vector <QuadUV> m_uvs; // UVs for each texture (same count as texNames)
 	std::vector<size_t> m_textureLayoutID; // array of texLayout ID for serial
+	void ExportOBJ(const std::filesystem::path& modelDir, std::string baseFileName, std::unordered_map<std::string, Texture>& materialToTexture);
+	nlohmann::json WriteMetadataJson(const std::string& objFile, const std::string& mtlFile) const;
+	void SerializeInto(std::vector<uint8_t>& output, uint32_t modelOffset, 
+		size_t headerStructOffset,
+		std::unordered_map<std::string, Texture>& materialToTexture,
+		std::vector<uint32_t>& outPointerLocations) const; 
 private:
 	std::string m_name;
 	float m_maxDistLOD;
 	uint16_t m_flags;
 	Vec3 m_scale;
-	//int16_t scaleOrPad ;
-	std::vector<Tri> faces; // Array of triangle, contain string texture, positions, UVs, and colors.
-	uint32_t unk1;
-
-
+	int16_t m_scaleOrPad ;
+	std::vector<Tri> m_faces; // Array of triangle, contain string texture, positions, UVs, and colors.
+	uint32_t m_unk1; // 0x10
+	uint32_t m_unk3; // 0x30 
+	uint32_t m_unkNum; // At offCommandList, before the 1st command
 };
 class InstanceModel // group of models ?
 {
 public:
 	InstanceModel() = default;
 	InstanceModel(std::string name, std::vector<uint8_t> rawData);
+	InstanceModel(PSX::Model model, std::string modelName);
+	InstanceModel(const std::filesystem::path& jsonPath, std::unordered_map<std::string, Texture>& materialToTexture);
+
 
 	const std::string& GetName() const { return m_name; }
 	const std::vector<uint8_t>& GetRawData() const { return m_rawData; }
@@ -324,11 +337,10 @@ public:
 	std::vector<Primitive>& GetParsedGeometry() { return m_parsedGeometry; }
 	bool IsParsed() const { return m_parsed; }
 	void SetParsed(bool parsed) { m_parsed = parsed; }
-	void LoadPSXData(const PSX::Model&, const std::vector<PSX::ModelHeader>&);
+	void Export(const std::filesystem::path& exportDir, std::unordered_map<std::string, Texture>& materialToTexture);
+	std::vector<uint8_t> Serialize(uint32_t modelOffset, std::unordered_map<std::string, Texture>& materialToTexture,
+		std::vector<uint32_t>& outPointerLocations) const;
 	std::vector<InstanceModelHeader> m_headers;
-	std::vector<uint8_t> Serialize(std::unordered_map<std::string, size_t>& modelOffsets, std::vector<ModelTextureForVRM>& modelTexturesInVRAM, std::vector<PSX::TextureLayout> layouts) const;
-
-
 private:
 	std::string m_name;
 	int16_t m_id;
