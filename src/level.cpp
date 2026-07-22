@@ -2106,8 +2106,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 								//
 								RawUV rawUV(layout);
 								textureToPixelBounds[key].Update(rawUV);
-								//currHeader.m_rawUVs.push_back(rawUV);
-								//currHeader.m_texNames.push_back(materialCache[key]);
 							}
 						}
 					}
@@ -2140,8 +2138,8 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				PSX::Model model{};
 				Read(file, model);
 				std::string modelName(model.name, strnlen(model.name, sizeof(model.name)));
-				if (modelName != "crate_question")
-					continue;
+				/*if (modelName != "crate_question")
+					continue;*/
 				if (m_instanceModels.contains(modelName))
 				{	// Model already imported
 					continue;
@@ -2154,136 +2152,164 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 						file.seekg(offLev + std::streampos(model.offHeaders + j * sizeof(PSX::ModelHeader)));
 						PSX::ModelHeader modelHeader{};
 						Read(file, modelHeader);
-						Vec3 modelScale = ConvertPSXVec3(modelHeader.scale, FP_ONE); // Not sure about the conversion factor.
-						if (modelHeader.offCommandList != 0 && modelHeader.offFrameData != 0 && modelHeader.offColors != 0)
+
+						if (modelHeader.offFrameData == 0 ||
+							modelHeader.numAnimations != 0 ||
+							modelHeader.offAnimations != 0 ||
+							modelHeader.offAnimtex != 0 ||
+							modelHeader.offCommandList == 0 ||
+							modelHeader.offColors == 0)
 						{
-							// Step 1 : Decode all commands
-							file.seekg(offLev + std::streampos(modelHeader.offCommandList));
-							uint32_t unkNum = 0;
-							Read(file, unkNum);
-							std::vector<PSX::InstDrawCommand> commandList;
-							while (true)
-							{
-								PSX::InstDrawCommand cmd{};
-								Read(file, cmd);
-								if (cmd.command == 0xFFFFFFFF)
-									break;
-								else
-								{	
-									commandList.push_back(cmd);
-									if (j==1)
-										printf("Model %s, header n.%d, colorFromScratchpadOrRamFlag:%d, noBackfaceFlag:%d, unk1:%d, unk2:%d, texCoordIndex:%d, colorCoordIndex:%d, stackWriteLocationIndex:%d, readNextVertFromStackIndexFlag:%d, normalFlipFlag:%d, swapFlag:%d, resetFlag:%d\n", 
-											modelName, j, cmd.colorFromScratchpadOrRamFlag, cmd.noBackfaceFlag, cmd.unk1, cmd.unk2, cmd.texCoordIndex, cmd.colorCoordIndex, cmd.stackWriteLocationIndex, cmd.readNextVertFromStackIndexFlag, cmd.normalFlipFlag, cmd.swapFlag, cmd.resetFlag);
-								}
-									
-							}
-
-
-							// Step 2 : Vertices 
-							int numVerts = 0;
-							for (PSX::InstDrawCommand& command : commandList)
-							{
-								if (!command.readNextVertFromStackIndexFlag)
-									numVerts++;
-							}
-
-							file.seekg(offLev + std::streampos(modelHeader.offFrameData));
-							PSX::ModelFrame modelFrame;
-							Read(file, modelFrame);
-
-							Vec3 frameOrigin = ConvertPSXVec3(modelFrame.pos, 256.0f); // Need to verify this 256 factor
-							
-							std::vector<Point> vertices;
-							for (int vi = 0; vi < numVerts; vi++)
-							{
-								file.seekg(offLev + std::streampos(modelHeader.offFrameData + modelFrame.vertexOffset + vi * sizeof(PSX::Vec3b)));
-								PSX::Vec3b vert;
-								Read(file, vert);
-
-								Vec3 pos;
-								// wtf ? Might need to double check that.
-								pos.x = ((vert.x / 255.0f) + frameOrigin.x) * modelScale.x;
-								pos.y = ((vert.z / 255.0f) + frameOrigin.y) * modelScale.y;
-								pos.z = ((vert.y / 255.0f) + frameOrigin.z) * modelScale.z;
-								pos.x = -pos.x;
-								pos.z = -pos.z;
-
-								Point p{};
-								p.pos = pos;
-								vertices.push_back(p);
-							}
-							// Vertices Stack decode logic
-							std::vector<Point> stack(256);
-							int vertexIndex = 0;
-							int	stripLength = 0;
-							Point temp[4] = {};
-							std::vector<Tri> triList;
-
-							for (PSX::InstDrawCommand& command : commandList)
-							{
-								if (!command.readNextVertFromStackIndexFlag)
-								{
-									stack[command.stackWriteLocationIndex] = vertices[vertexIndex];
-									vertexIndex++;
-								}
-
-								temp[0] = temp[1]; temp[1] = temp[2]; temp[2] = temp[3];
-								temp[3] = stack[command.stackWriteLocationIndex];
-
-								int colorIdx = command.colorCoordIndex;
-								file.seekg(offLev + std::streampos(modelHeader.offColors + colorIdx *sizeof(uint32_t)));
-								PSX::Color psxCol;
-								Read(file, psxCol);
-								temp[3].color =  ConvertColor(psxCol); 
-
-								if (command.swapFlag) { temp[1] = temp[0]; }
-								if (command.resetFlag) { stripLength = 0; }
-
-								if (stripLength >= 2)
-								{
-									Tri tri{};
-
-									std::string texName = "default";
-									QuadUV uvs{};
-									int texIdx = command.texCoordIndex;
-									if (texIdx > 0)
-									{
-										file.seekg(offLev + std::streampos(modelHeader.offTexLayout + (texIdx - 1) * sizeof(uint32_t)));
-										uint32_t offLayout = 0;
-										Read(file, offLayout);
-										if (offLayout == 0) continue;
-										file.seekg(offLev + std::streampos(offLayout));
-										PSX::TextureLayout layout{};
-										Read(file, layout);
-
-										LayoutKey key(layout);
-										PixelBounds& bounds = textureToPixelBounds[key];
-										RawUV rawUV(layout);
-										uvs = MakeUV(bounds, rawUV);
-										texName = materialCache[key];
-									}
-
-
-									
-
-									tri.p[0].pos = temp[3].pos; tri.p[1].pos = temp[2].pos; tri.p[2].pos = temp[1].pos;
-									tri.p[0].color = temp[3].color; tri.p[1].color = temp[2].color; tri.p[2].color = temp[1].color;
-									tri.p[0].uv = uvs[2]; tri.p[1].uv = uvs[1]; tri.p[2].uv = uvs[0];
-									tri.texture = texName;
-									triList.push_back(tri);
-
-									if (command.normalFlipFlag)
-									{
-										Tri& last = triList.back();
-										std::swap(last.p[1].pos, last.p[2].pos);
-										std::swap(last.p[1].color, last.p[2].color);
-										std::swap(last.p[1].uv, last.p[2].uv);
-									}
-								}
-								stripLength++;
-							}
-							m_instanceModels[modelName].m_headers.emplace_back(modelHeader, triList, unkNum);
+							m_instanceModels[modelName].SetValid(false);
+							continue;
 						}
+							
+						Vec3 modelScale = ConvertPSXVec3(modelHeader.scale, FP_ONE); // Not sure about the conversion factor.
+
+						// Step 1 : Decode all commands
+						file.seekg(offLev + std::streampos(modelHeader.offCommandList));
+						uint32_t unkNum = 0;
+						Read(file, unkNum);
+						std::vector<PSX::InstDrawCommand> commandList;
+						while (true)
+						{
+							PSX::InstDrawCommand cmd{};
+							Read(file, cmd);
+							if (cmd.command == 0xFFFFFFFF)
+								break;
+							else
+							{	
+								commandList.push_back(cmd);
+								if (cmd.unk1 != 0 || cmd.unk2 != 0)
+								{
+									m_instanceModels[modelName].SetValid(false);
+								}
+								if (j==0)//modelName == "startbanner_JAP")
+								{
+									printf("Model %s, ", modelName);
+									//printf("header n. %d, ", j);
+									//printf("colorFromScratchpadOrRamFlag:%d, ", cmd.colorFromScratchpadOrRamFlag);
+									//printf("noBackfaceFlag:%d, ", cmd.noBackfaceFlag);
+									//printf("unk1:%d, ", cmd.unk1);
+									//printf("unk2:%d, ", cmd.unk2); 
+									printf("texCoordIndex:%d, ", cmd.texCoordIndex);
+									//printf("colorCoordIndex:%d, ", cmd.colorCoordIndex);
+									printf("stackWriteLocationIndex:%d, ", cmd.stackWriteLocationIndex);
+									printf("readNextVertFromStackIndexFlag:%d, ", cmd.readNextVertFromStackIndexFlag);
+									//printf("normalFlipFlag:%d, ", cmd.normalFlipFlag);
+									printf("swapFlag:%d, ", cmd.swapFlag);
+									printf("resetFlag:%d, ", cmd.resetFlag);
+									printf("\n");
+								}
+							}
+									
+						}
+
+
+						// Step 2 : Vertices 
+						int numVerts = 0;
+						for (PSX::InstDrawCommand& command : commandList)
+						{
+							if (!command.readNextVertFromStackIndexFlag)
+								numVerts++;
+						}
+
+						file.seekg(offLev + std::streampos(modelHeader.offFrameData));
+						PSX::ModelFrame modelFrame;
+						Read(file, modelFrame);
+
+						Vec3 frameOrigin = ConvertPSXVec3(modelFrame.pos, 256.0f); // Need to verify this 256 factor
+							
+						std::vector<Point> vertices;
+						for (int vi = 0; vi < numVerts; vi++)
+						{
+							file.seekg(offLev + std::streampos(modelHeader.offFrameData + modelFrame.vertexOffset + vi * sizeof(PSX::Vec3b)));
+							PSX::Vec3b vert;
+							Read(file, vert);
+
+							Vec3 pos;
+							// wtf ? Might need to double check that.
+							pos.x = ((vert.x / 255.0f) + frameOrigin.x) * modelScale.x;
+							pos.y = ((vert.z / 255.0f) + frameOrigin.y) * modelScale.y;
+							pos.z = ((vert.y / 255.0f) + frameOrigin.z) * modelScale.z;
+							pos.x = -pos.x;
+							pos.z = -pos.z;
+
+							Point p{};
+							p.pos = pos;
+							vertices.push_back(p);
+						}
+						// Vertices Stack decode logic
+						std::vector<Point> stack(256);
+						int vertexIndex = 0;
+						int	stripLength = 0;
+						Point temp[4] = {};
+						std::vector<Tri> triList;
+
+						for (PSX::InstDrawCommand& command : commandList)
+						{
+							if (!command.readNextVertFromStackIndexFlag)
+							{
+								stack[command.stackWriteLocationIndex] = vertices[vertexIndex];
+								vertexIndex++;
+							}
+
+							temp[0] = temp[1]; temp[1] = temp[2]; temp[2] = temp[3];
+							temp[3] = stack[command.stackWriteLocationIndex];
+
+							int colorIdx = command.colorCoordIndex;
+							file.seekg(offLev + std::streampos(modelHeader.offColors + colorIdx *sizeof(uint32_t)));
+							PSX::Color psxCol;
+							Read(file, psxCol);
+							temp[3].color =  ConvertColor(psxCol); 
+
+							if (command.swapFlag) { temp[1] = temp[0]; }
+							if (command.resetFlag) { stripLength = 0; }
+
+							if (stripLength >= 2)
+							{
+								Tri tri{};
+
+								std::string texName = "default";
+								QuadUV uvs{};
+								int texIdx = command.texCoordIndex;
+								if (texIdx > 0)
+								{
+									file.seekg(offLev + std::streampos(modelHeader.offTexLayout + (texIdx - 1) * sizeof(uint32_t)));
+									uint32_t offLayout = 0;
+									Read(file, offLayout);
+									if (offLayout == 0) continue;
+									file.seekg(offLev + std::streampos(offLayout));
+									PSX::TextureLayout layout{};
+									Read(file, layout);
+
+									LayoutKey key(layout);
+									PixelBounds& bounds = textureToPixelBounds[key];
+									RawUV rawUV(layout);
+									uvs = MakeUV(bounds, rawUV);
+									texName = materialCache[key];
+								}
+								else
+									printf("NO TEX ON SOME CMD IN %s\n", modelName.c_str());
+
+								tri.p[0].pos = temp[3].pos; tri.p[1].pos = temp[2].pos; tri.p[2].pos = temp[1].pos;
+								tri.p[0].color = temp[3].color; tri.p[1].color = temp[2].color; tri.p[2].color = temp[1].color;
+								tri.p[0].uv = uvs[2]; tri.p[1].uv = uvs[1]; tri.p[2].uv = uvs[0];
+								tri.texture = texName;
+								triList.push_back(tri);
+
+								if (command.normalFlipFlag)
+								{
+									Tri& last = triList.back();
+									std::swap(last.p[1].pos, last.p[2].pos);
+									std::swap(last.p[1].color, last.p[2].color);
+									std::swap(last.p[1].uv, last.p[2].uv);
+								}
+							}
+							stripLength++;
+						}
+						m_instanceModels[modelName].m_headers.emplace_back(modelHeader, triList, unkNum);
+						
 					}
 				}
 			}
@@ -2296,8 +2322,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	{
 		model.Export(modelCacheDir, m_materialToTexture);
 	}
-	std::filesystem::path testvartemptodel = levFile.parent_path() / ("metadata.json");
-	m_instanceModels["crate_question"] = InstanceModel(testvartemptodel, m_materialToTexture);
 	
 	// 4th pass : create quadblocks with material, UVs and texture	
 	file.seekg(offLev + std::streampos(meshInfo.offQuadblocks));
@@ -3154,33 +3178,6 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	{
 		if (UpdateVRM())
 		{
-			std::unordered_map<std::string, std::vector<std::tuple<std::string, size_t, size_t>>> materialToModels; // Material -> List of (Model Name, Header id, Texture id).
-			for (Instance& inst : m_instances)
-			{
-				InstanceModel& model = m_instanceModels.at(inst.GetModelName());
-				std::string modelName = model.GetName();
-				for (size_t header_id = 0; header_id < model.m_headers.size(); header_id++)
-				{
-					InstanceModelHeader& modelHeader = model.m_headers[header_id];
-					modelHeader.m_textureLayoutID.clear();
-					for (size_t texture_id = 0; texture_id < modelHeader.m_texNames.size(); texture_id++)
-					{
-						std::string matName = modelHeader.m_texNames[texture_id];
-						Texture& tex = m_materialToTexture[matName];
-						PSX::TextureLayout layout = tex.Serialize(modelHeader.m_uvs[texture_id]);
-						size_t textureID = 0;
-						if (modelLayoutsIndexes.contains(layout)) { textureID = modelLayoutsIndexes[layout]; }
-						else
-						{
-							textureID = modelLayouts.size();
-							modelLayoutsIndexes[layout] = textureID;
-							modelLayouts.push_back(layout);
-						}
-						modelHeader.m_textureLayoutID.push_back(textureID);
-						//materialToModels[modelHeader.m_texNames[texture_id]].emplace_back(modelName, header_id, texture_id);
-					}
-				}
-			}
 			for (auto& [material, texture] : m_materialToTexture)
 			{
 				std::vector<size_t>& quadIndexes = m_materialToQuadblocks[material];
@@ -3628,57 +3625,16 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	std::unordered_set<std::string> uniqueModelNames;
 	for (const Instance& inst : m_instances)
 	{
-		uniqueModelNames.insert(inst.GetModelName());
+		if (m_instanceModels[inst.GetModelName()].IsValid())
+			uniqueModelNames.insert(inst.GetModelName());
+		else
+		{
+			printf("Model %s, valid : %d, header size : %d\n", 
+				inst.GetModelName(), m_instanceModels[inst.GetModelName()].IsValid(), m_instanceModels[inst.GetModelName()].m_headers.size());
+		}
 	}
-
-	header.numInstances = static_cast<uint32_t>(m_instances.size());
 	header.numModels = static_cast<uint32_t>(uniqueModelNames.size());
 
-	// Write InstDefs
-	size_t offInstDefArray = currOffset;
-	std::vector<size_t> instDefOffsets;
-	std::vector<std::vector<uint8_t>> serializedInstDef;
-	for (size_t i = 0; i < m_instances.size(); i++)
-	{
-		serializedInstDef.push_back(m_instances[i].Serialize());
-
-		const size_t offInstDef = currOffset;
-		instDefOffsets.push_back(offInstDef);
-		//printf("offInstDef[%zu] = %zx\n", i, offInstDef);
-		currOffset += sizeof(PSX::InstDef);
-	}
-
-	// Write InstDef pointer array (NULL-terminated)
-	const size_t offInstDefList_ptrArray = currOffset;
-	//printf(nameof(offInstDefList_ptrArray) " = %zx\n", offInstDefList_ptrArray);
-	currOffset += (instDefOffsets.size() + 1) * sizeof(uint32_t);
-
-	// Write second InstDef pointer array for visibility (NULL-terminated)
-	const size_t offInstDefList2_ptrArray = currOffset;
-	//printf(nameof(offInstDefList2_ptrArray) " = %zx\n", offInstDefList2_ptrArray);
-	currOffset += (instDefOffsets.size() + 1) * sizeof(uint32_t);
-
-	// Write third InstDef pointer array for visibility even quadcount (NULL-terminated)
-	const size_t offInstDefList3_ptrArray = currOffset;
-	//printf(nameof(offInstDefList3_ptrArray) " = %zx\n", offInstDefList3_ptrArray);
-	currOffset += (instDefOffsets.size() + 1) * sizeof(uint32_t);
-
-	// Update visible sets to point to InstDef list
-	bool first = true;
-	for (auto& set : visibleSets)
-	{
-		size_t index = visibleSetMap[set];
-		visibleSetMap.erase(set);
-		if (first && orderedQuads.size() % 2 == 0)
-			set.offVisibleInstances = offInstDefList3_ptrArray;
-		else 
-			set.offVisibleInstances = offInstDefList2_ptrArray;
-		visibleSetMap[set] = index;
-		first = false;
-	}
-
-	header.offInstances = (m_instances.size() > 0) ? static_cast<uint32_t>(offInstDefArray) : 0;
-	header.offInstancePtrArray = static_cast<uint32_t>(offInstDefList_ptrArray);
 
 	// Write Model data for each unique model
 	std::unordered_map<std::string, size_t> modelOffsets;
@@ -3711,13 +3667,61 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	currOffset += (uniqueModelNames.size() + 1) * sizeof(uint32_t);
 	header.offModels = static_cast<uint32_t>(offModelList_ptrArray);
 
+	
+	
 
-	//Update Insdef offModel
-	for (size_t i = 0; i < serializedInstDef.size(); i++)
+	// Write InstDefs
+	size_t offInstDefArray = currOffset;
+	std::vector<size_t> instDefOffsets;
+	std::vector<std::vector<uint8_t>> serializedInstDef;
+	for (size_t i = 0; i < m_instances.size(); i++)
 	{
-		PSX::InstDef* inst = reinterpret_cast<PSX::InstDef*>(serializedInstDef[i].data());
-		inst->offModel = static_cast<uint32_t>(modelOffsets[m_instances[i].GetModelName()]);
+		if (!m_instanceModels[m_instances[i].GetModelName()].IsValid())
+			continue;
+
+		uint32_t offModel = modelOffsets[m_instances[i].GetModelName()];
+		serializedInstDef.push_back(m_instances[i].Serialize(offModel));
+		const size_t offInstDef = currOffset;
+		instDefOffsets.push_back(offInstDef);
+		//printf("offInstDef[%zu] = %zx\n", i, offInstDef);
+		currOffset += sizeof(PSX::InstDef);
 	}
+	header.numInstances = static_cast<uint32_t>(serializedInstDef.size());
+
+	printf("uniqueModelNames: %zu, serializedModels non-empty: %zu, serializedInstDef: %zu (m_instances total: %zu)\n",
+		uniqueModelNames.size(), modelOrder.size(), serializedInstDef.size(), m_instances.size());
+
+	// Write InstDef pointer array (NULL-terminated)
+	const size_t offInstDefList_ptrArray = currOffset;
+	//printf(nameof(offInstDefList_ptrArray) " = %zx\n", offInstDefList_ptrArray);
+	currOffset += (instDefOffsets.size() + 1) * sizeof(uint32_t);
+
+	// Write second InstDef pointer array for visibility (NULL-terminated)
+	const size_t offInstDefList2_ptrArray = currOffset;
+	//printf(nameof(offInstDefList2_ptrArray) " = %zx\n", offInstDefList2_ptrArray);
+	currOffset += (instDefOffsets.size() + 1) * sizeof(uint32_t);
+
+	// Write third InstDef pointer array for visibility even quadcount (NULL-terminated)
+	const size_t offInstDefList3_ptrArray = currOffset;
+	//printf(nameof(offInstDefList3_ptrArray) " = %zx\n", offInstDefList3_ptrArray);
+	currOffset += (instDefOffsets.size() + 1) * sizeof(uint32_t);
+
+	// Update visible sets to point to InstDef list
+	bool first = true;
+	for (auto& set : visibleSets)
+	{
+		size_t index = visibleSetMap[set];
+		visibleSetMap.erase(set);
+		if (first && orderedQuads.size() % 2 == 0)
+			set.offVisibleInstances = offInstDefList3_ptrArray;
+		else 
+			set.offVisibleInstances = offInstDefList2_ptrArray;
+		visibleSetMap[set] = index;
+		first = false;
+	}
+
+	header.offInstances = (serializedInstDef.size() > 0) ? static_cast<uint32_t>(offInstDefArray) : 0;
+	header.offInstancePtrArray = static_cast<uint32_t>(offInstDefList_ptrArray);
 
 	// Build BSP-leaf instance hitbox lists.
 	// Each BSP leaf whose bbox overlaps an enabled hitbox gets a list of
@@ -3737,6 +3741,8 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		std::vector<PSX::InstHitbox> enabledHitboxes;
 		for (size_t i = 0; i < m_instances.size(); i++)
 		{
+			if (!m_instanceModels[m_instances[i].GetModelName()].IsValid())
+				continue;
 			const InstanceHitbox& settings = m_instances[i].GetHitbox();
 			if (!settings.enabled) { continue; }
 			enabledHitboxes.push_back(m_instances[i].SerializeHitbox(instDefOffsets[i]));
@@ -3798,7 +3804,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	};
 
 	// Add InstDef.offModel pointers
-	for (size_t i = 0; i < m_instances.size(); i++)
+	for (size_t i = 0; i < instDefOffsets.size(); i++)
 	{
 		pointerMap.push_back(CALCULATE_OFFSET(PSX::InstDef, offModel, instDefOffsets[i]));
 	}
@@ -3934,15 +3940,31 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	Write(file, visMemBSPP1.data(), visMemBSPP1.size() * sizeof(uint32_t));
 	Write(file, &visMem, sizeof(visMem));
 	if (!skyboxData.empty()) { Write(file, skyboxData.data(), skyboxData.size()); }
-	for (const std::vector<uint8_t>& inst : serializedInstDef) { Write(file, inst.data(), inst.size()); }
 
+	uint32_t nullTerm = 0;
+	// Write Model data
+	for (size_t i = 0; i < modelOrder.size(); i++)
+	{
+		if (!m_instanceModels.contains(modelOrder[i]))
+			continue;
+		Write(file, serializedModels[i].data(), serializedModels[i].size());
+	}
+	// Write Model pointer array (NULL-terminated, stored offsets - game adds 4 to get actual position)
+	for (const std::string& modelName : modelOrder)
+	{
+		uint32_t ptr = static_cast<uint32_t>(modelOffsets[modelName]);
+		Write(file, &ptr, sizeof(ptr));
+	}
+	Write(file, &nullTerm, sizeof(nullTerm));
+
+	for (const std::vector<uint8_t>& inst : serializedInstDef) { Write(file, inst.data(), inst.size()); }
 	// Write InstDef pointer arrays (NULL-terminated, stored offsets - game adds 4 to get actual position)
 	for (size_t offset : instDefOffsets)
 	{
 		uint32_t ptr = static_cast<uint32_t>(offset);
 		Write(file, &ptr, sizeof(ptr));
 	}
-	uint32_t nullTerm = 0;
+	
 	Write(file, &nullTerm, sizeof(nullTerm));
 
 	// Write second InstDef pointer array
@@ -3957,21 +3979,6 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	for (size_t offset : instDefOffsets)
 	{
 		uint32_t ptr = static_cast<uint32_t>(offset);
-		Write(file, &ptr, sizeof(ptr));
-	}
-	Write(file, &nullTerm, sizeof(nullTerm));
-
-	// Write Model data (already serialized during the sizing pass above)
-	for (size_t i = 0; i < modelOrder.size(); i++)
-	{
-		if (!m_instanceModels.contains(modelOrder[i]))
-			continue;
-		Write(file, serializedModels[i].data(), serializedModels[i].size());
-	}
-	// Write Model pointer array (NULL-terminated, stored offsets - game adds 4 to get actual position)
-	for (const std::string& modelName : modelOrder)
-	{
-		uint32_t ptr = static_cast<uint32_t>(modelOffsets[modelName]);
 		Write(file, &ptr, sizeof(ptr));
 	}
 	Write(file, &nullTerm, sizeof(nullTerm));

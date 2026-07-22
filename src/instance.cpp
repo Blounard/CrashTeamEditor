@@ -294,6 +294,7 @@ InstanceModel::InstanceModel(const std::filesystem::path& jsonPath, std::unorder
 	nlohmann::json json = nlohmann::json::parse(jsonFile);
 	m_name = json.value("name", std::string());
 	m_id = json.value("id", static_cast<int16_t>(0));
+	m_valid = true;
 
 	std::filesystem::path modelDir = jsonPath.parent_path();
 
@@ -320,8 +321,6 @@ InstanceModelHeader::InstanceModelHeader(PSX::ModelHeader modelHeader, std::vect
 	m_maxDistLOD = ConvertFP(modelHeader.maxDistanceLOD, FP_ONE_GEO);
 	m_flags = modelHeader.flags;
 	m_scale = ConvertPSXVec3(modelHeader.scale, FP_ONE);
-	m_texNames.clear();
-	m_uvs.clear();
 	m_faces = triangles;
 	m_scaleOrPad = modelHeader.maybeScaleMaybePadding;
 	m_unk1 = modelHeader.unk1;
@@ -419,12 +418,14 @@ InstanceModel::InstanceModel(std::string name, std::vector<uint8_t> rawData)
 	: m_name(std::move(name))
 	, m_rawData(std::move(rawData))
 {
+	m_valid = false;
 }
 
 InstanceModel::InstanceModel(PSX::Model model, std::string modelName)
 {
 	m_name = modelName;
 	m_id = model.id;
+	m_valid = true;
 	m_headers.clear();
 }
 
@@ -672,23 +673,23 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 		}
 
 		PSX::InstDrawCommand cmdA{};
-		cmdA.stackWriteLocationIndex = 87; // written then immediately re-read in the same command; value never matters (never reused via readNextVertFromStackIndexFlag)
+		cmdA.stackWriteLocationIndex = 87; // was bugged and vanilla used 87 for crates. NEED UNDERSTANDING.
 		cmdA.readNextVertFromStackIndexFlag = 0;
 		cmdA.resetFlag = 1; // starts this triangle as an independent strip
 		cmdA.colorCoordIndex = colorIdx[0];
-		cmdA.texCoordIndex = texCoordIndex; // not read at emission time
+		cmdA.texCoordIndex = texCoordIndex; 
 		cmdA.colorFromScratchpadOrRamFlag = static_cast<uint32_t>(!tri.texture.empty());
-		cmdA.noBackfaceFlag = 1; // Will need to store this per tri instead of hardcoding 
+		cmdA.noBackfaceFlag = 0; // Will need to store this per tri instead of hardcoding 
 		commands.push_back(cmdA);
 
 		PSX::InstDrawCommand cmdB{};
-		cmdB.stackWriteLocationIndex = 87; // 0 was bugged and vanilla used 87 for crates. NEED UNDERSTANDING.
+		cmdB.stackWriteLocationIndex = 87; 
 		cmdB.readNextVertFromStackIndexFlag = 0;
 		cmdB.resetFlag = 0;
 		cmdB.colorCoordIndex = colorIdx[1];
 		cmdB.texCoordIndex = texCoordIndex;
 		cmdB.colorFromScratchpadOrRamFlag = static_cast<uint32_t>(!tri.texture.empty());
-		cmdB.noBackfaceFlag = 1;
+		cmdB.noBackfaceFlag = 0;
 		commands.push_back(cmdB);
 
 		PSX::InstDrawCommand cmdC{};
@@ -696,15 +697,16 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 		cmdC.readNextVertFromStackIndexFlag = 0;
 		cmdC.resetFlag = 0;
 		cmdC.colorCoordIndex = colorIdx[2];
-		cmdC.texCoordIndex = texCoordIndex; // triangle is emitted on this command; this is the one that's actually read
+		cmdC.texCoordIndex = texCoordIndex; 
 		cmdC.colorFromScratchpadOrRamFlag = static_cast<uint32_t>(!tri.texture.empty());
-		cmdC.noBackfaceFlag = 1;
+		cmdC.noBackfaceFlag = 0;
 		commands.push_back(cmdC);
 	}
 
 	// --- Write command list section: unkNum + commands + terminator ---
 	const size_t commandListOffset = output.size();
-	AppendValue(output, m_unkNum);
+	//unkNum is actually colorPalette size ??
+	AppendValue(output, static_cast<uint32_t>(colorPalette.size()));
 	for (const PSX::InstDrawCommand& cmd : commands) { AppendValue(output, cmd); }
 	PSX::InstDrawCommand terminator{};
 	terminator.command = 0xFFFFFFFF;
@@ -851,12 +853,12 @@ void Instance::SetHitbox(const PSX::InstHitbox& hitbox)
 	m_hitbox.yOffset = ConvertFP(hitbox.center.y, FP_ONE_GEO) - m_pos.y;
 }
 
-std::vector<uint8_t> Instance::Serialize() const
+std::vector<uint8_t> Instance::Serialize(uint32_t offModel) const
 {
 	PSX::InstDef inst = {};
 	std::memset(inst.name, 0, sizeof(inst.name));
 	std::memcpy(inst.name, m_name.data(), std::min(m_name.size(), sizeof(inst.name)));
-	inst.offModel = 0; // Set later during SaveLEV
+	inst.offModel = offModel; 
 	inst.scale = ConvertVec3(m_scale, FP_ONE); // 0x1000 is 1.0 scaling
 	inst.maybeScaleMaybePadding = 0; 
 	inst.colorRGBA = ConvertColor(m_color);

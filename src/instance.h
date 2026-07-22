@@ -300,7 +300,7 @@ public:
 	InstanceModelHeader(const nlohmann::json& headerJson, const std::filesystem::path& modelDir, std::unordered_map<std::string, Texture>& materialToTexture);
 
 
-	std::vector<std::string> m_texNames; // We don't store immediately a Texture, because it's probably shared for many models
+	//std::vector<std::string> m_texNames; // We don't store immediately a Texture, because it's probably shared for many models
 	//std::vector <RawUV> m_rawUVs; // only useful for loadLev to be converted to QuadUV later.
 	std::vector <QuadUV> m_uvs; // UVs for each texture (same count as texNames)
 	std::vector<size_t> m_textureLayoutID; // array of texLayout ID for serial
@@ -329,7 +329,8 @@ public:
 	InstanceModel(PSX::Model model, std::string modelName);
 	InstanceModel(const std::filesystem::path& jsonPath, std::unordered_map<std::string, Texture>& materialToTexture);
 
-
+	const bool IsValid() const { return (m_valid && !m_headers.empty()); }
+	void SetValid(bool valid) { m_valid = valid; }
 	const std::string& GetName() const { return m_name; }
 	const std::vector<uint8_t>& GetRawData() const { return m_rawData; }
 
@@ -338,8 +339,13 @@ public:
 	bool IsParsed() const { return m_parsed; }
 	void SetParsed(bool parsed) { m_parsed = parsed; }
 	void Export(const std::filesystem::path& exportDir, std::unordered_map<std::string, Texture>& materialToTexture);
+
+	bool RenderUI();
 	std::vector<uint8_t> Serialize(uint32_t modelOffset, std::unordered_map<std::string, Texture>& materialToTexture,
 		std::vector<uint32_t>& outPointerLocations) const;
+
+
+public:
 	std::vector<InstanceModelHeader> m_headers;
 private:
 	std::string m_name;
@@ -347,7 +353,7 @@ private:
 	std::vector<uint8_t> m_rawData;
 	std::vector<Primitive> m_parsedGeometry;
 	bool m_parsed = false;
-	
+	bool m_valid = true;
 	bool m_hasPSXData;
 };
 
@@ -406,7 +412,7 @@ public:
 
 	BoundingBox ComputeBBox();
 	bool RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, const std::vector<std::string>& modelNames, Vec3& queryPoint);
-	std::vector<uint8_t> Serialize() const;
+	std::vector<uint8_t> Serialize(uint32_t offModel) const;
 	PSX::InstHitbox SerializeHitbox(uint32_t insatnceOffset) const;
 private:
 	std::string m_name;

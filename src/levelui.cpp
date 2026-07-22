@@ -557,6 +557,17 @@ bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, co
 	return modelChanged;
 }
 
+
+bool InstanceModel::RenderUI()
+{
+	if (ImGui::TreeNode(m_name.c_str()))
+	{
+		ImGui::InputScalar("Model ID", ImGuiDataType_S16, &m_id);
+		ImGui::TreePop();
+	}
+	return true;
+}
+
 template<typename T, MaterialType M>
 bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::vector<size_t>& quadblockIndexes, std::vector<Quadblock>& quadblocks)
 {
@@ -1755,38 +1766,37 @@ void Level::RenderUI(Renderer& renderer)
 				if (!m_instanceModels.empty())
 				{
 					std::string modelToDelete;
-					for (const auto& [modelName, instModel] : m_instanceModels)
+					for (auto& [modelName, instModel] : m_instanceModels)
 					{
-						if (ImGui::TreeNode((modelName + "##modelList").c_str()))
-						{
-							ImGui::PushID(modelName.c_str());
-							ImGui::Text("%s", modelName.c_str());
-							ImGui::SameLine();
-							ImGui::Text("(%zu bytes)", instModel.GetRawData().size());
-							ImGui::SameLine(ImGui::GetContentRegionAvail().x - 20);
-							if (ImGui::Button("X"))
-							{
-								modelToDelete = modelName;
-							}
-							int i = 0;
-							for (const InstanceModelHeader& header : instModel.m_headers)
-							{
-								for (const std::string& texName : header.m_texNames)
-								{
-									if (ImGui::TreeNode((texName + "##modelListtexture" + std::to_string(i)).c_str()))
-									{
-										m_materialToTexture[texName].RenderUI({}, m_quadblocks, [&]() { this->UpdateAnimationRenderData(); });
-										ImGui::TreePop();
-									}
-									i++;
-								}
-							}
-								
-							
-							
-							ImGui::PopID();
-							ImGui::TreePop();
-						}
+						ImGui::PushID(modelName.c_str());
+						instModel.RenderUI();
+						//if (ImGui::TreeNode((modelName + "##modelList").c_str()))
+						//{
+						//	
+						//	ImGui::Text("%s", modelName.c_str());
+						//	ImGui::SameLine();
+						//	ImGui::Text("(%zu bytes)", instModel.GetRawData().size());
+						//	ImGui::SameLine(ImGui::GetContentRegionAvail().x - 20);
+						//	if (ImGui::Button("X"))
+						//	{
+						//		modelToDelete = modelName;
+						//	}
+						//	int i = 0;
+						//	for (const InstanceModelHeader& header : instModel.m_headers)
+						//	{
+						//		/*for (const std::string& texName : header.m_texNames)
+						//		{
+						//			if (ImGui::TreeNode((texName + "##modelListtexture" + std::to_string(i)).c_str()))
+						//			{
+						//				m_materialToTexture[texName].RenderUI({}, m_quadblocks, [&]() { this->UpdateAnimationRenderData(); });
+						//				ImGui::TreePop();
+						//			}
+						//			i++;
+						//		}*/
+						//	}					
+						//	ImGui::TreePop();
+						//}
+						ImGui::PopID();
 						
 					}
 
