@@ -1748,11 +1748,7 @@ void Level::RenderUI(Renderer& renderer)
 			ImGui::BeginDisabled(disabled);
 			if (ImGui::Button("Import Model"))
 			{
-				if (!ImportModel(m_modelImporterPath))
-				{
-					m_logMessage = "Failed to import model: " + m_modelImporterPath.filename().string();
-					m_showLogWindow = true;
-				}
+				//todo
 			}
 			ImGui::EndDisabled();
 			if (disabled) { ImGui::SetItemTooltip("You must select a .ctrmodel file before importing."); }

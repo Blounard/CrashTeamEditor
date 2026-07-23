@@ -801,6 +801,16 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	}
 }
 
+std::vector<Primitive> InstanceModel::GetGeometry()
+{
+	if (!m_headers.empty())
+	{
+		std::vector<Tri>& geom = m_headers[0].GetGeometry();
+		return std::vector<Primitive>(geom.begin(), geom.end());
+	}
+		 
+	return {};
+}
 
 std::vector<uint8_t> InstanceModel::Serialize(uint32_t modelOffset, std::unordered_map<std::string, Texture>& materialToTexture,
 	std::vector<uint32_t>& outPointerLocations) const

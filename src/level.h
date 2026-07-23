@@ -51,7 +51,7 @@ public:
 	bool SaveOBJ(const std::filesystem::path& objFile);
 	bool IsLoaded() const;
 	void Clear(bool clearErrors);
-	bool ImportModel(const std::filesystem::path& ctrmodelPath);
+	//bool ImportModel(const std::filesystem::path& ctrmodelPath);
 	const std::string& GetName() const;
 	std::vector<Quadblock>& GetQuadblocks();
 	BSP& GetBSP();
