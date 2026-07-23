@@ -296,7 +296,7 @@ class InstanceModelHeader
 {
 public:
 	InstanceModelHeader() = default;
-	InstanceModelHeader(PSX::ModelHeader modelheader, std::vector<Tri> triangles, uint32_t unkNum);
+	InstanceModelHeader(PSX::ModelHeader& modelheader, std::vector<Tri> triangles, uint32_t unkNum, PSX::ModelFrame& modelFrame);
 	InstanceModelHeader(const nlohmann::json& headerJson, const std::filesystem::path& modelDir, std::unordered_map<std::string, Texture>& materialToTexture);
 
 
@@ -314,8 +314,12 @@ private:
 	std::string m_name;
 	float m_maxDistLOD;
 	uint16_t m_flags;
+	bool m_hasScale;
 	Vec3 m_scale;
-	int16_t m_scaleOrPad ;
+	int16_t m_scaleOrPad;
+	bool m_hasOrigin;
+	Vec3 m_origin;
+	int16_t m_originOrPad;
 	std::vector<Tri> m_faces; // Array of triangle, contain string texture, positions, UVs, and colors.
 	uint32_t m_unk1; // 0x10
 	uint32_t m_unk3; // 0x30 

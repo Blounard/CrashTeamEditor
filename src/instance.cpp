@@ -266,17 +266,30 @@ InstanceModelHeader::InstanceModelHeader(const nlohmann::json& headerJson, const
 	, m_maxDistLOD(headerJson.value("maxDistanceLOD", 0.0f))
 	, m_flags(headerJson.value("flags", static_cast<uint16_t>(0)))
 	, m_scale()
+	, m_origin()
 	, m_scaleOrPad(headerJson.value("scaleOrPad", static_cast<int16_t>(0)))
+	, m_originOrPad(headerJson.value("originOrPad", static_cast<int16_t>(0)))
 	, m_unk1(headerJson.value("unk1", static_cast<uint32_t>(0)))
 	, m_unk3(headerJson.value("unk3", static_cast<uint32_t>(0)))
 	, m_unkNum(headerJson.value("unkNum", static_cast<uint32_t>(0)))
 {
+	m_hasScale = false;
 	if (headerJson.contains("scale"))
 	{
 		const nlohmann::json& scaleJson = headerJson["scale"];
 		m_scale.x = scaleJson.value("x", 0.0f);
 		m_scale.y = scaleJson.value("y", 0.0f);
 		m_scale.z = scaleJson.value("z", 0.0f);
+		m_hasScale = true;
+	}
+	m_hasOrigin = false;
+	if (headerJson.contains("m_origin"))
+	{
+		const nlohmann::json& scaleJson = headerJson["m_origin"];
+		m_origin.x = scaleJson.value("x", 0.0f);
+		m_origin.y = scaleJson.value("y", 0.0f);
+		m_origin.z = scaleJson.value("z", 0.0f);
+		m_hasOrigin = true;
 	}
 
 	std::string objFile = headerJson.value("objFile", std::string());
@@ -315,7 +328,7 @@ InstanceModel::InstanceModel(const std::filesystem::path& jsonPath, std::unorder
 
 
 
-InstanceModelHeader::InstanceModelHeader(PSX::ModelHeader modelHeader, std::vector<Tri> triangles, uint32_t unkNum)
+InstanceModelHeader::InstanceModelHeader(PSX::ModelHeader& modelHeader, std::vector<Tri> triangles, uint32_t unkNum, PSX::ModelFrame& modelFrame)
 {
 	m_name = std::string(modelHeader.name, strnlen(modelHeader.name, sizeof(modelHeader.name)));
 	m_maxDistLOD = ConvertFP(modelHeader.maxDistanceLOD, FP_ONE_GEO);
@@ -323,9 +336,13 @@ InstanceModelHeader::InstanceModelHeader(PSX::ModelHeader modelHeader, std::vect
 	m_scale = ConvertPSXVec3(modelHeader.scale, FP_ONE);
 	m_faces = triangles;
 	m_scaleOrPad = modelHeader.maybeScaleMaybePadding;
+	m_origin = ConvertPSXVec3(modelFrame.pos, FP_ONE_GEO);
+	m_originOrPad = modelFrame.maybePosMaybePadding;
 	m_unk1 = modelHeader.unk1;
 	m_unk3 = modelHeader.unk3;
 	m_unkNum = unkNum;
+	m_hasScale = true;
+	m_hasOrigin = true;
 }
 
 nlohmann::json InstanceModelHeader::WriteMetadataJson(const std::string& objFile, const std::string& mtlFile) const
@@ -337,8 +354,12 @@ nlohmann::json InstanceModelHeader::WriteMetadataJson(const std::string& objFile
 	json["triangleCount"] = m_faces.size();
 	json["maxDistanceLOD"] = m_maxDistLOD;
 	json["flags"] = m_flags;
-	json["scale"] = { {"x", m_scale.x}, {"y", m_scale.y}, {"z", m_scale.z} };
+	if (m_hasScale)
+		json["scale"] = { {"x", m_scale.x}, {"y", m_scale.y}, {"z", m_scale.z} };
 	json["scaleOrPad"] = m_scaleOrPad;
+	if (m_hasOrigin)
+		json["origin"] = { {"x", m_origin.x}, {"y", m_origin.y}, {"z", m_origin.z} };
+	json["originOrPad"] = m_originOrPad;
 	json["unk1"] = m_unk1;
 	json["unk3"] = m_unk3;
 	json["unkNum"] = m_unkNum;
@@ -596,16 +617,20 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	// pre-rounding floats), so vertex quantization below matches exactly
 	// what the decoder will reconstruct when it reads these fields back.
 	float factor = static_cast<float>(FP_ONE);
-	header.scale.x = static_cast<int16_t>(std::round(boxSize.x * factor)); // 960 factor: see ParseCtrModelGeometry's modelScale comment
+	header.scale.x = static_cast<int16_t>(std::round(boxSize.x * factor));
 	header.scale.y = static_cast<int16_t>(std::round(boxSize.y * factor));
 	header.scale.z = static_cast<int16_t>(std::round(boxSize.z * factor));
 	Vec3 effScale(header.scale.x / factor, header.scale.y / factor, header.scale.z / factor);
+	if (m_hasScale)
+		header.scale = ConvertVec3(m_scale, FP_ONE);
 
 	PSX::ModelFrame frame{};
 	frame.pos.x = static_cast<int16_t>(std::round(originF.x * 256.0f));
 	frame.pos.y = static_cast<int16_t>(std::round(originF.y * 256.0f));
 	frame.pos.z = static_cast<int16_t>(std::round(originF.z * 256.0f));
-	frame.maybePosMaybePadding = 0; // default, per struct comment ("usually 0x0")
+	frame.maybePosMaybePadding = m_originOrPad; 
+	if (m_hasOrigin)
+		frame.pos = ConvertVec3(m_origin, FP_ONE_GEO);
 	std::memset(frame.unk16, 0, sizeof(frame.unk16)); // default, per struct comment ("sixteen 0x0")
 	frame.vertexOffset = sizeof(PSX::ModelFrame); // standard layout, no mystery padding
 

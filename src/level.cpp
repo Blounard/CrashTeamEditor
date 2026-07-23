@@ -2309,7 +2309,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							}
 							stripLength++;
 						}
-						m_instanceModels[modelName].m_headers.emplace_back(modelHeader, triList, unkNum);
+						m_instanceModels[modelName].m_headers.emplace_back(modelHeader, triList, unkNum, modelFrame);
 						
 					}
 				}
