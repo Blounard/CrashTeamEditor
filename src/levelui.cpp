@@ -557,12 +557,37 @@ bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, co
 	return modelChanged;
 }
 
+void InstanceModelHeader::RenderUI()
+{
+	if (ImGui::TreeNode(m_name.c_str()))
+	{
+		ImGui::SetNextItemWidth(200.0f);
+		ImGui::DragFloat("Max visible distance##", &m_maxDistLOD, 0.5f, 0.0f, 1000.0f, "%.1f");
+		ImGui::InputScalar("Flags", ImGuiDataType_U16, &m_flags, nullptr, nullptr, "%04X", ImGuiInputTextFlags_CharsHexadecimal);
+		ImGui::Checkbox("Hardcoded scale", &m_hasScale);
+		ImGui::BeginDisabled(!m_hasScale);
+		ImGui::Text("Scale:"); ImGui::SameLine();
+		ImGui::InputFloat3("##scale", m_scale.Data());
+		ImGui::EndDisabled();
+		ImGui::Text(("Triangle count: " + std::to_string(m_faces.size())).c_str());
+
+
+		ImGui::TreePop();
+	}
+}
 
 bool InstanceModel::RenderUI()
 {
 	if (ImGui::TreeNode(m_name.c_str()))
 	{
 		ImGui::InputScalar("Model ID", ImGuiDataType_S16, &m_id);
+		for (size_t i = 0; i < m_headers.size() ; i++)
+		{
+			InstanceModelHeader& header = m_headers[i];
+			ImGui::PushID(i);
+			header.RenderUI();
+			ImGui::PopID();
+		}
 		ImGui::TreePop();
 	}
 	return true;
@@ -1765,6 +1790,7 @@ void Level::RenderUI(Renderer& renderer)
 					for (auto& [modelName, instModel] : m_instanceModels)
 					{
 						ImGui::PushID(modelName.c_str());
+
 						instModel.RenderUI();
 						//if (ImGui::TreeNode((modelName + "##modelList").c_str()))
 						//{

@@ -79,6 +79,8 @@ struct Vec3
 
 	inline Vec3 operator+(const Vec3& v) const { return { x + v.x, y + v.y, z + v.z }; }
 	inline Vec3 operator-(const Vec3& v) const { return { x - v.x, y - v.y, z - v.z }; }
+	inline Vec3 operator*(const Vec3& v) const { return { x * v.x, y * v.y, z * v.z }; }
+	inline Vec3 operator/(const Vec3& v) const { return { x / v.x, y / v.y, z / v.z }; }
 	inline Vec3 operator*(float n) const { return { x * n, y * n, z * n }; }
 	inline Vec3 operator/(float n) const { return { x / n, y / n, z / n }; }
 	inline bool operator>(float n) const { return x > n && y > n && z > n; }

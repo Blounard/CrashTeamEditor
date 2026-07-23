@@ -610,7 +610,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 		std::max(preFlipMax.y - preFlipMin.y, 0.0001f),
 		std::max(preFlipMax.z - preFlipMin.z, 0.0001f)
 	);
-	Vec3 originF(preFlipMin.x / boxSize.x, preFlipMin.y / boxSize.y, preFlipMin.z / boxSize.z);
+	
 
 	// Round into the actual PSX fixed-point fields, then recompute the
 	// "effective" float values FROM those rounded integers (not the
@@ -621,16 +621,22 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	header.scale.y = static_cast<int16_t>(std::round(boxSize.y * factor));
 	header.scale.z = static_cast<int16_t>(std::round(boxSize.z * factor));
 	Vec3 effScale(header.scale.x / factor, header.scale.y / factor, header.scale.z / factor);
+	Vec3 originF(preFlipMin.x / boxSize.x, preFlipMin.y / boxSize.y, preFlipMin.z / boxSize.z);
 	if (m_hasScale)
+	{ 
 		header.scale = ConvertVec3(m_scale, FP_ONE);
+		originF = preFlipMin / m_scale;
+	}
 
+
+	
 	PSX::ModelFrame frame{};
 	frame.pos.x = static_cast<int16_t>(std::round(originF.x * 256.0f));
 	frame.pos.y = static_cast<int16_t>(std::round(originF.y * 256.0f));
 	frame.pos.z = static_cast<int16_t>(std::round(originF.z * 256.0f));
 	frame.maybePosMaybePadding = m_originOrPad; 
-	if (m_hasOrigin)
-		frame.pos = ConvertVec3(m_origin, FP_ONE_GEO);
+	//if (m_hasOrigin)
+	//	frame.pos = ConvertVec3(m_origin, FP_ONE_GEO); // Will need to be changed. No need to hardcode, can be derived from the stored scale.
 	std::memset(frame.unk16, 0, sizeof(frame.unk16)); // default, per struct comment ("sixteen 0x0")
 	frame.vertexOffset = sizeof(PSX::ModelFrame); // standard layout, no mystery padding
 

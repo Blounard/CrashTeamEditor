@@ -299,7 +299,7 @@ public:
 	InstanceModelHeader(PSX::ModelHeader& modelheader, std::vector<Tri> triangles, uint32_t unkNum, PSX::ModelFrame& modelFrame);
 	InstanceModelHeader(const nlohmann::json& headerJson, const std::filesystem::path& modelDir, std::unordered_map<std::string, Texture>& materialToTexture);
 
-
+	const std::string& GetName() const { return m_name; }
 	//std::vector<std::string> m_texNames; // We don't store immediately a Texture, because it's probably shared for many models
 	//std::vector <RawUV> m_rawUVs; // only useful for loadLev to be converted to QuadUV later.
 	std::vector <QuadUV> m_uvs; // UVs for each texture (same count as texNames)
@@ -307,6 +307,8 @@ public:
 	std::vector<Tri>& GetGeometry() { return m_faces; }
 	void ExportOBJ(const std::filesystem::path& modelDir, std::string baseFileName, std::unordered_map<std::string, Texture>& materialToTexture);
 	nlohmann::json WriteMetadataJson(const std::string& objFile, const std::string& mtlFile) const;
+
+	void RenderUI();
 	void SerializeInto(std::vector<uint8_t>& output, uint32_t modelOffset, 
 		size_t headerStructOffset,
 		std::unordered_map<std::string, Texture>& materialToTexture,
