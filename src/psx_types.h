@@ -10,6 +10,21 @@ namespace PSX
 {
 	static constexpr size_t MAX_NUM_PLAYERS = 4;
 
+
+	// Command list encoding. See RenderBucket_DrawFunc_Normal in the game's
+	// RenderBucket_QueueExecute.c -- all five DrawFunc variants share this logic.
+	static constexpr uint32_t CMD_TERMINATOR = 0xFFFFFFFF;
+	// (command & CMD_COLOR_ONLY_MASK) == 0 means a color-only command: it consumes no
+	// vertex, and its low 9 bits are a color index rather than a texture index.
+	static constexpr uint32_t CMD_COLOR_ONLY_MASK = 0xFFFF0000;
+	// Bit 26. Set means "reuse the cached vertex at stackIndex" -- no vertex consumed.
+	static constexpr uint32_t CMD_REUSE_VERTEX_FLAG = 0x04000000;
+	static constexpr uint32_t CMD_TEX_INDEX_MASK = 0x1FF;
+
+	// ModelAnim::numFrames encoding.
+	static constexpr uint16_t ANIM_INTERPOLATED_BIT = 0x8000;
+	static constexpr uint16_t ANIM_FRAME_COUNT_MASK = 0x7FFF;
+
 	struct Vec3b //for vertices in ModelFrame Might need to check if it's signed or not
 	{
 		uint8_t x;
@@ -267,9 +282,9 @@ namespace PSX
 		uint32_t offFrameData; // 0x24 Null if there are animations
 		uint32_t offTexLayout; // 0x28 , Array of TexLayout, count with commandList texCoordIndex
 		uint32_t offColors; // 0x2C CLUT = color lookup table
-		uint32_t unk3; // 0x30 ; same as anim->0x14
+		uint32_t offStaticDeltaArray; // 0x30
 		uint32_t numAnimations; // 0x34
-		uint32_t offAnimations; // 0x38
+		uint32_t offAnimations; // 0x38 Points to an array of pointer of ModelAnim? Not directly pointing to the first ModelAnim ?
 		uint32_t offAnimtex; // 0x3C
 	};
 
@@ -304,6 +319,38 @@ namespace PSX
 		int vertexOffset; // usually 0x1C
 	};
 
+	struct ModelAnim
+	{
+		// 0x0 -- name of the animation
+		char name[0x10];
+
+		// 0x10
+		// Low 15 bits (ANIM_FRAME_COUNT_MASK) = logical frame count.
+		// ANIM_INTERPOLATED_BIT set = the game halves the frame index and blends
+		// frame[i] with frame[i+1], so roughly half as many frames are stored.
+		uint16_t numFrames;
+
+		// 0x12 -- byte stride between consecutive stored frames
+		int16_t frameSize;
+
+		// 0x14 -- per-vertex bit-width table, numVerts * uint32_t. Shared by every
+		// frame of this animation (which is why frameSize is constant).
+		// 0 => frames store uncompressed 3-byte vertices.
+		uint32_t offDeltaArray;
+
+		// 0x18 -- frames follow inline
+	};
+
+	// Number of frames actually stored for an animation. Derived by pushing the max
+	// reachable animFrame (count - 1) through RenderBucket_GetFrame: for interpolated
+	// animations both index parities land on the same highest touched frame.
+	inline size_t StoredFrameCount(uint16_t numFrames)
+	{
+		const size_t count = numFrames & ANIM_FRAME_COUNT_MASK;
+		return (numFrames & ANIM_INTERPOLATED_BIT) ? ((count >> 1) + 1) : count;
+	}
+
+
 	struct MeshInfo
 	{
 		uint32_t numQuadblocks;
@@ -320,7 +367,12 @@ namespace PSX
 	enum LevelExtra
 	{
 		MINIMAP = 0,
-		SPAWN = 1, // what
+		// Array of int16_t "cycle timing" values, one per hazard instance. Hazard
+		// birth handlers index it by the LAST DIGIT OF THE INSTANCE NAME:
+		//   timeAtEdge = metaArray[inst->name[strlen(inst->name) - 1] - '0'];
+		// which is why vanilla names them "armadillo#0", "armadillo#1", ... The
+		// handlers do NOT null-check this pointer. See the SaveLEV gotcha note.
+		SPAWN = 1,
 		CAMERA_END_OF_RACE = 2,
 		CAMERA_DEMO = 3,
 		N_TROPY_GHOST = 4,
@@ -477,6 +529,9 @@ namespace PSX
 
 	static_assert(sizeof(SkyboxVertex) == 0xc, "SkyboxVertex must be 0xc bytes");
 	static_assert(sizeof(Skybox) == 0x38, "Skybox header must be 0x38 bytes");
+	static_assert(sizeof(ModelFrame) == 0x1c, "ModelFrame must be 0x1c bytes");
+	static_assert(sizeof(ModelHeader) == 0x40, "ModelHeader must be 0x40 bytes");
+	static_assert(sizeof(ModelAnim) == 0x18, "ModelAnim must be 0x18 bytes");
 }
 
 template<>

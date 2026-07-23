@@ -1434,8 +1434,8 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 						{
 							// --- Pass 1: scan command list to find how many texture layouts are actually used ---
 							file.seekg(offLev + std::streampos(modelHeader.offCommandList));
-							uint32_t unkNum = 0;
-							Read(file, unkNum);
+							uint32_t colorCount = 0;
+							Read(file, colorCount);
 							uint32_t maxTexCoordIndex = 0;
 							while (true)
 							{
@@ -1523,7 +1523,8 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							modelHeader.offAnimations != 0 ||
 							modelHeader.offAnimtex != 0 ||
 							modelHeader.offCommandList == 0 ||
-							modelHeader.offColors == 0)
+							modelHeader.offColors == 0 ||
+							modelHeader.offStaticDeltaArray != 0)
 						{
 							m_instanceModels[modelName].SetValid(false);
 							continue;
@@ -1533,8 +1534,8 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 
 						// Step 1 : Decode all commands
 						file.seekg(offLev + std::streampos(modelHeader.offCommandList));
-						uint32_t unkNum = 0;
-						Read(file, unkNum);
+						uint32_t colorCount = 0;
+						Read(file, colorCount);
 						std::vector<PSX::InstDrawCommand> commandList;
 						while (true)
 						{
@@ -1614,6 +1615,22 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 
 						for (PSX::InstDrawCommand& command : commandList)
 						{
+
+							// Color-only command: upper 16 bits all zero (== all flag bits AND
+								// stackWriteLocationIndex are zero simultaneously). No vertex is pushed,
+								// no triangle is emitted, stripLength/resetFlag/swapFlag are never
+								// consulted. The low 16 bits are reinterpreted as two 7-bit color-array
+								// indices rather than texCoordIndex+colorCoordIndex. See
+								// RenderBucket_DrawFunc_Normal: `if ((command >> 16) == 0) { ...; continue; }`
+							if ((command.command & 0xFFFF0000) == 0)
+							{
+								uint32_t colorA = (command.command >> 9) & 0x7F; // same bit position as colorCoordIndex
+								uint32_t colorB = (command.command >> 2) & 0x7F; // overlaps texCoordIndex's low bits
+								// No geometry effect -- just marks these two palette entries as
+								// referenced, e.g. for animation color-cycling. Track for max-index
+								// bookkeeping if you need it; otherwise safe to ignore entirely.
+								continue;
+							}
 							if (!command.readNextVertFromStackIndexFlag)
 							{
 								stack[command.stackWriteLocationIndex] = vertices[vertexIndex];
@@ -1674,7 +1691,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							}
 							stripLength++;
 						}
-						m_instanceModels[modelName].m_headers.emplace_back(modelHeader, triList, unkNum, modelFrame);
+						m_instanceModels[modelName].m_headers.emplace_back(modelHeader, triList, colorCount, modelFrame);
 						
 					}
 				}
@@ -2900,6 +2917,8 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	//printf(nameof(offOxideGhost) " = %zx\n", offOxideGhost);
 	currOffset += m_oxideGhost.size();
 
+
+	// TODO : FIX FOR ANIMATED MODELS
 	PSX::LevelExtraHeader extraHeader = {};
 	if (offTropyGhost > 0)
 	{

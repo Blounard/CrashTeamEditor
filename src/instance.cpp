@@ -270,8 +270,7 @@ InstanceModelHeader::InstanceModelHeader(const nlohmann::json& headerJson, const
 	, m_scaleOrPad(headerJson.value("scaleOrPad", static_cast<int16_t>(0)))
 	, m_originOrPad(headerJson.value("originOrPad", static_cast<int16_t>(0)))
 	, m_unk1(headerJson.value("unk1", static_cast<uint32_t>(0)))
-	, m_unk3(headerJson.value("unk3", static_cast<uint32_t>(0)))
-	, m_unkNum(headerJson.value("unkNum", static_cast<uint32_t>(0)))
+	, m_colorCount(headerJson.value("colorCount", static_cast<uint32_t>(0)))
 {
 	m_hasScale = false;
 	if (headerJson.contains("scale"))
@@ -328,7 +327,7 @@ InstanceModel::InstanceModel(const std::filesystem::path& jsonPath, std::unorder
 
 
 
-InstanceModelHeader::InstanceModelHeader(PSX::ModelHeader& modelHeader, std::vector<Tri> triangles, uint32_t unkNum, PSX::ModelFrame& modelFrame)
+InstanceModelHeader::InstanceModelHeader(PSX::ModelHeader& modelHeader, std::vector<Tri> triangles, uint32_t colorCount, PSX::ModelFrame& modelFrame)
 {
 	m_name = std::string(modelHeader.name, strnlen(modelHeader.name, sizeof(modelHeader.name)));
 	m_maxDistLOD = ConvertFP(modelHeader.maxDistanceLOD, FP_ONE_GEO);
@@ -339,8 +338,7 @@ InstanceModelHeader::InstanceModelHeader(PSX::ModelHeader& modelHeader, std::vec
 	m_origin = ConvertPSXVec3(modelFrame.pos, FP_ONE_GEO);
 	m_originOrPad = modelFrame.maybePosMaybePadding;
 	m_unk1 = modelHeader.unk1;
-	m_unk3 = modelHeader.unk3;
-	m_unkNum = unkNum;
+	m_colorCount = colorCount;
 	m_hasScale = true;
 	m_hasOrigin = true;
 }
@@ -361,8 +359,7 @@ nlohmann::json InstanceModelHeader::WriteMetadataJson(const std::string& objFile
 		json["origin"] = { {"x", m_origin.x}, {"y", m_origin.y}, {"z", m_origin.z} };
 	json["originOrPad"] = m_originOrPad;
 	json["unk1"] = m_unk1;
-	json["unk3"] = m_unk3;
-	json["unkNum"] = m_unkNum;
+	json["colorCount"] = m_colorCount;
 	return json;
 }
 
@@ -583,7 +580,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	header.maxDistanceLOD = ConvertFloat(m_maxDistLOD, FP_ONE_GEO);
 	header.flags = m_flags;
 	header.maybeScaleMaybePadding = m_scaleOrPad;
-	header.unk3 = m_unk3;
+	header.offStaticDeltaArray = 0;
 	header.numAnimations = 0; // this editable format has no animation support; not a guess, an invariant
 	header.offAnimations = 0;
 	header.offAnimtex = 0;
@@ -735,7 +732,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	}
 
 	// Fix for anim flag : 
-	if (m_unkNum > 63)
+	if (m_colorCount > 63)
 	{
 		while (colorPalette.size() < 64)
 		{

@@ -325,8 +325,15 @@ private:
 	int16_t m_originOrPad;
 	std::vector<Tri> m_faces; // Array of triangle, contain string texture, positions, UVs, and colors.
 	uint32_t m_unk1; // 0x10
-	uint32_t m_unk3; // 0x30 
-	uint32_t m_unkNum; // At offCommandList, before the 1st command
+	uint32_t m_colorCount; // At offCommandList, before the 1st command
+	bool m_isAnimated = false;
+	struct Animation {
+		std::string name;
+		bool interpolated = false;
+		size_t frameCount = 0;
+		std::vector<std::vector<Vec3>> frames; // frames[i].size() == 3 * m_faces.size()
+	};
+	std::vector<Animation> m_animations;
 };
 class InstanceModel // group of models ?
 {

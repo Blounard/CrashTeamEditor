@@ -403,12 +403,12 @@ void LevDataExtractor::ExtractModels(void)
 
 			if (modelHeader.unk1 != 0 ||
 				  modelHeader.maybeScaleMaybePadding != 0 ||
-				  modelHeader.unk3 != 0)
+				  modelHeader.offStaticDeltaArray != 0)
 			{
 				Log("    [!] SKIPPING: Unexpected non-zero fields\n");
 				if (modelHeader.unk1 != 0) Log("      - unk1 = 0x%08X\n", modelHeader.unk1);
 				if (modelHeader.maybeScaleMaybePadding != 0) Log("      - maybeScaleMaybePadding = 0x%04X\n", modelHeader.maybeScaleMaybePadding);
-				if (modelHeader.unk3 != 0) Log("      - unk3 = 0x%08X\n", modelHeader.unk3);
+				if (modelHeader.offStaticDeltaArray != 0) Log("      - offStaticDeltaArray = 0x%08X\n", modelHeader.offStaticDeltaArray);
 				Log("      TODO: Investigate if these fields are safe to ignore\n");
 				isSupportedByCurrentTechnology = false;
 				break;
@@ -722,7 +722,7 @@ void LevDataExtractor::ExtractModels(void)
       //modelHeader.offFrameData --- NOT DONE: is a pointer, need to capture this data, is a ModelFrame followed by variable length data, need to dry-parse command list to know how long this is.
 			//modelHeader.offTexLayout --- NOT DONE: is a pointer to an array of pointers (it isn't clear how long this array is, may need to dry-parse command list to know how long this is).
 			//modelHeader.offColors --- NOT DONE: is a pointer to the same location as offTexLayout??????? This however DOESN'T point to the same location for the startbanner model, needs investigation.
-      //modelHeader.unk3 --- NOT DONE: could be a pointer, if just a value then should be done
+      //modelHeader.offStaticDeltaArray --- NOT DONE: could be a pointer, if just a value then should be done
       //modelHeader.numAnimations --- done
       //modelHeader.offAnimations --- NOT DONE: is a pointer,
       //modelHeader.offAnimtex --- NOT DONE: is a pointer,
