@@ -1518,13 +1518,15 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 						PSX::ModelHeader modelHeader{};
 						Read(file, modelHeader);
 
-						if (modelHeader.offFrameData == 0 ||
-							modelHeader.numAnimations != 0 ||
-							modelHeader.offAnimations != 0 ||
-							modelHeader.offAnimtex != 0 ||
+						bool isAnimated = modelHeader.offAnimations != 0;
+
+						if ((modelHeader.numAnimations != 0) != isAnimated ||        // internally inconsistent -- our format model would be wrong
+							modelHeader.offAnimtex != 0 ||                             // still unsupported
 							modelHeader.offCommandList == 0 ||
 							modelHeader.offColors == 0 ||
-							modelHeader.offStaticDeltaArray != 0)
+							(!isAnimated && modelHeader.offFrameData == 0) ||
+							(!isAnimated && modelHeader.offStaticDeltaArray != 0) ||   // compressed static: still unsupported
+							(isAnimated && modelHeader.offFrameData != 0))             // ambiguous per RenderBucket_GetFrame
 						{
 							m_instanceModels[modelName].SetValid(false);
 							continue;
@@ -1548,14 +1550,15 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 								commandList.push_back(cmd);
 								if (cmd.unk1 != 0 || cmd.unk2 != 0)
 								{
+									printf("Model %s  header %d invalid command unk1 or unk2 non null\n", modelName, j);
 									m_instanceModels[modelName].SetValid(false);
 								}
 								if (j==0)//modelName == "startbanner_JAP")
 								{
-									//printf("Model %s, ", modelName);
-									//printf("header n. %d, ", j);
+									printf("Model %s, ", modelName);
+									printf("header n. %d, ", j);
 									//printf("colorFromScratchpadOrRamFlag:%d, ", cmd.colorFromScratchpadOrRamFlag);
-									//printf("noBackfaceFlag:%d, ", cmd.noBackfaceFlag);
+									printf("noBackfaceFlag:%d, ", cmd.noBackfaceFlag);
 									//printf("unk1:%d, ", cmd.unk1);
 									//printf("unk2:%d, ", cmd.unk2); 
 									//printf("texCoordIndex:%d, ", cmd.texCoordIndex);
@@ -1565,32 +1568,70 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 									//printf("normalFlipFlag:%d, ", cmd.normalFlipFlag);
 									//printf("swapFlag:%d, ", cmd.swapFlag);
 									//printf("resetFlag:%d, ", cmd.resetFlag);
-									//printf("\n");
+									printf("\n");
 
 								}
 							}
 									
 						}
-
-
-						// Step 2 : Vertices 
 						int numVerts = 0;
 						for (PSX::InstDrawCommand& command : commandList)
 						{
-							if (!command.readNextVertFromStackIndexFlag)
-								numVerts++;
+							if ((command.command & 0xFFFF0000) == 0) continue; // color-only, doesn't push
+							if (!command.readNextVertFromStackIndexFlag) numVerts++;
 						}
 
-						file.seekg(offLev + std::streampos(modelHeader.offFrameData));
-						PSX::ModelFrame modelFrame;
-						Read(file, modelFrame);
+						// Step 2: locate the source of the base / rest vertex data.
+						// Static: modelHeader.offFrameData, as before.
+						// Animated: frame 0 of animation 0. If that animation turns out compressed
+						// (offDeltaArray != 0), we currently have no verified way to decode it at
+						// all -- there's no separate rest frame to fall back on -- so the whole
+						// header is marked invalid rather than guessing.
 
-						Vec3 frameOrigin = ConvertPSXVec3(modelFrame.pos, 256.0f); // Need to verify this 256 factor
+						PSX::ModelFrame baseFrame{};
+						size_t baseFrameFileOffset = 0;
+						std::vector<PSX::ModelAnim> animHeaders; // filled below if animated, reused later
+						std::vector<uint32_t> animOffsets;
+
+						if (!isAnimated)
+						{
+							baseFrameFileOffset = modelHeader.offFrameData;
+							file.seekg(offLev + std::streampos(baseFrameFileOffset));
+							Read(file, baseFrame);
+						}
+						else
+						{
+							if (modelHeader.numAnimations == 0) { m_instanceModels[modelName].SetValid(false); continue; }
+
+							animOffsets.resize(modelHeader.numAnimations);
+							animHeaders.resize(modelHeader.numAnimations);
+							bool ok = true;
+							for (uint32_t a = 0; a < modelHeader.numAnimations; a++)
+							{
+								file.seekg(offLev + std::streampos(modelHeader.offAnimations + a * sizeof(uint32_t)));
+								Read(file, animOffsets[a]);
+								if (animOffsets[a] == 0) { ok = false; break; }
+								file.seekg(offLev + std::streampos(animOffsets[a]));
+								Read(file, animHeaders[a]);
+							}
+							if (!ok || animHeaders[0].offDeltaArray != 0)
+							{
+								// First animation is compressed (or the array was malformed) -- no
+								// uncompressed source available for the rest pose either.
+								m_instanceModels[modelName].SetValid(false);
+								continue;
+							}
+							baseFrameFileOffset = animOffsets[0] + sizeof(PSX::ModelAnim); // frame 0 immediately follows the ModelAnim header
+							file.seekg(offLev + std::streampos(baseFrameFileOffset));
+							Read(file, baseFrame);
+						}
+
+						Vec3 frameOrigin = ConvertPSXVec3(baseFrame.pos, 256); // Need to verify this 256 factor
 							
-						std::vector<Point> vertices;
+						std::vector<Point> headerVertices;
 						for (int vi = 0; vi < numVerts; vi++)
 						{
-							file.seekg(offLev + std::streampos(modelHeader.offFrameData + modelFrame.vertexOffset + vi * sizeof(PSX::Vec3b)));
+							file.seekg(offLev + std::streampos(modelHeader.offFrameData + baseFrame.vertexOffset + vi * sizeof(PSX::Vec3b)));
 							PSX::Vec3b vert;
 							Read(file, vert);
 
@@ -1604,41 +1645,41 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 
 							Point p{};
 							p.pos = pos;
-							vertices.push_back(p);
+							headerVertices.push_back(p);
 						}
+
+
+
 						// Vertices Stack decode logic
 						std::vector<Point> stack(256);
+						std::vector<int> stackVertexIndex(256, -1);
 						int vertexIndex = 0;
 						int	stripLength = 0;
 						Point temp[4] = {};
+						int tempVertexIndex[4] = { -1, -1, -1, -1 };
 						std::vector<Tri> triList;
+						std::vector<bool> triDoubleSided;
+						std::vector<std::array<int, 3>> triSourceVertexIndices; // parallel to triList
 
 						for (PSX::InstDrawCommand& command : commandList)
 						{
-
-							// Color-only command: upper 16 bits all zero (== all flag bits AND
-								// stackWriteLocationIndex are zero simultaneously). No vertex is pushed,
-								// no triangle is emitted, stripLength/resetFlag/swapFlag are never
-								// consulted. The low 16 bits are reinterpreted as two 7-bit color-array
-								// indices rather than texCoordIndex+colorCoordIndex. See
-								// RenderBucket_DrawFunc_Normal: `if ((command >> 16) == 0) { ...; continue; }`
 							if ((command.command & 0xFFFF0000) == 0)
 							{
-								uint32_t colorA = (command.command >> 9) & 0x7F; // same bit position as colorCoordIndex
-								uint32_t colorB = (command.command >> 2) & 0x7F; // overlaps texCoordIndex's low bits
-								// No geometry effect -- just marks these two palette entries as
-								// referenced, e.g. for animation color-cycling. Track for max-index
-								// bookkeeping if you need it; otherwise safe to ignore entirely.
 								continue;
 							}
 							if (!command.readNextVertFromStackIndexFlag)
 							{
-								stack[command.stackWriteLocationIndex] = vertices[vertexIndex];
+								stack[command.stackWriteLocationIndex] = headerVertices[vertexIndex];
+								stackVertexIndex[command.stackWriteLocationIndex] = vertexIndex;
 								vertexIndex++;
 							}
 
 							temp[0] = temp[1]; temp[1] = temp[2]; temp[2] = temp[3];
 							temp[3] = stack[command.stackWriteLocationIndex];
+							tempVertexIndex[0] = tempVertexIndex[1];
+							tempVertexIndex[1] = tempVertexIndex[2];
+							tempVertexIndex[2] = tempVertexIndex[3];
+							tempVertexIndex[3] = stackVertexIndex[command.stackWriteLocationIndex];
 
 							int colorIdx = command.colorCoordIndex;
 							file.seekg(offLev + std::streampos(modelHeader.offColors + colorIdx *sizeof(uint32_t)));
@@ -1646,7 +1687,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							Read(file, psxCol);
 							temp[3].color =  ConvertColor(psxCol); 
 
-							if (command.swapFlag) { temp[1] = temp[0]; }
+							if (command.swapFlag) { temp[1] = temp[0]; tempVertexIndex[1] = tempVertexIndex[0]; }
 							if (command.resetFlag) { stripLength = 0; }
 
 							if (stripLength >= 2)
@@ -1661,7 +1702,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 									file.seekg(offLev + std::streampos(modelHeader.offTexLayout + (texIdx - 1) * sizeof(uint32_t)));
 									uint32_t offLayout = 0;
 									Read(file, offLayout);
-									if (offLayout == 0) continue;
+									if (offLayout == 0) { stripLength++; continue; }
 									file.seekg(offLev + std::streampos(offLayout));
 									PSX::TextureLayout layout{};
 									Read(file, layout);
@@ -1672,27 +1713,88 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 									uvs = MakeUV(bounds, rawUV);
 									texName = materialCache[key];
 								}
-								else
-									printf("NO TEX ON SOME CMD IN %s\n", modelName.c_str());
 
 								tri.p[0].pos = temp[3].pos; tri.p[1].pos = temp[2].pos; tri.p[2].pos = temp[1].pos;
 								tri.p[0].color = temp[3].color; tri.p[1].color = temp[2].color; tri.p[2].color = temp[1].color;
 								tri.p[0].uv = uvs[2]; tri.p[1].uv = uvs[1]; tri.p[2].uv = uvs[0];
 								tri.texture = texName;
+								triDoubleSided.push_back(command.noBackfaceFlag != 1);
 								triList.push_back(tri);
 
+								std::array<int, 3> src = { tempVertexIndex[3], tempVertexIndex[2], tempVertexIndex[1] };
 								if (command.normalFlipFlag)
 								{
 									Tri& last = triList.back();
 									std::swap(last.p[1].pos, last.p[2].pos);
 									std::swap(last.p[1].color, last.p[2].color);
 									std::swap(last.p[1].uv, last.p[2].uv);
+									std::swap(src[1], src[2]);
 								}
+								triSourceVertexIndices.push_back(src);
 							}
 							stripLength++;
 						}
-						m_instanceModels[modelName].m_headers.emplace_back(modelHeader, triList, colorCount, modelFrame);
-						
+						std::vector<ModelAnimation> animations;
+
+						if (isAnimated)
+						{
+							for (uint32_t a = 0; a < modelHeader.numAnimations; a++)
+							{
+								const PSX::ModelAnim& anim = animHeaders[a];
+
+								if (anim.offDeltaArray != 0)
+								{
+									// Compressed frames: the bitstream decoder's accumulator-reset
+									// behavior (per-frame vs. carried across frames) isn't confirmed
+									// yet -- see conversation notes on RenderBucket_ReadDeltaComponentFromStream.
+									// Skip rather than silently guess at motion data.
+									printf("SKIPPING compressed animation '%.16s' on model %s\n", anim.name, modelName.c_str());
+									continue;
+								}
+
+								ModelAnimation animation{};
+								animation.name = std::string(anim.name, strnlen(anim.name, sizeof(anim.name)));
+								animation.interpolated = (anim.numFrames & PSX::ANIM_INTERPOLATED_BIT) != 0;
+								size_t numStoredFrames = PSX::StoredFrameCount(anim.numFrames);
+								animation.frameCount = numStoredFrames;
+								animation.hasRawNumFrames = true;
+								animation.rawNumFrames = anim.numFrames; // exact bits, including the true logical count/parity
+
+								for (size_t f = 0; f < numStoredFrames; f++)
+								{
+									size_t offFrame = animOffsets[a] + sizeof(PSX::ModelAnim) + f * anim.frameSize;
+									file.seekg(offLev + std::streampos(offFrame));
+									PSX::ModelFrame animFrame{};
+									Read(file, animFrame);
+
+									Vec3 animOrigin = ConvertPSXVec3(animFrame.pos, 256.0f);
+
+									std::vector<Vec3> rawVerts(numVerts);
+									for (int vi = 0; vi < numVerts; vi++)
+									{
+										file.seekg(offLev + std::streampos(offFrame + animFrame.vertexOffset + vi * sizeof(PSX::Vec3b)));
+										PSX::Vec3b vert;
+										Read(file, vert);
+										Vec3 pos;
+										pos.x = ((vert.x / 255.0f) + animOrigin.x) * modelScale.x;
+										pos.y = ((vert.z / 255.0f) + animOrigin.y) * modelScale.y;
+										pos.z = ((vert.y / 255.0f) + animOrigin.z) * modelScale.z;
+										pos.x = -pos.x; pos.z = -pos.z;
+										rawVerts[vi] = pos;
+									}
+
+									std::vector<Vec3> frameCorners(triSourceVertexIndices.size() * 3);
+									for (size_t t = 0; t < triSourceVertexIndices.size(); t++)
+										for (int c = 0; c < 3; c++)
+											frameCorners[t * 3 + c] = rawVerts[triSourceVertexIndices[t][c]];
+
+									animation.frames.push_back(std::move(frameCorners));
+								}
+								animations.push_back(std::move(animation));
+							}
+						}
+
+						m_instanceModels[modelName].m_headers.emplace_back(modelHeader, triList, triDoubleSided, colorCount, baseFrame, animations);
 					}
 				}
 			}
@@ -2251,151 +2353,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 }
 
 
-std::vector<uint8_t> Level:: SerializeModel(const std::string& modelName, std::unordered_map<std::string, size_t>& modelOffsets)
-{
-	const InstanceModel& instModel = m_instanceModels.at(modelName);
-	const std::vector<uint8_t>& ctrmodelData = instModel.GetRawData();
-	size_t modelBaseOffset = modelOffsets[modelName];
-
-	// Parse .ctrmodel to get model data and patch table
-	const SH::CtrModel* ctrHeader = reinterpret_cast<const SH::CtrModel*>(ctrmodelData.data());
-	const uint8_t* modelDataSrc = ctrmodelData.data() + ctrHeader->modelOffset;
-	size_t modelDataSize = ctrHeader->modelPatchTableOffset - ctrHeader->modelOffset;
-
-	const uint32_t* patchTablePtr = reinterpret_cast<const uint32_t*>(ctrmodelData.data() + ctrHeader->modelPatchTableOffset);
-	const uint32_t patchCount = *patchTablePtr;
-	const uint32_t* patchOffsets = patchTablePtr + 1;
-
-	// Copy the model data
-	std::vector<uint8_t> modelData(modelDataSrc, modelDataSrc + modelDataSize);
-
-	// Patch TextureLayouts with new VRAM coordinates
-	// Parse Model and ModelHeaders to find TextureLayout arrays
-	const PSX::Model* model = reinterpret_cast<const PSX::Model*>(modelData.data());
-	const uint32_t modelHeadersOffset = model->offHeaders - ctrHeader->modelOffset;
-	const PSX::ModelHeader* modelHeaders = reinterpret_cast<const PSX::ModelHeader*>(modelData.data() + modelHeadersOffset);
-
-	for (uint8_t h = 0; h < model->numHeaders; h++)
-	{
-		const PSX::ModelHeader& modelHdr = modelHeaders[h];
-		if (modelHdr.offTexLayout == 0) { continue; }
-
-		// offTexLayout points to a pointer array, each entry points to a TextureLayout
-		uint32_t ptrArrayOffset = modelHdr.offTexLayout - ctrHeader->modelOffset;
-		const uint32_t* texLayoutPtrs = reinterpret_cast<const uint32_t*>(modelData.data() + ptrArrayOffset);
-
-		// Count TextureLayouts by finding the first null or out-of-range pointer
-		size_t numLayouts = 0;
-		while (texLayoutPtrs[numLayouts] != 0 &&
-			texLayoutPtrs[numLayouts] >= ctrHeader->modelOffset &&
-			texLayoutPtrs[numLayouts] < ctrHeader->modelPatchTableOffset)
-		{
-			numLayouts++;
-		}
-
-		for (size_t i = 0; i < numLayouts; i++)
-		{
-			uint32_t layoutOffset = texLayoutPtrs[i] - ctrHeader->modelOffset;
-			PSX::TextureLayout* layout = reinterpret_cast<PSX::TextureLayout*>(modelData.data() + layoutOffset);
-
-			// Extract original texpage/clut from layout
-			uint8_t origPageX = layout->texPage.x;
-			uint8_t origPageY = layout->texPage.y;
-			uint8_t origPalX = layout->clut.x;
-			uint16_t origPalY = layout->clut.y;
-
-			// Find matching ModelTextureForVRM
-			for (const ModelTextureForVRM& tex : m_modelTexturesInVRAM)
-			{
-				if (tex.modelName != modelName) { continue; }
-				if (!tex.placed) { continue; }
-				if (tex.origPageX != origPageX) { continue; }
-				if (tex.origPageY != origPageY) { continue; }
-				if (tex.origPalX != origPalX) { continue; }
-				if (tex.origPalY != origPalY) { continue; }
-
-				// Found matching texture! Update TextureLayout with new coordinates
-				// Internal buffer position â VRAM position: add 512 to X (VRM is placed at VRAM X=512)
-				size_t vramX = 512 + tex.imageX;
-				size_t vramY = tex.imageY;
-
-				// Calculate new texpage (64x256 pages)
-				layout->texPage.x = static_cast<uint16_t>(vramX / 64);
-				layout->texPage.y = static_cast<uint16_t>(vramY / 256);
-				layout->texPage.blendMode = tex.blendMode;
-				layout->texPage.texpageColors = tex.bpp;
-
-				// Calculate new CLUT coords (if indexed)
-				if (tex.bpp < 2)
-				{
-					size_t clutVramX = 512 + tex.clutX;
-					size_t clutVramY = tex.clutY;
-					layout->clut.x = static_cast<uint16_t>(clutVramX / 16);
-					layout->clut.y = static_cast<uint16_t>(clutVramY);
-				}
-
-				// Calculate UV adjustment
-				// The texture was extracted starting at UV (originU, originV)
-				// Now it's placed at position (vramX % 64, vramY % 256) within the new texpage
-				// UV coordinates are scaled by BPP: 4bpp=4x, 8bpp=2x, 16bpp=1x
-				int uvStretch = (tex.bpp == 0) ? 4 : (tex.bpp == 1) ? 2 : 1;
-				int newOriginU = static_cast<int>((vramX % 64) * uvStretch);
-				int newOriginV = static_cast<int>(vramY % 256);
-				int deltaU = newOriginU - tex.originU;
-				int deltaV = newOriginV - tex.originV;
-
-				/*printf("uvs stuff\n");
-
-				if (deltaU != 0 || deltaV != 0)
-				{
-					printf("UV adjust %s tex[%zu]: originU=%d originV=%d -> newOriginU=%d newOriginV=%d (deltaU=%d deltaV=%d)\n",
-						modelName.c_str(), tex.textureIndex, tex.originU, tex.originV, newOriginU, newOriginV, deltaU, deltaV);
-					printf("  vramX=%zu vramY=%zu, texpage=(%d,%d), bpp=%d, stretch=%d\n",
-						vramX, vramY, layout->texPage.x, layout->texPage.y, tex.bpp, uvStretch);
-				}*/
-
-				// Adjust all UV coordinates
-				layout->u0 = static_cast<uint8_t>(layout->u0 + deltaU);
-				layout->v0 = static_cast<uint8_t>(layout->v0 + deltaV);
-				layout->u1 = static_cast<uint8_t>(layout->u1 + deltaU);
-				layout->v1 = static_cast<uint8_t>(layout->v1 + deltaV);
-				layout->u2 = static_cast<uint8_t>(layout->u2 + deltaU);
-				layout->v2 = static_cast<uint8_t>(layout->v2 + deltaV);
-				layout->u3 = static_cast<uint8_t>(layout->u3 + deltaU);
-				layout->v3 = static_cast<uint8_t>(layout->v3 + deltaV);
-
-				break; // Found and patched
-			}
-		}
-	}
-
-	// Convert pointers from .ctrmodel format to .lev format
-	// .ctrmodel: absolute offsets pointing directly to targets
-	// .lev: stored offsets where (stored + 4) = actual file position
-	// Since modelBaseOffset is already a stored offset (actual - 4), we just compute:
-	// new_stored_offset = modelBaseOffset + relative_offset_within_model
-	for (uint32_t i = 0; i < patchCount; i++)
-	{
-		uint32_t ctrPatchOffset = patchOffsets[i]; // Absolute offset in .ctrmodel where pointer field is
-		uint32_t relativeOffset = ctrPatchOffset - ctrHeader->modelOffset; // Relative to model data
-
-		if (relativeOffset + sizeof(uint32_t) <= modelData.size())
-		{
-			uint32_t* ptrLocation = reinterpret_cast<uint32_t*>(&modelData[relativeOffset]);
-			uint32_t ctrPointerValue = *ptrLocation; // Absolute in .ctrmodel, points directly to target
-
-			// Transform to .lev stored offset format
-			// Target's relative position within model = ctrPointerValue - ctrModelOffset
-			// Target's stored offset in .lev = modelBaseOffset + relative_position
-			uint32_t levPointerValue = static_cast<uint32_t>(
-				modelBaseOffset + (ctrPointerValue - ctrHeader->modelOffset)
-				);
-			*ptrLocation = levPointerValue;
-		}
-	}
-	return modelData;
-}
-
 
 bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 {
@@ -2918,21 +2875,55 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	currOffset += m_oxideGhost.size();
 
 
-	// TODO : FIX FOR ANIMATED MODELS
+	// GOTCHA: a level with no SPAWN data silently freezes every hazard.
+	//
+	// Symptom: an armadillo (or plant/orca/flamejet) renders correctly, its birth
+	// handler runs, its thread is created and ticks every frame -- and it never moves.
+	//
+	// Cause: hazard birth handlers seed their per-instance timer from this array,
+	// indexed by the last digit of the instance name, with no null check:
+	//   timeAtEdge = metaArray[inst->name[strlen(inst->name) - 1] - '0'];
+	// but that line only runs when count > 0. Retail does NOT zero timeAtEdge
+	// beforehand (the saphi-ctr-native decomp shows an initializer that retail lacks
+	// -- do not trust it here), so when count == 0 the field keeps whatever garbage
+	// the thread's pool block last held. The tick then does
+	//   if (timeAtEdge != 0) { timeAtEdge--; return; }
+	// and returns early forever. Observed: timeAtEdge == 0x933C, decrementing once a
+	// frame, i.e. ~21 minutes of paralysis.
+	//
+	// Vanilla never hits this: all 79 levels that can contain a hazard have a valid
+	// SPAWN entry and count 4 or 6. The only vanilla levels with count == 0 are the
+	// 28 battle arenas, which contain no hazards and so never reach the code.
+	//
+	// So always emit the array. Zero-filled means "no stagger delay", which is what a
+	// lone hazard wants; non-zero values stagger multiple hazards onto separate cycles.
+	constexpr size_t SPAWN_META_ENTRY_COUNT = 20; // covers plant's metaArray[digit * 2 + 1] for digits 0-9
+	const std::vector<int16_t> spawnMeta(SPAWN_META_ENTRY_COUNT, 0);
+	const size_t offSpawnMeta = currOffset;
+	printf(nameof(offSpawnMeta) " = %zx\n", offSpawnMeta);
+	currOffset += spawnMeta.size() * sizeof(int16_t);
+
+
 	PSX::LevelExtraHeader extraHeader = {};
-	if (offTropyGhost > 0)
-	{
-		if (offOxideGhost > 0) { extraHeader.count = PSX::LevelExtra::COUNT; }
-		else { extraHeader.count = PSX::LevelExtra::N_OXIDE_GHOST; }
-	}
-	else { extraHeader.count = 0; }
+
 	extraHeader.offsets[PSX::LevelExtra::MINIMAP] = 0;
-	extraHeader.offsets[PSX::LevelExtra::SPAWN] = 0;
+	extraHeader.offsets[PSX::LevelExtra::SPAWN] = static_cast<uint32_t>(offSpawnMeta);
 	extraHeader.offsets[PSX::LevelExtra::CAMERA_END_OF_RACE] = 0;
 	extraHeader.offsets[PSX::LevelExtra::CAMERA_DEMO] = 0;
 	extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST] = static_cast<uint32_t>(offTropyGhost);
 	extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST] = static_cast<uint32_t>(offOxideGhost);
 	extraHeader.offsets[PSX::LevelExtra::CREDITS] = 0;
+	// count = number of valid entries in offsets[]. SPAWN is index 1 and is always
+	// written now, so the floor is CAMERA_DEMO + 1 (== 4) -- the value 61 of the 79
+	// hazard-capable vanilla levels use, and enough that hazard handlers pass their
+	// `count > 0` gate. Camera code requires count >= 3 but null-checks the pointer
+	// it then reads, so leaving CAMERA_* at 0 is safe.
+	if (offTropyGhost > 0)
+	{
+		if (offOxideGhost > 0) { extraHeader.count = PSX::LevelExtra::COUNT; }
+		else { extraHeader.count = PSX::LevelExtra::N_OXIDE_GHOST; }
+	}
+	else { extraHeader.count = PSX::LevelExtra::CAMERA_DEMO + 1; }
 
 	const size_t offExtraHeader = currOffset;
 	//printf(nameof(offExtraHeader) " = %zx\n", offExtraHeader);
@@ -3256,8 +3247,14 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		}
 	}
 
-	if (offTropyGhost != 0) { pointerMap.push_back(CALCULATE_OFFSET(PSX::LevelExtraHeader, offsets[PSX::LevelExtra::N_TROPY_GHOST], offExtraHeader)); }
-	if (offOxideGhost != 0) { pointerMap.push_back(CALCULATE_OFFSET(PSX::LevelExtraHeader, offsets[PSX::LevelExtra::N_OXIDE_GHOST], offExtraHeader)); }
+	// Every non-zero entry in the extra header is a pointer and must be relocated.
+	// Previously only the two ghost entries were registered, so any other offset the
+	// editor started writing would reach the game as a raw file offset.
+	for (size_t i = 0; i < PSX::LevelExtra::COUNT; i++)
+	{
+		if (extraHeader.offsets[i] == 0) { continue; }
+		pointerMap.push_back(static_cast<uint32_t>(offExtraHeader + offsetof(PSX::LevelExtraHeader, offsets) + (i * sizeof(uint32_t))));
+	}
 
 	for (size_t i = 0; i < animPtrMapOffsets.size(); i++)
 	{
@@ -3337,6 +3334,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	for (const std::vector<uint8_t>& serializedCheckpoint : serializedCheckpoints) { Write(file, serializedCheckpoint.data(), serializedCheckpoint.size()); }
 	if (!m_tropyGhost.empty()) { Write(file, m_tropyGhost.data(), m_tropyGhost.size()); }
 	if (!m_oxideGhost.empty()) { Write(file, m_oxideGhost.data(), m_oxideGhost.size()); }
+	Write(file, spawnMeta.data(), spawnMeta.size() * sizeof(int16_t));
 	Write(file, &extraHeader, sizeof(extraHeader));
 	Write(file, &navTable, sizeof(navTable));
 	for (const std::vector<uint8_t>& serializedBotPath : serializedBotPaths) { Write(file, serializedBotPath.data(), serializedBotPath.size()); }

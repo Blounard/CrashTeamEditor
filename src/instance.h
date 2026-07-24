@@ -291,19 +291,28 @@ enum class ModelId : int32_t
 };
 
 
-
-class InstanceModelHeader
+struct ModelAnimation
 {
+	std::string name;
+	bool interpolated = false;
+	size_t frameCount = 0;
+	std::vector<std::vector<Vec3>> frames;
+	bool hasRawNumFrames = false; // true only when decoded from .lev
+	uint16_t rawNumFrames = 0;    // verbatim PSX::ModelAnim::numFrames, valid only if hasRawNumFrames
+};
+class InstanceModelHeader
+{ // TODO : double sided to .obj with material names
 public:
+
 	InstanceModelHeader() = default;
-	InstanceModelHeader(PSX::ModelHeader& modelheader, std::vector<Tri> triangles, uint32_t unkNum, PSX::ModelFrame& modelFrame);
+	InstanceModelHeader(PSX::ModelHeader& modelheader, std::vector<Tri> triangles, std::vector<bool> faceDoubleSided, uint32_t unkNum, PSX::ModelFrame& modelFrame, std::vector<ModelAnimation> animations);
 	InstanceModelHeader(const nlohmann::json& headerJson, const std::filesystem::path& modelDir, std::unordered_map<std::string, Texture>& materialToTexture);
 
 	const std::string& GetName() const { return m_name; }
 	//std::vector<std::string> m_texNames; // We don't store immediately a Texture, because it's probably shared for many models
 	//std::vector <RawUV> m_rawUVs; // only useful for loadLev to be converted to QuadUV later.
-	std::vector <QuadUV> m_uvs; // UVs for each texture (same count as texNames)
-	std::vector<size_t> m_textureLayoutID; // array of texLayout ID for serial
+	//std::vector <QuadUV> m_uvs; // UVs for each texture (same count as texNames)
+	//std::vector<size_t> m_textureLayoutID; // array of texLayout ID for serial
 	std::vector<Tri>& GetGeometry() { return m_faces; }
 	void ExportOBJ(const std::filesystem::path& modelDir, std::string baseFileName, std::unordered_map<std::string, Texture>& materialToTexture);
 	nlohmann::json WriteMetadataJson(const std::string& objFile, const std::string& mtlFile) const;
@@ -324,16 +333,11 @@ private:
 	Vec3 m_origin;
 	int16_t m_originOrPad;
 	std::vector<Tri> m_faces; // Array of triangle, contain string texture, positions, UVs, and colors.
+	std::vector<bool> m_faceDoubleSided; // parallel to m_faces; true == noBackfaceFlag set
 	uint32_t m_unk1; // 0x10
 	uint32_t m_colorCount; // At offCommandList, before the 1st command
 	bool m_isAnimated = false;
-	struct Animation {
-		std::string name;
-		bool interpolated = false;
-		size_t frameCount = 0;
-		std::vector<std::vector<Vec3>> frames; // frames[i].size() == 3 * m_faces.size()
-	};
-	std::vector<Animation> m_animations;
+	std::vector<ModelAnimation> m_animations;
 };
 class InstanceModel // group of models ?
 {

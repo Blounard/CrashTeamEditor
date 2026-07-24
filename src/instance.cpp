@@ -321,19 +321,14 @@ InstanceModel::InstanceModel(const std::filesystem::path& jsonPath, std::unorder
 
 
 
-
-
-
-
-
-
-InstanceModelHeader::InstanceModelHeader(PSX::ModelHeader& modelHeader, std::vector<Tri> triangles, uint32_t colorCount, PSX::ModelFrame& modelFrame)
+InstanceModelHeader::InstanceModelHeader(PSX::ModelHeader& modelHeader, std::vector<Tri> triangles, std::vector<bool> faceDoubleSided, uint32_t colorCount, PSX::ModelFrame& modelFrame, std::vector<ModelAnimation> animations)
 {
 	m_name = std::string(modelHeader.name, strnlen(modelHeader.name, sizeof(modelHeader.name)));
 	m_maxDistLOD = ConvertFP(modelHeader.maxDistanceLOD, FP_ONE_GEO);
 	m_flags = modelHeader.flags;
 	m_scale = ConvertPSXVec3(modelHeader.scale, FP_ONE);
 	m_faces = triangles;
+	m_faceDoubleSided = std::move(faceDoubleSided);
 	m_scaleOrPad = modelHeader.maybeScaleMaybePadding;
 	m_origin = ConvertPSXVec3(modelFrame.pos, FP_ONE_GEO);
 	m_originOrPad = modelFrame.maybePosMaybePadding;
@@ -341,6 +336,8 @@ InstanceModelHeader::InstanceModelHeader(PSX::ModelHeader& modelHeader, std::vec
 	m_colorCount = colorCount;
 	m_hasScale = true;
 	m_hasOrigin = true;
+	m_animations = animations;
+	m_isAnimated = !animations.empty();
 }
 
 nlohmann::json InstanceModelHeader::WriteMetadataJson(const std::string& objFile, const std::string& mtlFile) const
@@ -375,6 +372,7 @@ void InstanceModelHeader::ExportOBJ(const std::filesystem::path& modelDir, std::
 	{
 		for (const auto& [matName, indices] : materialToTris)
 		{
+			if (materialToTexture[matName].IsEmpty()) continue;
 			std::filesystem::path sourcePath = materialToTexture[matName].GetPath();
 			std::filesystem::path destPath = modelDir / sourcePath.filename();
 
@@ -566,113 +564,178 @@ namespace
 	}
 }
 
+static size_t Align4(size_t value)
+{
+	return (value + 3) & ~static_cast<size_t>(3);
+}
 
+// Component-wise divide with a guard: an axis with truly zero scale (shouldn't
+// happen after MIN_BOX_SIZE clamping, but a raw m_hasScale override could still
+// supply one) maps to origin 0 rather than producing inf/UB.
+static Vec3 SafeDivide(const Vec3& num, const Vec3& denom)
+{
+	return Vec3(
+		std::fabs(denom.x) < 0.0001f ? 0.0f : num.x / denom.x,
+		std::fabs(denom.y) < 0.0001f ? 0.0f : num.y / denom.y,
+		std::fabs(denom.z) < 0.0001f ? 0.0f : num.z / denom.z
+	);
+}
 
-void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t modelOffset, size_t headerStructOffset,
+void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t modelOffset, 
+	size_t headerStructOffset,
 	std::unordered_map<std::string, Texture>& materialToTexture,
 	std::vector<uint32_t>& outPointerLocations) const
 {
 	PSX::ModelHeader header{};
 	std::memset(header.name, 0, sizeof(header.name));
 	std::memcpy(header.name, m_name.data(), std::min(m_name.size(), sizeof(header.name)));
-	//std::strncpy(header.name, m_name.c_str(), sizeof(header.name) - 1);
 	header.unk1 = m_unk1;
 	header.maxDistanceLOD = ConvertFloat(m_maxDistLOD, FP_ONE_GEO);
 	header.flags = m_flags;
 	header.maybeScaleMaybePadding = m_scaleOrPad;
-	header.offStaticDeltaArray = 0;
-	header.numAnimations = 0; // this editable format has no animation support; not a guess, an invariant
-	header.offAnimations = 0;
-	header.offAnimtex = 0;
+	header.offStaticDeltaArray = 0; // compressed static vertices unsupported by this encoder -- intentional
 
-	// --- Bounding box refit: scale/origin are DERIVED from the current mesh,
-	// not taken from m_scale (which was only the value read at import time and
-	// may no longer fit an edited mesh). See design notes below. ---
+	auto PreFlip = [](const Vec3& pos) { return Vec3(-pos.x, pos.y, -pos.z); };
+
+	// --- Filter animations to only those whose topology still matches m_faces.
+	// m_faces can be edited independently of m_animations (no animated-mesh
+	// editing UI exists yet), so a stale animation is possible; per the
+	// preserve-only policy, drop it rather than write corrupt/misaligned data.
+	// If every animation is dropped this way, the header degrades gracefully
+	// into a plain static model using m_faces' own current positions. ---
+	std::vector<const ModelAnimation*> validAnims;
+	for (const ModelAnimation& anim : m_animations)
+	{
+		bool ok = !anim.frames.empty();
+		for (const std::vector<Vec3>& frame : anim.frames)
+		{
+			if (frame.size() != m_faces.size() * 3) { ok = false; break; }
+		}
+		if (!ok)
+		{
+			printf("WARNING: header '%s' animation '%s' topology mismatch (expected %zu verts/frame) -- dropped\n",
+				m_name.c_str(), anim.name.c_str(), m_faces.size() * 3);
+			continue;
+		}
+		validAnims.push_back(&anim);
+	}
+	const bool effectivelyAnimated = !validAnims.empty();
+
+	// --- Bounding box refit: union of every pose that will actually be
+	// encoded (m_faces' current positions, plus every frame of every
+	// surviving animation), so the shared `scale` fits all of them. ---
 	Vec3 preFlipMin(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
 	Vec3 preFlipMax(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest());
-	for (const Tri& tri : m_faces)
-	{
-		for (int i = 0; i < 3; i++)
+	auto ExpandBox = [&](const Vec3& pos)
 		{
-			Vec3 preFlip(-tri.p[i].pos.x, tri.p[i].pos.y, -tri.p[i].pos.z);
-			preFlipMin.x = std::min(preFlipMin.x, preFlip.x); preFlipMax.x = std::max(preFlipMax.x, preFlip.x);
-			preFlipMin.y = std::min(preFlipMin.y, preFlip.y); preFlipMax.y = std::max(preFlipMax.y, preFlip.y);
-			preFlipMin.z = std::min(preFlipMin.z, preFlip.z); preFlipMax.z = std::max(preFlipMax.z, preFlip.z);
-		}
-	}
+			Vec3 pf = PreFlip(pos);
+			preFlipMin.x = std::min(preFlipMin.x, pf.x); preFlipMax.x = std::max(preFlipMax.x, pf.x);
+			preFlipMin.y = std::min(preFlipMin.y, pf.y); preFlipMax.y = std::max(preFlipMax.y, pf.y);
+			preFlipMin.z = std::min(preFlipMin.z, pf.z); preFlipMax.z = std::max(preFlipMax.z, pf.z);
+		};
+	for (const Tri& tri : m_faces)
+		for (int c = 0; c < 3; c++)
+			ExpandBox(tri.p[c].pos);
+	for (const ModelAnimation* anim : validAnims)
+		for (const std::vector<Vec3>& frame : anim->frames)
+			for (const Vec3& pos : frame)
+				ExpandBox(pos);
+
 	if (m_faces.empty()) { preFlipMin = Vec3(0, 0, 0); preFlipMax = Vec3(0, 0, 0); }
 
+	// MIN_BOX_SIZE guards against a flat axis rounding to an int16 scale of
+	// exactly 0 (e.g. an unmoving axis on an otherwise-animated model) --
+	// 1/(2*FP_ONE) is the smallest extent guaranteed to round to a nonzero
+	// int16 after multiplying by FP_ONE.
+	constexpr float MIN_BOX_SIZE = 1.0f / (2.0f * FP_ONE);
 	Vec3 boxSize(
-		std::max(preFlipMax.x - preFlipMin.x, 0.0001f),
-		std::max(preFlipMax.y - preFlipMin.y, 0.0001f),
-		std::max(preFlipMax.z - preFlipMin.z, 0.0001f)
+		std::max(preFlipMax.x - preFlipMin.x, MIN_BOX_SIZE),
+		std::max(preFlipMax.y - preFlipMin.y, MIN_BOX_SIZE),
+		std::max(preFlipMax.z - preFlipMin.z, MIN_BOX_SIZE)
 	);
-	
 
-	// Round into the actual PSX fixed-point fields, then recompute the
-	// "effective" float values FROM those rounded integers (not the
-	// pre-rounding floats), so vertex quantization below matches exactly
-	// what the decoder will reconstruct when it reads these fields back.
-	float factor = static_cast<float>(FP_ONE);
-	header.scale.x = static_cast<int16_t>(std::round(boxSize.x * factor));
-	header.scale.y = static_cast<int16_t>(std::round(boxSize.y * factor));
-	header.scale.z = static_cast<int16_t>(std::round(boxSize.z * factor));
-	Vec3 effScale(header.scale.x / factor, header.scale.y / factor, header.scale.z / factor);
-	Vec3 originF(preFlipMin.x / boxSize.x, preFlipMin.y / boxSize.y, preFlipMin.z / boxSize.z);
-	if (m_hasScale)
-	{ 
-		header.scale = ConvertVec3(m_scale, FP_ONE);
-		originF = preFlipMin / m_scale;
-	}
+	header.scale = m_hasScale ? ConvertVec3(m_scale, FP_ONE) : ConvertVec3(boxSize, FP_ONE);
+	// Recompute the float scale FROM the rounded int16 in both branches (not
+	// from boxSize/m_scale directly) so every pose's quantization agrees
+	// exactly with what the decoder reconstructs. Previously the m_hasScale
+	// branch divided by the pre-rounding m_scale, which could disagree with
+	// header.scale by a rounding step -- fixed here.
+	Vec3 effScale = ConvertPSXVec3(header.scale, FP_ONE);
 
+	// --- Encodes one pose (a GetPos(tri, corner) callable) into a tight-fit
+	// ModelFrame + vertex bytes, using the shared effScale. Safe against
+	// clipping: effScale was sized from the union of every pose we'll ever
+	// call this with, so this pose's own extent is always <= effScale. ---
+	auto EncodePose = [&](auto&& GetPos) -> std::pair<PSX::ModelFrame, std::vector<uint8_t>>
+		{
+			Vec3 poseMin(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+			for (size_t t = 0; t < m_faces.size(); t++)
+			{
+				for (int c = 0; c < 3; c++)
+				{
+					Vec3 pf = PreFlip(GetPos(t, c));
+					poseMin.x = std::min(poseMin.x, pf.x);
+					poseMin.y = std::min(poseMin.y, pf.y);
+					poseMin.z = std::min(poseMin.z, pf.z);
+				}
+			}
+			if (m_faces.empty()) { poseMin = Vec3(0, 0, 0); }
 
-	
-	PSX::ModelFrame frame{};
-	frame.pos.x = static_cast<int16_t>(std::round(originF.x * 256.0f));
-	frame.pos.y = static_cast<int16_t>(std::round(originF.y * 256.0f));
-	frame.pos.z = static_cast<int16_t>(std::round(originF.z * 256.0f));
-	frame.maybePosMaybePadding = m_originOrPad; 
-	//if (m_hasOrigin)
-	//	frame.pos = ConvertVec3(m_origin, FP_ONE_GEO); // Will need to be changed. No need to hardcode, can be derived from the stored scale.
-	std::memset(frame.unk16, 0, sizeof(frame.unk16)); // default, per struct comment ("sixteen 0x0")
-	frame.vertexOffset = sizeof(PSX::ModelFrame); // standard layout, no mystery padding
+			Vec3 originF = SafeDivide(poseMin, effScale);
 
-	Vec3 effOrigin(frame.pos.x / 256.0f, frame.pos.y / 256.0f, frame.pos.z / 256.0f);
+			PSX::ModelFrame frame{};
+			frame.pos = ConvertVec3(originF, 256); // 256, not FP_ONE_GEO -- matches the decoder's pos*(1/256.0f)
+			frame.maybePosMaybePadding = m_originOrPad;
+			std::memset(frame.unk16, 0, sizeof(frame.unk16));
+			frame.vertexOffset = sizeof(PSX::ModelFrame);
 
-	// --- Build command list + vertex data + texture layouts + colors ---
+			Vec3 effOrigin = ConvertPSXVec3(frame.pos, 256);
+
+			std::vector<uint8_t> vertexBytes;
+			vertexBytes.reserve(m_faces.size() * 9);
+			for (size_t t = 0; t < m_faces.size(); t++)
+			{
+				for (int pushOrder = 0; pushOrder < 3; pushOrder++)
+				{
+					int cornerIdx = 2 - pushOrder; // matches the command push order below
+					uint8_t bytes[3];
+					EncodeVertexBytes(GetPos(t, cornerIdx), effScale, effOrigin, bytes);
+					vertexBytes.push_back(bytes[0]);
+					vertexBytes.push_back(bytes[1]);
+					vertexBytes.push_back(bytes[2]);
+				}
+			}
+			return { frame, std::move(vertexBytes) };
+		};
+
+	// --- Command list: topology/color/texture only. Identical across every
+	// frame (that's the whole premise of frame-based animation reusing one
+	// command list), so this runs exactly once regardless of frame count. ---
 	std::vector<PSX::InstDrawCommand> commands;
-	std::vector<uint8_t> vertexBytes;
 	std::vector<PSX::TextureLayout> layouts;
 	std::vector<uint32_t> colorPalette;
 	std::unordered_map<uint32_t, uint32_t> colorLookup;
 	bool warnedColorOverflow = false;
 	bool warnedTexOverflow = false;
 
-	for (const Tri& tri : m_faces)
+	for (size_t triIndex = 0; triIndex < m_faces.size() ; triIndex++)
 	{
-		// Push order is reversed (p2, p1, p0) relative to the triangle's own
-		// corner order -- required so the decoder's stack machine (which
-		// emits temp[3],temp[2],temp[1] as tri.p[0],p[1],p[2]) reproduces the
-		// exact corner order we stored, with no swap/normalFlip trick needed.
+		const Tri& tri = m_faces[triIndex];
 		uint32_t colorIdx[3];
-		colorIdx[2] = GetOrAddColorIndex(colorPalette, colorLookup, tri.p[0].color, m_name, warnedColorOverflow); // read by cmdC
-		colorIdx[1] = GetOrAddColorIndex(colorPalette, colorLookup, tri.p[1].color, m_name, warnedColorOverflow); // read by cmdB
-		colorIdx[0] = GetOrAddColorIndex(colorPalette, colorLookup, tri.p[2].color, m_name, warnedColorOverflow); // read by cmdA
+		colorIdx[2] = GetOrAddColorIndex(colorPalette, colorLookup, tri.p[0].color, m_name, warnedColorOverflow);
+		colorIdx[1] = GetOrAddColorIndex(colorPalette, colorLookup, tri.p[1].color, m_name, warnedColorOverflow);
+		colorIdx[0] = GetOrAddColorIndex(colorPalette, colorLookup, tri.p[2].color, m_name, warnedColorOverflow);
 
 		uint32_t texCoordIndex = 0;
-		auto texIt = materialToTexture.find(tri.texture);
-		if (!tri.texture.empty() && texIt != materialToTexture.end())
+		Texture& texFace = materialToTexture[tri.texture];
+		if (!texFace.IsEmpty())
 		{
-			// TextureLayout is a 4-corner quad struct reused for 3-corner
-			// triangles; the 4th corner is never read on decode, so we fill
-			// it with the centroid rather than leave it at (0,0).
 			Vec2 centroid(
 				(tri.p[0].uv.x + tri.p[1].uv.x + tri.p[2].uv.x) / 3.0f,
 				(tri.p[0].uv.y + tri.p[1].uv.y + tri.p[2].uv.y) / 3.0f
 			);
 			QuadUV quadUV = { tri.p[2].uv, tri.p[1].uv, tri.p[0].uv, centroid };
-
-			layouts.push_back(texIt->second.Serialize(quadUV));
+			layouts.push_back(texFace.Serialize(quadUV));
 
 			if (layouts.size() > 511)
 			{
@@ -686,75 +749,147 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 			}
 			else
 			{
-				texCoordIndex = static_cast<uint32_t>(layouts.size()); // 1-based
+				texCoordIndex = static_cast<uint32_t>(layouts.size());
 			}
 		}
 
-		uint8_t bytes[3];
-		for (int pushOrder = 0; pushOrder < 3; pushOrder++)
+		for (int cmdSlot = 0; cmdSlot < 3; cmdSlot++)
 		{
-			int cornerIdx = 2 - pushOrder; // 2, 1, 0 -- matches command push order below
-			EncodeVertexBytes(tri.p[cornerIdx].pos, effScale, effOrigin, bytes);
-			vertexBytes.push_back(bytes[0]);
-			vertexBytes.push_back(bytes[1]);
-			vertexBytes.push_back(bytes[2]);
+			PSX::InstDrawCommand cmd{};
+			cmd.stackWriteLocationIndex = 87; // safe: this encoder never emits readNextVertFromStackIndexFlag=1, so the slot is never read back
+			cmd.readNextVertFromStackIndexFlag = 0;
+			cmd.resetFlag = (cmdSlot == 0) ? 1 : 0;
+			cmd.colorCoordIndex = colorIdx[cmdSlot];
+			cmd.texCoordIndex = texCoordIndex;
+			cmd.colorFromScratchpadOrRamFlag = static_cast<uint32_t>(!tri.texture.empty());
+			cmd.noBackfaceFlag = m_faceDoubleSided[triIndex] ? 0 : 1;
+			commands.push_back(cmd);
 		}
-
-		PSX::InstDrawCommand cmdA{};
-		cmdA.stackWriteLocationIndex = 87; // was bugged and vanilla used 87 for crates. NEED UNDERSTANDING.
-		cmdA.readNextVertFromStackIndexFlag = 0;
-		cmdA.resetFlag = 1; // starts this triangle as an independent strip
-		cmdA.colorCoordIndex = colorIdx[0];
-		cmdA.texCoordIndex = texCoordIndex; 
-		cmdA.colorFromScratchpadOrRamFlag = static_cast<uint32_t>(!tri.texture.empty());
-		cmdA.noBackfaceFlag = 0; // Will need to store this per tri instead of hardcoding 
-		commands.push_back(cmdA);
-
-		PSX::InstDrawCommand cmdB{};
-		cmdB.stackWriteLocationIndex = 87; 
-		cmdB.readNextVertFromStackIndexFlag = 0;
-		cmdB.resetFlag = 0;
-		cmdB.colorCoordIndex = colorIdx[1];
-		cmdB.texCoordIndex = texCoordIndex;
-		cmdB.colorFromScratchpadOrRamFlag = static_cast<uint32_t>(!tri.texture.empty());
-		cmdB.noBackfaceFlag = 0;
-		commands.push_back(cmdB);
-
-		PSX::InstDrawCommand cmdC{};
-		cmdC.stackWriteLocationIndex = 87;
-		cmdC.readNextVertFromStackIndexFlag = 0;
-		cmdC.resetFlag = 0;
-		cmdC.colorCoordIndex = colorIdx[2];
-		cmdC.texCoordIndex = texCoordIndex; 
-		cmdC.colorFromScratchpadOrRamFlag = static_cast<uint32_t>(!tri.texture.empty());
-		cmdC.noBackfaceFlag = 0;
-		commands.push_back(cmdC);
 	}
 
-	// Fix for anim flag : 
 	if (m_colorCount > 63)
 	{
-		while (colorPalette.size() < 64)
-		{
-			colorPalette.push_back(static_cast<uint32_t>(0));
-		}
+		while (colorPalette.size() < 64) { colorPalette.push_back(0u); }
 	}
-	// --- Write command list section: unkNum + commands + terminator ---
+
 	const size_t commandListOffset = output.size();
-	//unkNum is actually colorPalette size ??
 	AppendValue(output, static_cast<uint32_t>(colorPalette.size()));
 	for (const PSX::InstDrawCommand& cmd : commands) { AppendValue(output, cmd); }
 	PSX::InstDrawCommand terminator{};
 	terminator.command = 0xFFFFFFFF;
 	AppendValue(output, terminator);
 
-	// --- Write frame + vertex data ---
-	const size_t frameDataOffset = output.size();
-	AppendValue(output, frame);
-	AppendBytes(output, vertexBytes.data(), vertexBytes.size());
-	AppendPadding(output, 4);
+	// --- Frame data: either one static pose, or one ModelAnim block per
+	// surviving animation. ---
+	if (!effectivelyAnimated)
+	{
+		auto [frame, vertexBytes] = EncodePose([&](size_t t, int c) { return m_faces[t].p[c].pos; });
+		const size_t frameDataOffset = output.size();
+		AppendValue(output, frame);
+		AppendBytes(output, vertexBytes.data(), vertexBytes.size());
+		AppendPadding(output, 4);
 
-	// --- Write texture layouts + pointer array ---
+		header.offFrameData = static_cast<uint32_t>(modelOffset + frameDataOffset);
+		header.numAnimations = 0;
+		header.offAnimations = 0;
+	}
+	else
+	{
+		header.offFrameData = 0; // per RenderBucket_GetFrame: only read when !animated
+		header.numAnimations = static_cast<uint32_t>(validAnims.size());
+
+		std::vector<uint32_t> animBlockOffsets(validAnims.size());
+		for (size_t a = 0; a < validAnims.size(); a++)
+		{
+			const ModelAnimation& anim = *validAnims[a];
+			const size_t numStoredFrames = anim.frames.size();
+
+			std::vector<std::pair<PSX::ModelFrame, std::vector<uint8_t>>> encodedFrames;
+			encodedFrames.reserve(numStoredFrames);
+			for (size_t f = 0; f < numStoredFrames; f++)
+			{
+				encodedFrames.push_back(EncodePose([&](size_t t, int c) { return anim.frames[f][t * 3 + c]; }));
+			}
+
+			// Payload size is identical for every frame (same topology -> same
+			// numVerts), so stride is computed once, matching the extractor's
+			// own cross-check: frameSize == Align4(vertexOffset + payloadBytes).
+			const size_t payloadBytes = encodedFrames.empty() ? 0 : encodedFrames[0].second.size();
+			const size_t frameStride = Align4(sizeof(PSX::ModelFrame) + payloadBytes);
+			if (frameStride > 0x7FFF)
+			{
+				printf("WARNING: header '%s' animation '%s' frameSize 0x%zx exceeds int16_t range\n",
+					m_name.c_str(), anim.name.c_str(), frameStride);
+			}
+
+			// NOTE: numFrames' low 15 bits are the LOGICAL frame count; for
+			// interpolated animations the game only stores ((logical>>1)+1)
+			// frames, which is lossy to invert -- we don't currently retain
+			// the original logical count (or its parity) through decode, so
+			// this reconstructs the smallest logical count consistent with
+			// numStoredFrames. Recommend capturing `anim.numFrames` verbatim
+			// at decode time (one extra field on ModelAnimation) to make this
+			// exact instead of approximate.
+
+			uint16_t numFramesField;
+			bool useRaw = anim.hasRawNumFrames;
+			if (useRaw)
+			{
+				uint16_t storedLogical = anim.rawNumFrames & PSX::ANIM_FRAME_COUNT_MASK;
+				bool storedInterp = (anim.rawNumFrames & PSX::ANIM_INTERPOLATED_BIT) != 0;
+				size_t expectedStoredFrames = storedInterp ? (storedLogical > 0 ? (storedLogical >> 1) + 1 : 0) : storedLogical;
+				// Validate against the frames we're actually about to write -- if someone
+				// edited frame count/interpolation after import, the raw value no longer
+				// describes this data, so fall back rather than write an inconsistency.
+				if (storedInterp != anim.interpolated || expectedStoredFrames != numStoredFrames)
+				{
+					printf("WARNING: header '%s' animation '%s' no longer matches its original frame metadata -- recomputing numFrames\n",
+						m_name.c_str(), anim.name.c_str());
+					useRaw = false;
+				}
+			}
+			if (useRaw)
+			{
+				numFramesField = anim.rawNumFrames;
+			}
+			else
+			{
+				uint16_t logicalCount = anim.interpolated
+					? static_cast<uint16_t>(numStoredFrames > 0 ? (numStoredFrames - 1) * 2 : 0)
+					: static_cast<uint16_t>(numStoredFrames);
+				numFramesField = logicalCount | (anim.interpolated ? PSX::ANIM_INTERPOLATED_BIT : 0);
+			}
+
+			PSX::ModelAnim animHeader{};
+			std::memset(animHeader.name, 0, sizeof(animHeader.name));
+			std::memcpy(animHeader.name, anim.name.data(), std::min(anim.name.size(), sizeof(animHeader.name)));
+			animHeader.numFrames = numFramesField;
+			animHeader.frameSize = static_cast<int16_t>(frameStride);
+			animHeader.offDeltaArray = 0; // uncompressed -- always a valid, always-decodable encoding
+
+			const size_t animBlockOffset = output.size();
+			AppendValue(output, animHeader);
+			for (const auto& [frame, vertexBytes] : encodedFrames)
+			{
+				const size_t frameStart = output.size();
+				AppendValue(output, frame);
+				AppendBytes(output, vertexBytes.data(), vertexBytes.size());
+				const size_t written = output.size() - frameStart;
+				if (written < frameStride) { output.insert(output.end(), frameStride - written, uint8_t(0)); }
+			}
+			animBlockOffsets[a] = static_cast<uint32_t>(modelOffset + animBlockOffset);
+		}
+
+		const size_t animPtrArrayOffset = output.size();
+		for (size_t a = 0; a < animBlockOffsets.size(); a++)
+		{
+			AppendValue(output, animBlockOffsets[a]);
+			outPointerLocations.push_back(static_cast<uint32_t>(modelOffset + animPtrArrayOffset + a * sizeof(uint32_t)));
+		}
+		header.offAnimations = static_cast<uint32_t>(modelOffset + animPtrArrayOffset);
+	}
+
+	// --- Texture layouts + pointer array (unchanged) ---
 	size_t texLayoutPtrArrayOffset = 0;
 	if (!layouts.empty())
 	{
@@ -766,15 +901,11 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 		{
 			uint32_t layoutPtr = static_cast<uint32_t>(modelOffset + texLayoutsOffset + i * sizeof(PSX::TextureLayout));
 			AppendValue(output, layoutPtr);
-
-			// Each entry here is itself a pointer stored in the .lev file, so
-			// its own location goes in the relocation table too -- mirrors
-			// ExtractModels' patchTable.push_back for this same array.
 			outPointerLocations.push_back(static_cast<uint32_t>(modelOffset + texLayoutPtrArrayOffset + i * sizeof(uint32_t)));
 		}
 	}
 
-	// --- Write colors ---
+	// --- Colors (unchanged) ---
 	size_t colorsOffset = 0;
 	if (!colorPalette.empty())
 	{
@@ -782,18 +913,28 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 		for (uint32_t packed : colorPalette) { AppendValue(output, packed); }
 	}
 
-	// --- Patch the ModelHeader reserved earlier by InstanceModel::Serialize ---
 	header.offCommandList = static_cast<uint32_t>(modelOffset + commandListOffset);
-	header.offFrameData = static_cast<uint32_t>(modelOffset + frameDataOffset);
 	header.offTexLayout = layouts.empty() ? 0 : static_cast<uint32_t>(modelOffset + texLayoutPtrArrayOffset);
 	header.offColors = colorPalette.empty() ? 0 : static_cast<uint32_t>(modelOffset + colorsOffset);
 
 	std::memcpy(output.data() + headerStructOffset, &header, sizeof(PSX::ModelHeader));
 
-	// --- Record this header's own pointer-field locations ---
+	// --- Pointer-field registration. offFrameData and offAnimations are each
+	// legitimately 0 depending on effectivelyAnimated -- SaveLEV rebases every
+	// registered field unconditionally, so registering a zero field would
+	// turn it into a bogus non-null pointer. Previously offFrameData was
+	// registered unconditionally, which was harmless before (always nonzero)
+	// but would corrupt any animated header now -- fixed here. ---
 	const uint32_t headerAbsoluteOffset = static_cast<uint32_t>(modelOffset + headerStructOffset);
 	outPointerLocations.push_back(CALCULATE_OFFSET(PSX::ModelHeader, offCommandList, headerAbsoluteOffset));
-	outPointerLocations.push_back(CALCULATE_OFFSET(PSX::ModelHeader, offFrameData, headerAbsoluteOffset));
+	if (header.offFrameData != 0)
+	{
+		outPointerLocations.push_back(CALCULATE_OFFSET(PSX::ModelHeader, offFrameData, headerAbsoluteOffset));
+	}
+	if (header.offAnimations != 0)
+	{
+		outPointerLocations.push_back(CALCULATE_OFFSET(PSX::ModelHeader, offAnimations, headerAbsoluteOffset));
+	}
 	if (!layouts.empty())
 	{
 		outPointerLocations.push_back(CALCULATE_OFFSET(PSX::ModelHeader, offTexLayout, headerAbsoluteOffset));
@@ -878,9 +1019,9 @@ Instance::Instance(PSX::InstDef inst)
 	m_scale = ConvertPSXVec3(inst.scale, FP_ONE);
 	m_pos = ConvertPSXVec3(inst.pos, FP_ONE_GEO);
 	m_rot = ConvertPSXAngle(inst.rot);
-	m_rot.x = -m_rot.x;
-	m_rot.y += 180.0f;
-	m_rot.z = -m_rot.z;
+	//m_rot.x = -m_rot.x;
+	//m_rot.y += 180.0f;
+	//m_rot.z = -m_rot.z;
 	m_modelID = static_cast<ModelId>(inst.modelID);
 	m_color = ConvertColor(inst.colorRGBA);
 	m_flags = inst.flags;
