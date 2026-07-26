@@ -252,235 +252,6 @@ namespace
 		return faces;
 	}
 }
-
-
-
-
-
-
-
-
-InstanceModelHeader::InstanceModelHeader(const nlohmann::json& headerJson, const std::filesystem::path& modelDir,
-	std::unordered_map<std::string, Texture>& materialToTexture)
-	: m_name(headerJson.value("name", std::string()))
-	, m_maxDistLOD(headerJson.value("maxDistanceLOD", 0.0f))
-	, m_flags(headerJson.value("flags", static_cast<uint16_t>(0)))
-	, m_scale()
-	, m_origin()
-	, m_scaleOrPad(headerJson.value("scaleOrPad", static_cast<int16_t>(0)))
-	, m_originOrPad(headerJson.value("originOrPad", static_cast<int16_t>(0)))
-	, m_unk1(headerJson.value("unk1", static_cast<uint32_t>(0)))
-	, m_colorCount(headerJson.value("colorCount", static_cast<uint32_t>(0)))
-{
-	m_hasScale = false;
-	if (headerJson.contains("scale"))
-	{
-		const nlohmann::json& scaleJson = headerJson["scale"];
-		m_scale.x = scaleJson.value("x", 0.0f);
-		m_scale.y = scaleJson.value("y", 0.0f);
-		m_scale.z = scaleJson.value("z", 0.0f);
-		m_hasScale = true;
-	}
-	m_hasOrigin = false;
-	if (headerJson.contains("m_origin"))
-	{
-		const nlohmann::json& scaleJson = headerJson["m_origin"];
-		m_origin.x = scaleJson.value("x", 0.0f);
-		m_origin.y = scaleJson.value("y", 0.0f);
-		m_origin.z = scaleJson.value("z", 0.0f);
-		m_hasOrigin = true;
-	}
-
-	std::string objFile = headerJson.value("objFile", std::string());
-	std::string mtlFile = headerJson.value("mtlFile", std::string());
-	if (objFile.empty() || mtlFile.empty()) { return; }
-
-	m_faces = LoadFacesFromObjMtl(modelDir / objFile, modelDir / mtlFile, materialToTexture);
-}
-
-InstanceModel::InstanceModel(const std::filesystem::path& jsonPath, std::unordered_map<std::string, Texture>& materialToTexture)
-{
-	std::ifstream jsonFile(jsonPath);
-	if (!jsonFile) { return; }
-
-	nlohmann::json json = nlohmann::json::parse(jsonFile);
-	m_name = json.value("name", std::string());
-	m_id = json.value("id", static_cast<int16_t>(0));
-	m_valid = true;
-
-	std::filesystem::path modelDir = jsonPath.parent_path();
-
-	if (json.contains("headers") && json["headers"].is_array())
-	{
-		for (const nlohmann::json& headerJson : json["headers"])
-		{
-			m_headers.emplace_back(headerJson, modelDir, materialToTexture);
-		}
-	}
-}
-
-
-
-InstanceModelHeader::InstanceModelHeader(PSX::ModelHeader& modelHeader, std::vector<Tri> triangles, std::vector<bool> faceDoubleSided, uint32_t colorCount, PSX::ModelFrame& modelFrame, std::vector<ModelAnimation> animations)
-{
-	m_name = std::string(modelHeader.name, strnlen(modelHeader.name, sizeof(modelHeader.name)));
-	m_maxDistLOD = ConvertFP(modelHeader.maxDistanceLOD, FP_ONE_GEO);
-	m_flags = modelHeader.flags;
-	m_scale = ConvertPSXVec3(modelHeader.scale, FP_ONE);
-	m_faces = triangles;
-	m_faceDoubleSided = std::move(faceDoubleSided);
-	m_scaleOrPad = modelHeader.maybeScaleMaybePadding;
-	m_origin = ConvertPSXVec3(modelFrame.pos, FP_ONE_GEO);
-	m_originOrPad = modelFrame.maybePosMaybePadding;
-	m_unk1 = modelHeader.unk1;
-	m_colorCount = colorCount;
-	m_hasScale = true;
-	m_hasOrigin = true;
-	m_animations = animations;
-	m_isAnimated = !animations.empty();
-}
-
-nlohmann::json InstanceModelHeader::WriteMetadataJson(const std::string& objFile, const std::string& mtlFile) const
-{
-	nlohmann::json json;
-	json["name"] = m_name;
-	json["objFile"] = objFile;
-	json["mtlFile"] = mtlFile;
-	json["triangleCount"] = m_faces.size();
-	json["maxDistanceLOD"] = m_maxDistLOD;
-	json["flags"] = m_flags;
-	if (m_hasScale)
-		json["scale"] = { {"x", m_scale.x}, {"y", m_scale.y}, {"z", m_scale.z} };
-	json["scaleOrPad"] = m_scaleOrPad;
-	if (m_hasOrigin)
-		json["origin"] = { {"x", m_origin.x}, {"y", m_origin.y}, {"z", m_origin.z} };
-	json["originOrPad"] = m_originOrPad;
-	json["unk1"] = m_unk1;
-	json["colorCount"] = m_colorCount;
-	return json;
-}
-
-void InstanceModelHeader::ExportOBJ(const std::filesystem::path& modelDir, std::string baseFileName, std::unordered_map<std::string, Texture>& materialToTexture)
-{
-	std::unordered_map<std::string, std::vector<size_t>> materialToTris; //material name -> list of triangle index
-	for (size_t i = 0; i < m_faces.size(); i++)
-		materialToTris[m_faces[i].texture].push_back(i);
-
-	// --- .mtl ---
-	std::ofstream mtl(modelDir / (baseFileName + ".mtl"));
-	if (mtl)
-	{
-		for (const auto& [matName, indices] : materialToTris)
-		{
-			if (materialToTexture[matName].IsEmpty()) continue;
-			std::filesystem::path sourcePath = materialToTexture[matName].GetPath();
-			std::filesystem::path destPath = modelDir / sourcePath.filename();
-
-			mtl << "newmtl " << matName << "\nKd 1 1 1\n";
-			 mtl << "map_Kd " << sourcePath.filename() << "\n";
-			mtl << "\n";
-
-			// Copy .png to the modelDir aswell. (not directly extracted there, so they are initially extracted once if several quad/models share the same texture)
-			std::filesystem::copy_file(sourcePath, destPath, std::filesystem::copy_options::overwrite_existing);
-		}
-	}
-
-	// --- .obj ---
-	std::ofstream obj(modelDir / (baseFileName + ".obj"));
-	if (!obj) { return; }
-
-	obj << "# Auto-exported from .ctrmodel (triangle soup, no shared vertex indices)\n";
-	obj << "mtllib " << baseFileName << ".mtl\n";
-	obj << "o " << baseFileName << "\n\n";
-
-	size_t runningIndex = 0; // 1-based OBJ v/vt index, advances by 3 per triangle
-	for (const auto& [matName, indices] : materialToTris)
-	{
-		obj << "usemtl " << matName << "\n";
-		for (size_t triIdx : indices)
-		{
-			const Tri& tri = m_faces[triIdx];
-
-			Vec3 e1 = tri.p[1].pos - tri.p[0].pos;
-			Vec3 e2 = tri.p[2].pos - tri.p[0].pos;
-			Vec3 n = e1.Cross(e2);
-			if (n.LengthSquared() > 0.0001f) { n.Normalize(); }
-
-			for (int i = 0; i < 3; i++)
-			{
-				obj << "v " << tri.p[i].pos.x << " " << tri.p[i].pos.y << " " << tri.p[i].pos.z
-					<< " " << (tri.p[i].color.r / 255.0f) << " " << (tri.p[i].color.g / 255.0f)
-					<< " " << (tri.p[i].color.b / 255.0f) << "\n"; // nonstandard v+rgb extension (Blender/MeshLab)
-			}
-			for (int i = 0; i < 3; i++)
-			{
-				// PNG/PSX v origin is top-left, OBJ vt origin is bottom-left
-				obj << "vt " << tri.p[i].uv.x << " " << (1.0f - tri.p[i].uv.y) << "\n";
-			}
-			obj << "vn " << n.x << " " << n.y << " " << n.z << "\n";
-
-			size_t i0 = runningIndex + 1, i1 = runningIndex + 2, i2 = runningIndex + 3;
-			size_t vn = runningIndex / 3 + 1;
-			obj << "f " << i0 << "/" << i0 << "/" << vn
-				<< " " << i1 << "/" << i1 << "/" << vn
-				<< " " << i2 << "/" << i2 << "/" << vn << "\n";
-			runningIndex += 3;
-		}
-		obj << "\n";
-	}
-}
-
-InstanceModel::InstanceModel(std::string name, std::vector<uint8_t> rawData)
-	: m_name(std::move(name))
-	, m_rawData(std::move(rawData))
-{
-	m_valid = false;
-}
-
-InstanceModel::InstanceModel(PSX::Model model, std::string modelName)
-{
-	m_name = modelName;
-	m_id = model.id;
-	m_valid = true;
-	m_headers.clear();
-}
-
-
-void InstanceModel::Export(const std::filesystem::path& exportDir, std::unordered_map<std::string, Texture>& materialToTexture)
-{
-	std::filesystem::path modelDir = exportDir / m_name;
-	std::filesystem::create_directories(modelDir);
-
-	std::vector<std::string> objFiles(m_headers.size());
-	std::vector<std::string> mtlFiles(m_headers.size());
-
-	for (size_t headerID = 0; headerID < m_headers.size(); headerID++)
-	{
-		InstanceModelHeader& header = m_headers[headerID];
-		std::string baseFileName = m_name + "LOD" + std::to_string(headerID);
-		header.ExportOBJ(modelDir, baseFileName, materialToTexture);
-		objFiles[headerID] = baseFileName + ".obj";
-		mtlFiles[headerID] = baseFileName + ".mtl";
-	}
-
-	nlohmann::json json;
-	json["name"] = m_name;
-	json["id"] = m_id;
-	json["numHeaders"] = m_headers.size();
-
-	nlohmann::json headersArray = nlohmann::json::array();
-	for (size_t headerID = 0; headerID < m_headers.size(); headerID++)
-	{
-		headersArray.push_back(m_headers[headerID].WriteMetadataJson(objFiles[headerID], mtlFiles[headerID]));
-	}
-	json["headers"] = headersArray;
-
-	std::ofstream file(modelDir / "metadata.json");
-	file << std::setw(4) << json << std::endl;
-	file.close();
-}
-
-
 namespace
 {
 	void AppendBytes(std::vector<uint8_t>& buffer, const void* data, size_t size)
@@ -563,6 +334,179 @@ namespace
 		return index;
 	}
 }
+namespace detail
+{
+	// ---- low-level helpers ----
+
+	template <typename T>
+	void writePOD(std::ostream& os, const T& value)
+	{
+		static_assert(std::is_trivially_copyable<T>::value, "writePOD requires trivially copyable type");
+		os.write(reinterpret_cast<const char*>(&value), sizeof(T));
+	}
+
+	template <typename T>
+	void readPOD(std::istream& is, T& value)
+	{
+		static_assert(std::is_trivially_copyable<T>::value, "readPOD requires trivially copyable type");
+		is.read(reinterpret_cast<char*>(&value), sizeof(T));
+		if (!is)
+			throw std::runtime_error("Unexpected end of file while reading POD value");
+	}
+
+	void writeString(std::ostream& os, const std::string& s)
+	{
+		uint32_t len = static_cast<uint32_t>(s.size());
+		writePOD(os, len);
+		if (len > 0)
+			os.write(s.data(), len);
+	}
+
+	std::string readString(std::istream& is)
+	{
+		uint32_t len = 0;
+		readPOD(is, len);
+		std::string s(len, '\0');
+		if (len > 0)
+		{
+			is.read(&s[0], len);
+			if (!is)
+				throw std::runtime_error("Unexpected end of file while reading string data");
+		}
+		return s;
+	}
+
+	void writeVec3(std::ostream& os, const Vec3& v)
+	{
+		writePOD(os, v.x);
+		writePOD(os, v.y);
+		writePOD(os, v.z);
+	}
+
+	Vec3 readVec3(std::istream& is)
+	{
+		Vec3 v{};
+		readPOD(is, v.x);
+		readPOD(is, v.y);
+		readPOD(is, v.z);
+		return v;
+	}
+}
+
+
+bool InstanceModelHeader::EncodeModelAnimations(const std::filesystem::path& modelDir, std::string baseFileName)
+{
+	std::ofstream os(modelDir / (baseFileName + ".anim"));
+	if (!os)
+		return false;
+
+	// Header
+	os.write(kAnimMagic, sizeof(kAnimMagic));
+	detail::writePOD(os, kAnimVersion);
+
+	// Animation count
+	uint32_t animCount = static_cast<uint32_t>(m_animations.size());
+	detail::writePOD(os, animCount);
+
+	for (const ModelAnimation& anim : m_animations)
+	{
+		detail::writeString(os, anim.name);
+
+		uint8_t interpolated = anim.interpolated ? 1 : 0;
+		detail::writePOD(os, interpolated);
+
+		uint64_t frameCount = static_cast<uint64_t>(anim.frameCount);
+		detail::writePOD(os, frameCount);
+
+		uint8_t hasRawNumFrames = anim.hasRawNumFrames ? 1 : 0;
+		detail::writePOD(os, hasRawNumFrames);
+		detail::writePOD(os, anim.rawNumFrames);
+
+		// frames: vector<vector<Vec3>>
+		uint32_t outerCount = static_cast<uint32_t>(anim.frames.size());
+		detail::writePOD(os, outerCount);
+
+		for (const auto& frame : anim.frames)
+		{
+			uint32_t innerCount = static_cast<uint32_t>(frame.size());
+			detail::writePOD(os, innerCount);
+			for (const Vec3& v : frame)
+				detail::writeVec3(os, v);
+		}
+	}
+	return static_cast<bool>(os);
+}
+
+// ---------------------------------------------------------------------
+// Decode
+// ---------------------------------------------------------------------
+bool DecodeModelAnimations(const std::string& path, std::vector<ModelAnimation>& outAnimations)
+{
+	std::ifstream is(path, std::ios::binary);
+	if (!is)
+		return false;
+
+	try
+	{
+		char magic[4];
+		is.read(magic, sizeof(magic));
+		if (!is || std::memcmp(magic, kAnimMagic, sizeof(magic)) != 0)
+			throw std::runtime_error("Invalid magic / not an animation file");
+
+		uint32_t version = 0;
+		detail::readPOD(is, version);
+		if (version != kAnimVersion)
+			throw std::runtime_error("Unsupported animation file version");
+
+		uint32_t animCount = 0;
+		detail::readPOD(is, animCount);
+
+		std::vector<ModelAnimation> result;
+		result.reserve(animCount);
+
+		for (uint32_t i = 0; i < animCount; ++i)
+		{
+			ModelAnimation anim;
+
+			anim.name = detail::readString(is);
+
+			uint8_t interpolated = 0;
+			detail::readPOD(is, interpolated);
+			anim.interpolated = interpolated != 0;
+
+			uint64_t frameCount = 0;
+			detail::readPOD(is, frameCount);
+			anim.frameCount = static_cast<size_t>(frameCount);
+
+			uint8_t hasRawNumFrames = 0;
+			detail::readPOD(is, hasRawNumFrames);
+			anim.hasRawNumFrames = hasRawNumFrames != 0;
+			detail::readPOD(is, anim.rawNumFrames);
+
+			uint32_t outerCount = 0;
+			detail::readPOD(is, outerCount);
+			anim.frames.resize(outerCount);
+
+			for (uint32_t f = 0; f < outerCount; ++f)
+			{
+				uint32_t innerCount = 0;
+				detail::readPOD(is, innerCount);
+				anim.frames[f].resize(innerCount);
+				for (uint32_t v = 0; v < innerCount; ++v)
+					anim.frames[f][v] = detail::readVec3(is);
+			}
+
+			result.push_back(std::move(anim));
+		}
+
+		outAnimations = std::move(result);
+		return true;
+	}
+	catch (const std::exception&)
+	{
+		return false;
+	}
+}
 
 static size_t Align4(size_t value)
 {
@@ -581,7 +525,211 @@ static Vec3 SafeDivide(const Vec3& num, const Vec3& denom)
 	);
 }
 
-void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t modelOffset, 
+InstanceModelHeader::InstanceModelHeader(PSX::ModelHeader& modelHeader, std::vector<Tri> triangles, std::vector<bool> faceDoubleSided, uint32_t colorCount, PSX::ModelFrame& modelFrame, std::vector<ModelAnimation> animations)
+{
+	m_name = std::string(modelHeader.name, strnlen(modelHeader.name, sizeof(modelHeader.name)));
+	m_maxDistLOD = ConvertFP(modelHeader.maxDistanceLOD, FP_ONE_GEO);
+	m_flags = modelHeader.flags;
+	m_scale = ConvertPSXVec3(modelHeader.scale, FP_ONE);
+	m_faces = triangles;
+	m_faceDoubleSided = std::move(faceDoubleSided);
+	m_scaleOrPad = modelHeader.maybeScaleMaybePadding;
+	m_origin = ConvertPSXVec3(modelFrame.pos, FP_ONE_GEO);
+	m_originOrPad = modelFrame.maybePosMaybePadding;
+	m_unk1 = modelHeader.unk1;
+	m_colorCount = colorCount;
+	m_hasScale = true;
+	m_hasOrigin = true;
+	m_animations = animations;
+	m_isAnimated = !animations.empty();
+
+	if (m_isAnimated && !m_animations.empty() && !m_animations[0].frames.empty())
+	{
+		const std::vector<Vec3>& frame0 = m_animations[0].frames[0];
+		for (size_t t = 0; t < m_faces.size(); t++)
+		{
+			for (int c = 0; c < 3; c++)
+			{
+				Vec3 diff = m_faces[t].p[c].pos - frame0[t * 3 + c];
+				if (diff.LengthSquared() > 0.0001f)
+				{
+					printf("MISMATCH tri %zu corner %d: m_faces=(%.3f,%.3f,%.3f) frame0=(%.3f,%.3f,%.3f)\n",
+						t, c, m_faces[t].p[c].pos.x, m_faces[t].p[c].pos.y, m_faces[t].p[c].pos.z,
+						frame0[t * 3 + c].x, frame0[t * 3 + c].y, frame0[t * 3 + c].z);
+				}
+			}
+		}
+	}
+}
+
+
+InstanceModelHeader::InstanceModelHeader(const nlohmann::json& headerJson, const std::filesystem::path& modelDir,
+	std::unordered_map<std::string, Texture>& materialToTexture)
+	: m_name(headerJson.value("name", std::string()))
+	, m_maxDistLOD(headerJson.value("maxDistanceLOD", 0.0f))
+	, m_flags(headerJson.value("flags", static_cast<uint16_t>(0)))
+	, m_scale()
+	, m_origin()
+	, m_scaleOrPad(headerJson.value("scaleOrPad", static_cast<int16_t>(0)))
+	, m_originOrPad(headerJson.value("originOrPad", static_cast<int16_t>(0)))
+	, m_unk1(headerJson.value("unk1", static_cast<uint32_t>(0)))
+	, m_colorCount(headerJson.value("colorCount", static_cast<uint32_t>(0)))
+{
+	m_hasScale = false;
+	if (headerJson.contains("scale"))
+	{
+		const nlohmann::json& scaleJson = headerJson["scale"];
+		m_scale.x = scaleJson.value("x", 0.0f);
+		m_scale.y = scaleJson.value("y", 0.0f);
+		m_scale.z = scaleJson.value("z", 0.0f);
+		m_hasScale = true;
+	}
+	m_hasOrigin = false;
+	if (headerJson.contains("m_origin"))
+	{
+		const nlohmann::json& scaleJson = headerJson["m_origin"];
+		m_origin.x = scaleJson.value("x", 0.0f);
+		m_origin.y = scaleJson.value("y", 0.0f);
+		m_origin.z = scaleJson.value("z", 0.0f);
+		m_hasOrigin = true;
+	}
+
+	std::string objFile = headerJson.value("objFile", std::string());
+	std::string mtlFile = headerJson.value("mtlFile", std::string());
+	if (objFile.empty() || mtlFile.empty()) { return; }
+
+	LoadOBJ(modelDir / objFile, materialToTexture);
+}
+
+
+
+void InstanceModelHeader::Clear()
+{
+	m_faces.clear();
+	m_faceDoubleSided.clear();
+	m_name = "NewLOD";
+	m_maxDistLOD = 100.0f;
+	m_flags = 0;
+	m_hasScale = false;
+	m_scaleOrPad = 0;
+	m_hasOrigin = false;
+	m_originOrPad = 0;
+	m_unk1 = 0;
+	m_colorCount = 0;
+	m_animations.clear();
+}
+
+const std::string& InstanceModelHeader::GetName() const 
+{ 
+	return m_name; 
+}
+std::vector<Tri>& InstanceModelHeader::GetGeometry() 
+{
+	return m_faces; 
+}
+
+void InstanceModelHeader::LoadOBJ(const std::filesystem::path& objFilename, std::unordered_map<std::string, Texture>& materialToTexture)
+{
+	std::filesystem::path mtlFilename = objFilename;
+	mtlFilename.replace_extension(".mtl");
+	m_faces = LoadFacesFromObjMtl(objFilename, mtlFilename, materialToTexture);
+	m_faceDoubleSided = std::vector<bool>(m_faces.size(), false); // TODO IMPLEMENT
+	m_hasScale = false;
+	m_hasOrigin = false;
+}
+
+void InstanceModelHeader::ExportOBJ(const std::filesystem::path& modelDir, std::string baseFileName, std::unordered_map<std::string, Texture>& materialToTexture)
+{
+	std::unordered_map<std::string, std::vector<size_t>> materialToTris; //material name -> list of triangle index
+	for (size_t i = 0; i < m_faces.size(); i++)
+		materialToTris[m_faces[i].texture].push_back(i);
+
+	// --- .mtl ---
+	std::ofstream mtl(modelDir / (baseFileName + ".mtl"));
+	if (mtl)
+	{
+		for (const auto& [matName, indices] : materialToTris)
+		{
+			if (materialToTexture[matName].IsEmpty()) continue;
+			std::filesystem::path sourcePath = materialToTexture[matName].GetPath();
+			std::filesystem::path destPath = modelDir / sourcePath.filename();
+
+			mtl << "newmtl " << matName << "\nKd 1 1 1\n";
+			mtl << "map_Kd " << sourcePath.filename() << "\n";
+			mtl << "\n";
+
+			// Copy .png to the modelDir aswell. (not directly extracted there, so they are initially extracted once if several quad/models share the same texture)
+			std::filesystem::copy_file(sourcePath, destPath, std::filesystem::copy_options::overwrite_existing);
+		}
+	}
+
+	// --- .obj ---
+	std::ofstream obj(modelDir / (baseFileName + ".obj"));
+	if (!obj) { return; }
+
+	obj << "# Auto-exported from .ctrmodel (triangle soup, no shared vertex indices)\n";
+	obj << "mtllib " << baseFileName << ".mtl\n";
+	obj << "o " << baseFileName << "\n\n";
+
+	size_t runningIndex = 0; // 1-based OBJ v/vt index, advances by 3 per triangle
+	for (const auto& [matName, indices] : materialToTris)
+	{
+		obj << "usemtl " << matName << "\n";
+		for (size_t triIdx : indices)
+		{
+			const Tri& tri = m_faces[triIdx];
+
+			Vec3 e1 = tri.p[1].pos - tri.p[0].pos;
+			Vec3 e2 = tri.p[2].pos - tri.p[0].pos;
+			Vec3 n = e1.Cross(e2);
+			if (n.LengthSquared() > 0.0001f) { n.Normalize(); }
+
+			for (int i = 0; i < 3; i++)
+			{
+				obj << "v " << tri.p[i].pos.x << " " << tri.p[i].pos.y << " " << tri.p[i].pos.z
+					<< " " << (tri.p[i].color.r / 255.0f) << " " << (tri.p[i].color.g / 255.0f)
+					<< " " << (tri.p[i].color.b / 255.0f) << "\n"; // nonstandard v+rgb extension (Blender/MeshLab)
+			}
+			for (int i = 0; i < 3; i++)
+			{
+				// PNG/PSX v origin is top-left, OBJ vt origin is bottom-left
+				obj << "vt " << tri.p[i].uv.x << " " << (1.0f - tri.p[i].uv.y) << "\n";
+			}
+			obj << "vn " << n.x << " " << n.y << " " << n.z << "\n";
+
+			size_t i0 = runningIndex + 1, i1 = runningIndex + 2, i2 = runningIndex + 3;
+			size_t vn = runningIndex / 3 + 1;
+			obj << "f " << i0 << "/" << i0 << "/" << vn
+				<< " " << i1 << "/" << i1 << "/" << vn
+				<< " " << i2 << "/" << i2 << "/" << vn << "\n";
+			runningIndex += 3;
+		}
+		obj << "\n";
+	}
+}
+
+nlohmann::json InstanceModelHeader::WriteMetadataJson(const std::string& objFile, const std::string& mtlFile) const
+{
+	nlohmann::json json;
+	json["name"] = m_name;
+	json["objFile"] = objFile;
+	json["mtlFile"] = mtlFile;
+	json["triangleCount"] = m_faces.size();
+	json["maxDistanceLOD"] = m_maxDistLOD;
+	json["flags"] = m_flags;
+	if (m_hasScale)
+		json["scale"] = { {"x", m_scale.x}, {"y", m_scale.y}, {"z", m_scale.z} };
+	json["scaleOrPad"] = m_scaleOrPad;
+	if (m_hasOrigin)
+		json["origin"] = { {"x", m_origin.x}, {"y", m_origin.y}, {"z", m_origin.z} };
+	json["originOrPad"] = m_originOrPad;
+	json["unk1"] = m_unk1;
+	json["colorCount"] = m_colorCount;
+	return json;
+}
+
+
+void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t modelOffset,
 	size_t headerStructOffset,
 	std::unordered_map<std::string, Texture>& materialToTexture,
 	std::vector<uint32_t>& outPointerLocations) const
@@ -718,7 +866,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	bool warnedColorOverflow = false;
 	bool warnedTexOverflow = false;
 
-	for (size_t triIndex = 0; triIndex < m_faces.size() ; triIndex++)
+	for (size_t triIndex = 0; triIndex < m_faces.size(); triIndex++)
 	{
 		const Tri& tri = m_faces[triIndex];
 		uint32_t colorIdx[3];
@@ -944,6 +1092,76 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 		outPointerLocations.push_back(CALCULATE_OFFSET(PSX::ModelHeader, offColors, headerAbsoluteOffset));
 	}
 }
+
+
+
+
+InstanceModel::InstanceModel(const std::filesystem::path& jsonPath, std::unordered_map<std::string, Texture>& materialToTexture)
+{
+	std::ifstream jsonFile(jsonPath);
+	if (!jsonFile) { return; }
+
+	nlohmann::json json = nlohmann::json::parse(jsonFile);
+	m_name = json.value("name", std::string());
+	m_id = json.value("id", static_cast<int16_t>(0));
+	m_valid = true;
+
+	std::filesystem::path modelDir = jsonPath.parent_path();
+
+	if (json.contains("headers") && json["headers"].is_array())
+	{
+		for (const nlohmann::json& headerJson : json["headers"])
+		{
+			m_headers.emplace_back(headerJson, modelDir, materialToTexture);
+		}
+	}
+}
+
+
+InstanceModel::InstanceModel(PSX::Model model, std::string modelName)
+{
+	m_name = modelName;
+	m_id = model.id;
+	m_valid = true;
+	m_headers.clear();
+}
+
+
+void InstanceModel::Export(const std::filesystem::path& exportDir, std::unordered_map<std::string, Texture>& materialToTexture)
+{
+	std::filesystem::path modelDir = exportDir / m_name;
+	std::filesystem::create_directories(modelDir);
+
+	std::vector<std::string> objFiles(m_headers.size());
+	std::vector<std::string> mtlFiles(m_headers.size());
+
+	for (size_t headerID = 0; headerID < m_headers.size(); headerID++)
+	{
+		InstanceModelHeader& header = m_headers[headerID];
+		std::string baseFileName = m_name + "LOD" + std::to_string(headerID);
+		header.ExportOBJ(modelDir, baseFileName, materialToTexture);
+		objFiles[headerID] = baseFileName + ".obj";
+		mtlFiles[headerID] = baseFileName + ".mtl";
+	}
+
+	nlohmann::json json;
+	json["name"] = m_name;
+	json["id"] = m_id;
+	json["numHeaders"] = m_headers.size();
+
+	nlohmann::json headersArray = nlohmann::json::array();
+	for (size_t headerID = 0; headerID < m_headers.size(); headerID++)
+	{
+		headersArray.push_back(m_headers[headerID].WriteMetadataJson(objFiles[headerID], mtlFiles[headerID]));
+	}
+	json["headers"] = headersArray;
+
+	std::ofstream file(modelDir / "metadata.json");
+	file << std::setw(4) << json << std::endl;
+	file.close();
+}
+
+
 
 std::vector<Primitive> InstanceModel::GetGeometry()
 {

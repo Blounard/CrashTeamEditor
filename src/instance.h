@@ -290,7 +290,8 @@ enum class ModelId : int32_t
 	NUM_TYPES = 0xE2
 };
 
-
+constexpr char     kAnimMagic[4] = { 'A', 'N', 'I', 'M' };
+constexpr uint32_t kAnimVersion = 1;
 struct ModelAnimation
 {
 	std::string name;
@@ -300,6 +301,7 @@ struct ModelAnimation
 	bool hasRawNumFrames = false; // true only when decoded from .lev
 	uint16_t rawNumFrames = 0;    // verbatim PSX::ModelAnim::numFrames, valid only if hasRawNumFrames
 };
+
 class InstanceModelHeader
 { // TODO : double sided to .obj with material names
 public:
@@ -308,16 +310,16 @@ public:
 	InstanceModelHeader(PSX::ModelHeader& modelheader, std::vector<Tri> triangles, std::vector<bool> faceDoubleSided, uint32_t unkNum, PSX::ModelFrame& modelFrame, std::vector<ModelAnimation> animations);
 	InstanceModelHeader(const nlohmann::json& headerJson, const std::filesystem::path& modelDir, std::unordered_map<std::string, Texture>& materialToTexture);
 
-	const std::string& GetName() const { return m_name; }
-	//std::vector<std::string> m_texNames; // We don't store immediately a Texture, because it's probably shared for many models
-	//std::vector <RawUV> m_rawUVs; // only useful for loadLev to be converted to QuadUV later.
-	//std::vector <QuadUV> m_uvs; // UVs for each texture (same count as texNames)
-	//std::vector<size_t> m_textureLayoutID; // array of texLayout ID for serial
-	std::vector<Tri>& GetGeometry() { return m_faces; }
+	void Clear();
+	const std::string& GetName() const;
+	std::vector<Tri>& GetGeometry();
+	
+	void LoadOBJ(const std::filesystem::path& objFilename, std::unordered_map<std::string, Texture>& materialToTexture);
 	void ExportOBJ(const std::filesystem::path& modelDir, std::string baseFileName, std::unordered_map<std::string, Texture>& materialToTexture);
+	bool EncodeModelAnimations(const std::filesystem::path& modelDir, std::string baseFileName);
 	nlohmann::json WriteMetadataJson(const std::string& objFile, const std::string& mtlFile) const;
 
-	void RenderUI();
+	bool RenderUI();
 	void SerializeInto(std::vector<uint8_t>& output, uint32_t modelOffset, 
 		size_t headerStructOffset,
 		std::unordered_map<std::string, Texture>& materialToTexture,
@@ -339,25 +341,26 @@ private:
 	bool m_isAnimated = false;
 	std::vector<ModelAnimation> m_animations;
 };
+
+
+
 class InstanceModel // group of models ?
 {
 public:
 	InstanceModel() = default;
-	InstanceModel(std::string name, std::vector<uint8_t> rawData);
 	InstanceModel(PSX::Model model, std::string modelName);
 	InstanceModel(const std::filesystem::path& jsonPath, std::unordered_map<std::string, Texture>& materialToTexture);
 
 	const bool IsValid() const { return (m_valid && !m_headers.empty()); }
 	void SetValid(bool valid) { m_valid = valid; }
 	const std::string& GetName() const { return m_name; }
-	const std::vector<uint8_t>& GetRawData() const { return m_rawData; }
 
 	std::vector<Primitive> GetGeometry(); 
 	bool IsParsed() const { return m_parsed; }
 	void SetParsed(bool parsed) { m_parsed = parsed; }
 	void Export(const std::filesystem::path& exportDir, std::unordered_map<std::string, Texture>& materialToTexture);
 
-	bool RenderUI();
+	bool RenderUI(std::unordered_map<std::string, Texture>& materialToTexture);
 	std::vector<uint8_t> Serialize(uint32_t modelOffset, std::unordered_map<std::string, Texture>& materialToTexture,
 		std::vector<uint32_t>& outPointerLocations) const;
 
@@ -367,11 +370,9 @@ public:
 private:
 	std::string m_name;
 	int16_t m_id;
-	std::vector<uint8_t> m_rawData;
 	std::vector<Primitive> m_parsedGeometry;
 	bool m_parsed = false;
 	bool m_valid = true;
-	bool m_hasPSXData;
 };
 
 

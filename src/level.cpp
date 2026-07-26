@@ -1555,10 +1555,10 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 								}
 								if (j==0)//modelName == "startbanner_JAP")
 								{
-									printf("Model %s, ", modelName);
-									printf("header n. %d, ", j);
+									//printf("Model %s, ", modelName);
+									//printf("header n. %d, ", j);
 									//printf("colorFromScratchpadOrRamFlag:%d, ", cmd.colorFromScratchpadOrRamFlag);
-									printf("noBackfaceFlag:%d, ", cmd.noBackfaceFlag);
+									//printf("noBackfaceFlag:%d, ", cmd.noBackfaceFlag);
 									//printf("unk1:%d, ", cmd.unk1);
 									//printf("unk2:%d, ", cmd.unk2); 
 									//printf("texCoordIndex:%d, ", cmd.texCoordIndex);
@@ -1568,7 +1568,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 									//printf("normalFlipFlag:%d, ", cmd.normalFlipFlag);
 									//printf("swapFlag:%d, ", cmd.swapFlag);
 									//printf("resetFlag:%d, ", cmd.resetFlag);
-									printf("\n");
+									//printf("\n");
 
 								}
 							}

@@ -557,8 +557,9 @@ bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, co
 	return modelChanged;
 }
 
-void InstanceModelHeader::RenderUI()
+bool InstanceModelHeader::RenderUI()
 {
+	bool toDel = false;
 	if (ImGui::TreeNode(m_name.c_str()))
 	{
 		ImGui::SetNextItemWidth(200.0f);
@@ -571,26 +572,68 @@ void InstanceModelHeader::RenderUI()
 		ImGui::EndDisabled();
 		ImGui::Text(("Triangle count: " + std::to_string(m_faces.size())).c_str());
 
-
+		if (ImGui::Button("Delete LOD"))
+		{
+			toDel = true;
+		}
 		ImGui::TreePop();
 	}
+	return toDel;
 }
 
-bool InstanceModel::RenderUI()
+bool InstanceModel::RenderUI(std::unordered_map<std::string, Texture>& materialToTexture)
 {
+	bool toDel = false;
 	if (ImGui::TreeNode(m_name.c_str()))
 	{
 		ImGui::InputScalar("Model ID", ImGuiDataType_S16, &m_id);
+		ImGui::Text("List of LOD");
+		std::vector<size_t> headerToDel;
 		for (size_t i = 0; i < m_headers.size() ; i++)
 		{
 			InstanceModelHeader& header = m_headers[i];
 			ImGui::PushID(i);
-			header.RenderUI();
+			if (header.RenderUI())
+			{
+				headerToDel.push_back(i);
+			}
 			ImGui::PopID();
+		}
+
+		if (!headerToDel.empty())
+		{
+			for (int i = static_cast<int>(headerToDel.size()) - 1; i >= 0; i--)
+				m_headers.erase(m_headers.begin() + headerToDel[i]);
+		}
+		if (ImGui::Button("Add LOD"))
+		{
+			auto selection = pfd::open_file("Model LOD File", Settings::m_lastOpenedModelFolder, { "CTR Model Files", "*.obj" }, pfd::opt::force_path).result();
+			if (!selection.empty())
+			{
+				InstanceModelHeader header;
+				header.Clear();
+				header.LoadOBJ(selection.front(), materialToTexture);
+				if (!header.GetGeometry().empty())
+					m_headers.push_back(header);
+			}
+		}
+		if (ImGui::Button("Export Model"))
+		{
+			auto selection = pfd::select_folder("Model Folder", Settings::m_lastOpenedModelFolder, pfd::opt::force_path).result();
+			if (!selection.empty())
+			{
+				const std::filesystem::path path = selection + "\\";
+				Settings::m_lastOpenedModelFolder = path.string();
+				Export(path, materialToTexture);
+			}
+		}
+		if (ImGui::Button("Delete Model"))
+		{
+			toDel = true;
 		}
 		ImGui::TreePop();
 	}
-	return true;
+	return toDel;
 }
 
 template<typename T, MaterialType M>
@@ -1761,7 +1804,7 @@ void Level::RenderUI(Renderer& renderer)
 			ImGui::SetItemTooltip(modelPath.c_str()); ImGui::SameLine();
 			if (ImGui::Button("...##modelimporter"))
 			{
-				auto selection = pfd::open_file("CTR Model File", Settings::m_lastOpenedModelFolder, { "CTR Model Files", "*.ctrmodel" }, pfd::opt::force_path).result();
+				auto selection = pfd::open_file("CTR Model File", Settings::m_lastOpenedModelFolder, { "CTR Model Files", "*.json" }, pfd::opt::force_path).result();
 				if (!selection.empty())
 				{ 
 					Settings::m_lastOpenedModelFolder = std::filesystem::path(selection.front()).parent_path().string();
@@ -1771,12 +1814,22 @@ void Level::RenderUI(Renderer& renderer)
 
 			bool disabled = modelPath.empty();
 			ImGui::BeginDisabled(disabled);
-			if (ImGui::Button("Import Model"))
+
+			static ButtonUI importModelButton = ButtonUI();
+			static std::string importModelButtonMessage;
+			if (importModelButton.Show("Import Model", importModelButtonMessage, false))
 			{
-				//todo
+				InstanceModel model(m_modelImporterPath, m_materialToTexture);
+				if (model.IsValid())
+				{
+					importModelButtonMessage = "Successfully imported" + model.GetName();
+					m_instanceModels[model.GetName()] = model;
+				}
+				else
+					importModelButtonMessage = "Failed to import the model";
 			}
 			ImGui::EndDisabled();
-			if (disabled) { ImGui::SetItemTooltip("You must select a .ctrmodel file before importing."); }
+			if (disabled) { ImGui::SetItemTooltip("You must select a .json file before importing."); }
 
 			// Show list of currently loaded models
 			ImGui::Separator();
@@ -1791,7 +1844,8 @@ void Level::RenderUI(Renderer& renderer)
 					{
 						ImGui::PushID(modelName.c_str());
 
-						instModel.RenderUI();
+						if (instModel.RenderUI(m_materialToTexture))
+							modelToDelete = modelName;
 						//if (ImGui::TreeNode((modelName + "##modelList").c_str()))
 						//{
 						//	
@@ -1826,8 +1880,6 @@ void Level::RenderUI(Renderer& renderer)
 					if (!modelToDelete.empty())
 					{
 						m_instanceModels.erase(modelToDelete);
-						m_logMessage = "Removed model: " + modelToDelete;
-						m_showLogWindow = true;
 					}
 				}
 				else
