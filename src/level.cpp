@@ -1631,7 +1631,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 						std::vector<Point> headerVertices;
 						for (int vi = 0; vi < numVerts; vi++)
 						{
-							file.seekg(offLev + std::streampos(modelHeader.offFrameData + baseFrame.vertexOffset + vi * sizeof(PSX::Vec3b)));
+							file.seekg(offLev + std::streampos(baseFrameFileOffset + baseFrame.vertexOffset + vi * sizeof(PSX::Vec3b)));
 							PSX::Vec3b vert;
 							Read(file, vert);
 
