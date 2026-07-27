@@ -330,9 +330,7 @@ public:
 	void SerializeInto(std::vector<uint8_t>& output, uint32_t modelOffset,
 		size_t headerStructOffset,
 		std::unordered_map<std::string, Texture>& materialToTexture,
-		std::vector<uint32_t>& outPointerLocations) const {
-		return;
-	};
+		std::vector<uint32_t>& outPointerLocations) const;
 private:
 	std::string m_name;
 	float m_maxDistLOD;

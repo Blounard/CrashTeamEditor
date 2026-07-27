@@ -607,20 +607,15 @@ namespace
 		return out;
 	}
 }
-bool NoOpImageLoader(tinygltf::Image* /*image*/, const int /*image_idx*/,
-	std::string* /*err*/, std::string* /*warn*/,
-	int /*req_width*/, int /*req_height*/,
-	const unsigned char* /*bytes*/, int /*size*/,
-	void* /*user_data*/)
-{
-	// We never touch image.width/height/image (decoded pixels) -- textures
-	// are loaded independently via our own Texture(path) constructor, keyed
-	// off image.uri (which tinygltf parses regardless of this callback).
-	// This just satisfies tinygltf's requirement for *a* callback when built
-	// with TINYGLTF_NO_STB_IMAGE, so it can skip past image entries instead
-	// of erroring out before reaching our own parsing code.
-	return true;
-}
+
+//bool NoOpImageLoader(tinygltf::Image* image, const int image_idx,
+//	std::string* err, std::string* warn,
+//	int req_width, int req_height,
+//	const unsigned char* bytes, int size,
+//	void* user_data)
+//{
+//	return true;
+//}
 
 namespace
 {
@@ -630,10 +625,13 @@ namespace
 		std::vector<ModelAnimation>& outAnimations,
 		bool& outIsAnimated)
 	{
+		auto AlwaysTrue = [](auto&&... [[maybe_unused]] args) constexpr -> bool {
+			return true;
+			};
 
 		tinygltf::Model model;
 		tinygltf::TinyGLTF loader;
-		loader.SetImageLoader(NoOpImageLoader, nullptr);
+		loader.SetImageLoader(AlwaysTrue, nullptr);
 		std::string err, warn;
 		bool ok = (gltfPath.extension() == ".glb")
 			? loader.LoadBinaryFromFile(&model, &err, &warn, gltfPath.string())
@@ -1172,10 +1170,12 @@ void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, cons
 			{"pbrMetallicRoughness", { {"baseColorFactor", {1.0,1.0,1.0,1.0}}, {"metallicFactor",0.0}, {"roughnessFactor",1.0} }},
 			{"extensions", { {"KHR_materials_unlit", nlohmann::json::object()} }}
 		};
-		auto texIt = materialToTexture.find(key.texture);
-		if (!key.texture.empty() && texIt != materialToTexture.end())
+		//auto texIt = materialToTexture.find(key.texture);
+		//if (!key.texture.empty() && texIt != materialToTexture.end())
+		if (!key.texture.empty() && materialToTexture.contains(key.texture) && !materialToTexture[key.texture].IsEmpty())
 		{
-			std::filesystem::path src = texIt->second.GetPath();
+			//std::filesystem::path src = texIt->second.GetPath();
+			std::filesystem::path src = materialToTexture[key.texture].GetPath();
 			std::filesystem::copy_file(src, modelDir / src.filename(), std::filesystem::copy_options::overwrite_existing);
 			std::string filename = src.filename().string();
 			int imgIdx;
@@ -1269,9 +1269,7 @@ nlohmann::json InstanceModelHeader::WriteMetadataJson(const std::string& objFile
 	return json;
 }
 
-/*
-void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t modelOffset,
-	size_t headerStructOffset,
+void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t modelOffset, size_t headerStructOffset,
 	std::unordered_map<std::string, Texture>& materialToTexture,
 	std::vector<uint32_t>& outPointerLocations) const
 {
@@ -1284,35 +1282,40 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	header.maybeScaleMaybePadding = m_scaleOrPad;
 	header.offStaticDeltaArray = 0; // compressed static vertices unsupported by this encoder -- intentional
 
+	const std::vector<AnimatedFace>& baseFaces = m_animations[0].frames[0];
 	auto PreFlip = [](const Vec3& pos) { return Vec3(-pos.x, pos.y, -pos.z); };
 
-	// --- Filter animations to only those whose topology still matches m_faces.
-	// m_faces can be edited independently of m_animations (no animated-mesh
-	// editing UI exists yet), so a stale animation is possible; per the
-	// preserve-only policy, drop it rather than write corrupt/misaligned data.
-	// If every animation is dropped this way, the header degrades gracefully
-	// into a plain static model using m_faces' own current positions. ---
+	// --- Keep only animations whose every frame still matches base topology
+	// (face count). m_animations can, in principle, be edited/imported
+	// independently per-entry, so a stale one is possible -- drop it with a
+	// warning rather than encode misaligned data. m_animations[0] is always
+	// kept as a guaranteed fallback (it defines "base topology" itself). ---
 	std::vector<const ModelAnimation*> validAnims;
 	for (const ModelAnimation& anim : m_animations)
 	{
 		bool ok = !anim.frames.empty();
-		for (const std::vector<Vec3>& frame : anim.frames)
+		for (const auto& frame : anim.frames)
 		{
-			if (frame.size() != m_faces.size() * 3) { ok = false; break; }
+			if (frame.size() != baseFaces.size()) { ok = false; break; }
 		}
 		if (!ok)
 		{
-			printf("WARNING: header '%s' animation '%s' topology mismatch (expected %zu verts/frame) -- dropped\n",
-				m_name.c_str(), anim.name.c_str(), m_faces.size() * 3);
+			printf("WARNING: header '%s' animation '%s' topology mismatch (expected %zu faces) -- dropped\n",
+				m_name.c_str(), anim.name.c_str(), baseFaces.size());
 			continue;
 		}
 		validAnims.push_back(&anim);
 	}
-	const bool effectivelyAnimated = !validAnims.empty();
+	if (validAnims.empty()) { validAnims.push_back(&m_animations[0]); }
 
-	// --- Bounding box refit: union of every pose that will actually be
-	// encoded (m_faces' current positions, plus every frame of every
-	// surviving animation), so the shared `scale` fits all of them. ---
+	// Real motion iff more than one clip survived, or the single surviving
+	// clip has more than one frame -- a single-frame single-clip case is
+	// indistinguishable from "static" and is encoded that way.
+	const bool effectivelyAnimated = m_isAnimated &&
+		(validAnims.size() > 1 || (validAnims.size() == 1 && validAnims[0]->frames.size() > 1));
+
+	// --- Bounding box refit: union of every pose across every surviving
+	// animation, so the single shared `scale` fits all of them. ---
 	Vec3 preFlipMin(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
 	Vec3 preFlipMax(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest());
 	auto ExpandBox = [&](const Vec3& pos)
@@ -1322,21 +1325,15 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 			preFlipMin.y = std::min(preFlipMin.y, pf.y); preFlipMax.y = std::max(preFlipMax.y, pf.y);
 			preFlipMin.z = std::min(preFlipMin.z, pf.z); preFlipMax.z = std::max(preFlipMax.z, pf.z);
 		};
-	for (const Tri& tri : m_faces)
-		for (int c = 0; c < 3; c++)
-			ExpandBox(tri.p[c].pos);
 	for (const ModelAnimation* anim : validAnims)
-		for (const std::vector<Vec3>& frame : anim->frames)
-			for (const Vec3& pos : frame)
-				ExpandBox(pos);
+		for (const auto& frame : anim->frames)
+			for (const AnimatedFace& af : frame)
+				for (int c = 0; c < 3; c++)
+					ExpandBox(af.tri.p[c].pos);
 
-	if (m_faces.empty()) { preFlipMin = Vec3(0, 0, 0); preFlipMax = Vec3(0, 0, 0); }
+	if (baseFaces.empty()) { preFlipMin = Vec3(0, 0, 0); preFlipMax = Vec3(0, 0, 0); }
 
-	// MIN_BOX_SIZE guards against a flat axis rounding to an int16 scale of
-	// exactly 0 (e.g. an unmoving axis on an otherwise-animated model) --
-	// 1/(2*FP_ONE) is the smallest extent guaranteed to round to a nonzero
-	// int16 after multiplying by FP_ONE.
-	constexpr float MIN_BOX_SIZE = 1.0f / (2.0f * FP_ONE);
+	constexpr float MIN_BOX_SIZE = 1.0f / (2.0f * FP_ONE); // smallest extent guaranteed nonzero after int16 rounding
 	Vec3 boxSize(
 		std::max(preFlipMax.x - preFlipMin.x, MIN_BOX_SIZE),
 		std::max(preFlipMax.y - preFlipMin.y, MIN_BOX_SIZE),
@@ -1344,36 +1341,31 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	);
 
 	header.scale = m_hasScale ? ConvertVec3(m_scale, FP_ONE) : ConvertVec3(boxSize, FP_ONE);
-	// Recompute the float scale FROM the rounded int16 in both branches (not
-	// from boxSize/m_scale directly) so every pose's quantization agrees
-	// exactly with what the decoder reconstructs. Previously the m_hasScale
-	// branch divided by the pre-rounding m_scale, which could disagree with
-	// header.scale by a rounding step -- fixed here.
+	// Recompute float scale FROM the rounded int16 (not from boxSize/m_scale
+	// directly) so quantization below agrees exactly with what the decoder
+	// reconstructs.
 	Vec3 effScale = ConvertPSXVec3(header.scale, FP_ONE);
 
-	// --- Encodes one pose (a GetPos(tri, corner) callable) into a tight-fit
-	// ModelFrame + vertex bytes, using the shared effScale. Safe against
-	// clipping: effScale was sized from the union of every pose we'll ever
-	// call this with, so this pose's own extent is always <= effScale. ---
-	auto EncodePose = [&](auto&& GetPos) -> std::pair<PSX::ModelFrame, std::vector<uint8_t>>
+	// Encodes one full pose into a tight-fit ModelFrame + vertex bytes,
+	// using the shared effScale (always big enough, since it was sized
+	// from the union of every pose we'll ever call this with).
+	auto EncodePose = [&](const std::vector<AnimatedFace>& pose) -> std::pair<PSX::ModelFrame, std::vector<uint8_t>>
 		{
 			Vec3 poseMin(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
-			for (size_t t = 0; t < m_faces.size(); t++)
-			{
+			for (const AnimatedFace& af : pose)
 				for (int c = 0; c < 3; c++)
 				{
-					Vec3 pf = PreFlip(GetPos(t, c));
+					Vec3 pf = PreFlip(af.tri.p[c].pos);
 					poseMin.x = std::min(poseMin.x, pf.x);
 					poseMin.y = std::min(poseMin.y, pf.y);
 					poseMin.z = std::min(poseMin.z, pf.z);
 				}
-			}
-			if (m_faces.empty()) { poseMin = Vec3(0, 0, 0); }
+			if (pose.empty()) { poseMin = Vec3(0, 0, 0); }
 
 			Vec3 originF = SafeDivide(poseMin, effScale);
 
 			PSX::ModelFrame frame{};
-			frame.pos = ConvertVec3(originF, 256); // 256, not FP_ONE_GEO -- matches the decoder's pos*(1/256.0f)
+			frame.pos = ConvertVec3(originF, 256);
 			frame.maybePosMaybePadding = m_originOrPad;
 			std::memset(frame.unk16, 0, sizeof(frame.unk16));
 			frame.vertexOffset = sizeof(PSX::ModelFrame);
@@ -1381,14 +1373,14 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 			Vec3 effOrigin = ConvertPSXVec3(frame.pos, 256);
 
 			std::vector<uint8_t> vertexBytes;
-			vertexBytes.reserve(m_faces.size() * 9);
-			for (size_t t = 0; t < m_faces.size(); t++)
+			vertexBytes.reserve(pose.size() * 9);
+			for (const AnimatedFace& af : pose)
 			{
 				for (int pushOrder = 0; pushOrder < 3; pushOrder++)
 				{
-					int cornerIdx = 2 - pushOrder; // matches the command push order below
+					int cornerIdx = 2 - pushOrder; // matches command push order below
 					uint8_t bytes[3];
-					EncodeVertexBytes(GetPos(t, cornerIdx), effScale, effOrigin, bytes);
+					EncodeVertexBytes(af.tri.p[cornerIdx].pos, effScale, effOrigin, bytes);
 					vertexBytes.push_back(bytes[0]);
 					vertexBytes.push_back(bytes[1]);
 					vertexBytes.push_back(bytes[2]);
@@ -1397,9 +1389,8 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 			return { frame, std::move(vertexBytes) };
 		};
 
-	// --- Command list: topology/color/texture only. Identical across every
-	// frame (that's the whole premise of frame-based animation reusing one
-	// command list), so this runs exactly once regardless of frame count. ---
+	// --- Command list: topology/color/texture/doubleSided from baseFaces
+	// only -- identical across every frame of every animation by construction. ---
 	std::vector<PSX::InstDrawCommand> commands;
 	std::vector<PSX::TextureLayout> layouts;
 	std::vector<uint32_t> colorPalette;
@@ -1407,24 +1398,24 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	bool warnedColorOverflow = false;
 	bool warnedTexOverflow = false;
 
-	for (size_t triIndex = 0; triIndex < m_faces.size(); triIndex++)
+	for (const AnimatedFace& af : baseFaces)
 	{
-		const Tri& tri = m_faces[triIndex];
+		const Tri& tri = af.tri;
 		uint32_t colorIdx[3];
 		colorIdx[2] = GetOrAddColorIndex(colorPalette, colorLookup, tri.p[0].color, m_name, warnedColorOverflow);
 		colorIdx[1] = GetOrAddColorIndex(colorPalette, colorLookup, tri.p[1].color, m_name, warnedColorOverflow);
 		colorIdx[0] = GetOrAddColorIndex(colorPalette, colorLookup, tri.p[2].color, m_name, warnedColorOverflow);
 
 		uint32_t texCoordIndex = 0;
-		Texture& texFace = materialToTexture[tri.texture];
-		if (!texFace.IsEmpty())
+		// Todo : Make layout uniques, can be deduped.
+		if (materialToTexture.contains(tri.texture) && !materialToTexture[tri.texture].IsEmpty())
 		{
 			Vec2 centroid(
 				(tri.p[0].uv.x + tri.p[1].uv.x + tri.p[2].uv.x) / 3.0f,
 				(tri.p[0].uv.y + tri.p[1].uv.y + tri.p[2].uv.y) / 3.0f
 			);
 			QuadUV quadUV = { tri.p[2].uv, tri.p[1].uv, tri.p[0].uv, centroid };
-			layouts.push_back(texFace.Serialize(quadUV));
+			layouts.push_back(materialToTexture[tri.texture].Serialize(quadUV));
 
 			if (layouts.size() > 511)
 			{
@@ -1445,13 +1436,13 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 		for (int cmdSlot = 0; cmdSlot < 3; cmdSlot++)
 		{
 			PSX::InstDrawCommand cmd{};
-			cmd.stackWriteLocationIndex = 87; // safe: this encoder never emits readNextVertFromStackIndexFlag=1, so the slot is never read back
+			cmd.stackWriteLocationIndex = 87; // safe: never emits readNextVertFromStackIndexFlag=1, so never read back
 			cmd.readNextVertFromStackIndexFlag = 0;
 			cmd.resetFlag = (cmdSlot == 0) ? 1 : 0;
 			cmd.colorCoordIndex = colorIdx[cmdSlot];
 			cmd.texCoordIndex = texCoordIndex;
-			cmd.colorFromScratchpadOrRamFlag = static_cast<uint32_t>(!tri.texture.empty());
-			cmd.noBackfaceFlag = m_faceDoubleSided[triIndex] ? 0 : 1;
+			cmd.colorFromScratchpadOrRamFlag = static_cast<uint32_t>(materialToTexture[tri.texture].IsEmpty()); // TODO : Verify other spot where texture can be default
+			cmd.noBackfaceFlag = af.doubleSided ? 0 : 1; 
 			commands.push_back(cmd);
 		}
 	}
@@ -1468,11 +1459,10 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	terminator.command = 0xFFFFFFFF;
 	AppendValue(output, terminator);
 
-	// --- Frame data: either one static pose, or one ModelAnim block per
-	// surviving animation. ---
+	// --- Frame data: one static pose, or one ModelAnim block per surviving animation. ---
 	if (!effectivelyAnimated)
 	{
-		auto [frame, vertexBytes] = EncodePose([&](size_t t, int c) { return m_faces[t].p[c].pos; });
+		auto [frame, vertexBytes] = EncodePose(baseFaces);
 		const size_t frameDataOffset = output.size();
 		AppendValue(output, frame);
 		AppendBytes(output, vertexBytes.data(), vertexBytes.size());
@@ -1497,12 +1487,9 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 			encodedFrames.reserve(numStoredFrames);
 			for (size_t f = 0; f < numStoredFrames; f++)
 			{
-				encodedFrames.push_back(EncodePose([&](size_t t, int c) { return anim.frames[f][t * 3 + c]; }));
+				encodedFrames.push_back(EncodePose(anim.frames[f]));
 			}
 
-			// Payload size is identical for every frame (same topology -> same
-			// numVerts), so stride is computed once, matching the extractor's
-			// own cross-check: frameSize == Align4(vertexOffset + payloadBytes).
 			const size_t payloadBytes = encodedFrames.empty() ? 0 : encodedFrames[0].second.size();
 			const size_t frameStride = Align4(sizeof(PSX::ModelFrame) + payloadBytes);
 			if (frameStride > 0x7FFF)
@@ -1511,15 +1498,11 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 					m_name.c_str(), anim.name.c_str(), frameStride);
 			}
 
-			// NOTE: numFrames' low 15 bits are the LOGICAL frame count; for
-			// interpolated animations the game only stores ((logical>>1)+1)
-			// frames, which is lossy to invert -- we don't currently retain
-			// the original logical count (or its parity) through decode, so
-			// this reconstructs the smallest logical count consistent with
-			// numStoredFrames. Recommend capturing `anim.numFrames` verbatim
-			// at decode time (one extra field on ModelAnimation) to make this
-			// exact instead of approximate.
-
+			// Prefer the exact original numFrames bit pattern when it still
+			// describes what we're about to write (round-trips interpolated
+			// parity exactly); recompute only if the data no longer matches
+			// (edited frame count/interpolation, or glTF-authored with no
+			// raw value to begin with).
 			uint16_t numFramesField;
 			bool useRaw = anim.hasRawNumFrames;
 			if (useRaw)
@@ -1527,9 +1510,6 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 				uint16_t storedLogical = anim.rawNumFrames & PSX::ANIM_FRAME_COUNT_MASK;
 				bool storedInterp = (anim.rawNumFrames & PSX::ANIM_INTERPOLATED_BIT) != 0;
 				size_t expectedStoredFrames = storedInterp ? (storedLogical > 0 ? (storedLogical >> 1) + 1 : 0) : storedLogical;
-				// Validate against the frames we're actually about to write -- if someone
-				// edited frame count/interpolation after import, the raw value no longer
-				// describes this data, so fall back rather than write an inconsistency.
 				if (storedInterp != anim.interpolated || expectedStoredFrames != numStoredFrames)
 				{
 					printf("WARNING: header '%s' animation '%s' no longer matches its original frame metadata -- recomputing numFrames\n",
@@ -1554,7 +1534,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 			std::memcpy(animHeader.name, anim.name.data(), std::min(anim.name.size(), sizeof(animHeader.name)));
 			animHeader.numFrames = numFramesField;
 			animHeader.frameSize = static_cast<int16_t>(frameStride);
-			animHeader.offDeltaArray = 0; // uncompressed -- always a valid, always-decodable encoding
+			animHeader.offDeltaArray = 0; // uncompressed -- always valid, always decodable
 
 			const size_t animBlockOffset = output.size();
 			AppendValue(output, animHeader);
@@ -1578,7 +1558,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 		header.offAnimations = static_cast<uint32_t>(modelOffset + animPtrArrayOffset);
 	}
 
-	// --- Texture layouts + pointer array (unchanged) ---
+	// --- Texture layouts + pointer array ---
 	size_t texLayoutPtrArrayOffset = 0;
 	if (!layouts.empty())
 	{
@@ -1594,7 +1574,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 		}
 	}
 
-	// --- Colors (unchanged) ---
+	// --- Colors ---
 	size_t colorsOffset = 0;
 	if (!colorPalette.empty())
 	{
@@ -1608,12 +1588,10 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 
 	std::memcpy(output.data() + headerStructOffset, &header, sizeof(PSX::ModelHeader));
 
-	// --- Pointer-field registration. offFrameData and offAnimations are each
-	// legitimately 0 depending on effectivelyAnimated -- SaveLEV rebases every
-	// registered field unconditionally, so registering a zero field would
-	// turn it into a bogus non-null pointer. Previously offFrameData was
-	// registered unconditionally, which was harmless before (always nonzero)
-	// but would corrupt any animated header now -- fixed here. ---
+	// offFrameData and offAnimations are each legitimately 0 depending on
+	// effectivelyAnimated -- SaveLEV rebases every registered field
+	// unconditionally, so a registered zero would become a bogus non-null
+	// pointer. Guarded, as before.
 	const uint32_t headerAbsoluteOffset = static_cast<uint32_t>(modelOffset + headerStructOffset);
 	outPointerLocations.push_back(CALCULATE_OFFSET(PSX::ModelHeader, offCommandList, headerAbsoluteOffset));
 	if (header.offFrameData != 0)
@@ -1633,7 +1611,6 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 		outPointerLocations.push_back(CALCULATE_OFFSET(PSX::ModelHeader, offColors, headerAbsoluteOffset));
 	}
 }
-*/
 
 
 
