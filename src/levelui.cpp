@@ -524,10 +524,12 @@ bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, co
 			ImGui::SetItemTooltip("Pickup: trigger-only, vanilla crate radius.\nSolid Wall: blocks the kart.\nStatic Decoration: small solid collider.\nCustom: edit the raw flags yourself.");
 
 			float halfExtent = m_hitbox.halfExtent;
-			if (ImGui::InputFloat("Half Extent", &halfExtent))
+			if (ImGui::InputFloat("Half Extent", &m_hitbox.halfExtent))
 			{
+				// Note : trying to not clamp, and use 16384 for the squared value if above cap.
+				// 
 				// halfExtent^2 serialized must fit in int16, so cap at sqrt(2**15)/64
-				m_hitbox.halfExtent = Clamp(halfExtent, 0.0f, 2.828125f);
+				// m_hitbox.halfExtent = Clamp(halfExtent, 0.0f, 2.828125f);
 			}
 			ImGui::SetItemTooltip("Hitbox radius around the instance position (vanilla crates use 1.18).\nMax 2.82 since the squared value must fit in 16 bits.");
 
@@ -557,7 +559,7 @@ bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, co
 	return modelChanged;
 }
 
-bool InstanceModelHeader::RenderUI()
+bool InstanceModelHeader::RenderUI(std::unordered_map<std::string, Texture>& materialToTexture)
 {
 	bool toDel = false;
 	if (ImGui::TreeNode(m_name.c_str()))
@@ -570,40 +572,66 @@ bool InstanceModelHeader::RenderUI()
 		ImGui::Text("Scale:"); ImGui::SameLine();
 		ImGui::InputFloat3("##scale", m_scale.Data());
 		ImGui::EndDisabled();
-		ImGui::Text(("Triangle count: " + std::to_string(m_faces.size())).c_str());
+		ImGui::Text(("Triangle count: " + std::to_string(m_animations[0].frames[0].size())).c_str());
 
 		if (ImGui::Button("Delete LOD"))
 		{
 			toDel = true;
 		}
+		
+
+
 		ImGui::TreePop();
 	}
 	return toDel;
 }
 
-bool InstanceModel::RenderUI(std::unordered_map<std::string, Texture>& materialToTexture)
+bool InstanceModel::RenderUI(std::unordered_map<std::string, Texture>& materialToTexture, std::function<void(void)> refreshTextureStores)
 {
 	bool toDel = false;
 	if (ImGui::TreeNode(m_name.c_str()))
 	{
 		ImGui::InputScalar("Model ID", ImGuiDataType_S16, &m_id);
-		ImGui::Text("List of LOD");
+		//ImGui::Text("List of LOD");
+		ImGui::SeparatorText("List of LOD");
 		std::vector<size_t> headerToDel;
 		for (size_t i = 0; i < m_headers.size() ; i++)
 		{
 			InstanceModelHeader& header = m_headers[i];
 			ImGui::PushID(i);
-			if (header.RenderUI())
+			if (header.RenderUI(materialToTexture))
 			{
 				headerToDel.push_back(i);
 			}
 			ImGui::PopID();
+			ImGui::Separator();
 		}
-
+		//ImGui::Separator();
 		if (!headerToDel.empty())
 		{
 			for (int i = static_cast<int>(headerToDel.size()) - 1; i >= 0; i--)
 				m_headers.erase(m_headers.begin() + headerToDel[i]);
+		}
+		if (ImGui::TreeNode("Textures##Model"))
+		{
+			std::unordered_set<std::string> texList;
+			for (InstanceModelHeader& hd : m_headers)
+			{
+				for (AnimatedFace& af : hd.GetGeometry())
+				{
+					texList.insert(af.tri.texture);
+				}
+
+			}
+			for (std::string texName : texList)
+			{
+				if (ImGui::TreeNode((texName + "##modelListtexture").c_str()))
+				{
+					//materialToTexture[texName].RenderUI({}, {}, refreshTextureStores);
+					ImGui::TreePop();
+				}
+			}
+			ImGui::TreePop();
 		}
 		if (ImGui::Button("Add LOD"))
 		{
@@ -617,6 +645,7 @@ bool InstanceModel::RenderUI(std::unordered_map<std::string, Texture>& materialT
 					m_headers.push_back(header);
 			}
 		}
+		ImGui::SameLine();
 		if (ImGui::Button("Export Model"))
 		{
 			auto selection = pfd::select_folder("Model Folder", Settings::m_lastOpenedModelFolder, pfd::opt::force_path).result();
@@ -627,6 +656,7 @@ bool InstanceModel::RenderUI(std::unordered_map<std::string, Texture>& materialT
 				Export(path, materialToTexture);
 			}
 		}
+		ImGui::SameLine();
 		if (ImGui::Button("Delete Model"))
 		{
 			toDel = true;
@@ -1844,8 +1874,31 @@ void Level::RenderUI(Renderer& renderer)
 					{
 						ImGui::PushID(modelName.c_str());
 
-						if (instModel.RenderUI(m_materialToTexture))
+						if (instModel.RenderUI(m_materialToTexture, [&]() { this->UpdateAnimationRenderData(); }))
 							modelToDelete = modelName;
+						/*if (ImGui::TreeNode("Textures##Model"))
+						{
+							std::unordered_set<std::string> texList;
+							for (InstanceModelHeader& hd : instModel.m_headers)
+							{
+								for (AnimatedFace& af : hd.GetGeometry())
+								{
+									texList.insert(af.tri.texture);
+								}
+								
+							}
+							for (std::string texName : texList)
+							{
+								if (ImGui::TreeNode((texName + "##modelListtexture").c_str()))
+								{
+									m_materialToTexture[texName].RenderUI({}, m_quadblocks, [&]() { this->UpdateAnimationRenderData(); });
+									ImGui::TreePop();
+								}
+							}
+							
+							ImGui::TreePop();
+						
+						}*/
 						//if (ImGui::TreeNode((modelName + "##modelList").c_str()))
 						//{
 						//	

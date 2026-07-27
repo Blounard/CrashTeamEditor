@@ -292,14 +292,19 @@ enum class ModelId : int32_t
 
 constexpr char     kAnimMagic[4] = { 'A', 'N', 'I', 'M' };
 constexpr uint32_t kAnimVersion = 1;
+
+struct AnimatedFace //Rename to ModelFace
+{
+	Tri tri;
+	bool doubleSided = false;
+};
 struct ModelAnimation
 {
 	std::string name;
 	bool interpolated = false;
-	size_t frameCount = 0;
-	std::vector<std::vector<Vec3>> frames;
-	bool hasRawNumFrames = false; // true only when decoded from .lev
-	uint16_t rawNumFrames = 0;    // verbatim PSX::ModelAnim::numFrames, valid only if hasRawNumFrames
+	bool hasRawNumFrames = false; // true only when decoded from a real .lev
+	uint16_t rawNumFrames = 0;    // verbatim PSX::ModelAnim::numFrames -- exact round-trip fidelity
+	std::vector<std::vector<AnimatedFace>> frames; // frames[f].size() == frames[0].size() for every f; only .tri.p[*].pos may legitimately differ across frames
 };
 
 class InstanceModelHeader
@@ -307,23 +312,27 @@ class InstanceModelHeader
 public:
 
 	InstanceModelHeader() = default;
-	InstanceModelHeader(PSX::ModelHeader& modelheader, std::vector<Tri> triangles, std::vector<bool> faceDoubleSided, uint32_t unkNum, PSX::ModelFrame& modelFrame, std::vector<ModelAnimation> animations);
+	InstanceModelHeader(PSX::ModelHeader& modelHeader, PSX::ModelFrame& baseFrame, uint32_t colorCount,
+		std::vector<ModelAnimation> animations, bool isAnimated);
 	InstanceModelHeader(const nlohmann::json& headerJson, const std::filesystem::path& modelDir, std::unordered_map<std::string, Texture>& materialToTexture);
 
 	void Clear();
 	const std::string& GetName() const;
-	std::vector<Tri>& GetGeometry();
+	std::vector<AnimatedFace>& GetGeometry();
+	bool IsAnimated() const { return m_isAnimated; }
 	
 	void LoadOBJ(const std::filesystem::path& objFilename, std::unordered_map<std::string, Texture>& materialToTexture);
 	void ExportOBJ(const std::filesystem::path& modelDir, std::string baseFileName, std::unordered_map<std::string, Texture>& materialToTexture);
-	bool EncodeModelAnimations(const std::filesystem::path& modelDir, std::string baseFileName);
-	nlohmann::json WriteMetadataJson(const std::string& objFile, const std::string& mtlFile) const;
+	void ExportGLTF(const std::filesystem::path& modelDir, const std::string& baseFileName, std::unordered_map<std::string, Texture>& materialToTexture) const;
+	nlohmann::json WriteMetadataJson(const std::string& objFile, const std::string& mtlFile, const std::string& gltfFile) const;
 
-	bool RenderUI();
-	void SerializeInto(std::vector<uint8_t>& output, uint32_t modelOffset, 
+	bool RenderUI(std::unordered_map<std::string, Texture>& materialToTexture);
+	void SerializeInto(std::vector<uint8_t>& output, uint32_t modelOffset,
 		size_t headerStructOffset,
 		std::unordered_map<std::string, Texture>& materialToTexture,
-		std::vector<uint32_t>& outPointerLocations) const; 
+		std::vector<uint32_t>& outPointerLocations) const {
+		return;
+	};
 private:
 	std::string m_name;
 	float m_maxDistLOD;
@@ -334,12 +343,10 @@ private:
 	bool m_hasOrigin;
 	Vec3 m_origin;
 	int16_t m_originOrPad;
-	std::vector<Tri> m_faces; // Array of triangle, contain string texture, positions, UVs, and colors.
-	std::vector<bool> m_faceDoubleSided; // parallel to m_faces; true == noBackfaceFlag set
+	std::vector<ModelAnimation> m_animations; // ALWAYS >= 1 entry after construction; entry 0's frame 0 is the rest pose
 	uint32_t m_unk1; // 0x10
-	uint32_t m_colorCount; // At offCommandList, before the 1st command
+	uint32_t m_colorCount; // At offCommandList, before the 1st command TODO: change to "flag animated" for if >63
 	bool m_isAnimated = false;
-	std::vector<ModelAnimation> m_animations;
 };
 
 
@@ -360,7 +367,7 @@ public:
 	void SetParsed(bool parsed) { m_parsed = parsed; }
 	void Export(const std::filesystem::path& exportDir, std::unordered_map<std::string, Texture>& materialToTexture);
 
-	bool RenderUI(std::unordered_map<std::string, Texture>& materialToTexture);
+	bool RenderUI(std::unordered_map<std::string, Texture>& materialToTexture, std::function<void(void)> refreshTextureStores);
 	std::vector<uint8_t> Serialize(uint32_t modelOffset, std::unordered_map<std::string, Texture>& materialToTexture,
 		std::vector<uint32_t>& outPointerLocations) const;
 

@@ -1590,7 +1590,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 
 						PSX::ModelFrame baseFrame{};
 						size_t baseFrameFileOffset = 0;
-						std::vector<PSX::ModelAnim> animHeaders; // filled below if animated, reused later
+						std::vector<PSX::ModelAnim> animHeaders;
 						std::vector<uint32_t> animOffsets;
 
 						if (!isAnimated)
@@ -1602,7 +1602,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 						else
 						{
 							if (modelHeader.numAnimations == 0) { m_instanceModels[modelName].SetValid(false); continue; }
-
 							animOffsets.resize(modelHeader.numAnimations);
 							animHeaders.resize(modelHeader.numAnimations);
 							bool ok = true;
@@ -1616,64 +1615,55 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							}
 							if (!ok || animHeaders[0].offDeltaArray != 0)
 							{
-								// First animation is compressed (or the array was malformed) -- no
-								// uncompressed source available for the rest pose either.
 								m_instanceModels[modelName].SetValid(false);
 								continue;
 							}
-							baseFrameFileOffset = animOffsets[0] + sizeof(PSX::ModelAnim); // frame 0 immediately follows the ModelAnim header
+							baseFrameFileOffset = animOffsets[0] + sizeof(PSX::ModelAnim);
 							file.seekg(offLev + std::streampos(baseFrameFileOffset));
 							Read(file, baseFrame);
 						}
 
-						Vec3 frameOrigin = ConvertPSXVec3(baseFrame.pos, 256); // Need to verify this 256 factor
-							
+						Vec3 frameOrigin = ConvertPSXVec3(baseFrame.pos, 256.0f);
+
 						std::vector<Point> headerVertices;
 						for (int vi = 0; vi < numVerts; vi++)
 						{
 							file.seekg(offLev + std::streampos(baseFrameFileOffset + baseFrame.vertexOffset + vi * sizeof(PSX::Vec3b)));
 							PSX::Vec3b vert;
 							Read(file, vert);
-
 							Vec3 pos;
-							// wtf ? Might need to double check that.
 							pos.x = ((vert.x / 255.0f) + frameOrigin.x) * modelScale.x;
 							pos.y = ((vert.z / 255.0f) + frameOrigin.y) * modelScale.y;
 							pos.z = ((vert.y / 255.0f) + frameOrigin.z) * modelScale.z;
-							pos.x = -pos.x;
-							pos.z = -pos.z;
-
-							Point p{};
-							p.pos = pos;
+							pos.x = -pos.x; pos.z = -pos.z;
+							Point p{}; p.pos = pos;
 							headerVertices.push_back(p);
 						}
 
-
-
-						// Vertices Stack decode logic
+						// Topology pass: unchanged in structure from before. Produces triList (this
+						// header's base/rest pose), triDoubleSided (parallel to triList), and
+						// triSourceVertexIndices (parallel to triList; the 3 raw-vertex-array
+						// indices, in corner order, feeding each triangle) -- used below to remap
+						// EVERY frame, including this one, through one uniform path.
 						std::vector<Point> stack(256);
 						std::vector<int> stackVertexIndex(256, -1);
 						int vertexIndex = 0;
-						int	stripLength = 0;
+						int stripLength = 0;
 						Point temp[4] = {};
 						int tempVertexIndex[4] = { -1, -1, -1, -1 };
 						std::vector<Tri> triList;
 						std::vector<bool> triDoubleSided;
-						std::vector<std::array<int, 3>> triSourceVertexIndices; // parallel to triList
+						std::vector<std::array<int, 3>> triSourceVertexIndices;
 
 						for (PSX::InstDrawCommand& command : commandList)
 						{
-							if ((command.command & 0xFFFF0000) == 0)
-							{
-								continue;
-							}
+							if ((command.command & 0xFFFF0000) == 0) { continue; }
 							if (!command.readNextVertFromStackIndexFlag)
 							{
 								stack[command.stackWriteLocationIndex] = headerVertices[vertexIndex];
 								stackVertexIndex[command.stackWriteLocationIndex] = vertexIndex;
 								vertexIndex++;
 							}
-
 							temp[0] = temp[1]; temp[1] = temp[2]; temp[2] = temp[3];
 							temp[3] = stack[command.stackWriteLocationIndex];
 							tempVertexIndex[0] = tempVertexIndex[1];
@@ -1682,10 +1672,10 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							tempVertexIndex[3] = stackVertexIndex[command.stackWriteLocationIndex];
 
 							int colorIdx = command.colorCoordIndex;
-							file.seekg(offLev + std::streampos(modelHeader.offColors + colorIdx *sizeof(uint32_t)));
+							file.seekg(offLev + std::streampos(modelHeader.offColors + colorIdx * sizeof(uint32_t)));
 							PSX::Color psxCol;
 							Read(file, psxCol);
-							temp[3].color =  ConvertColor(psxCol); 
+							temp[3].color = ConvertColor(psxCol);
 
 							if (command.swapFlag) { temp[1] = temp[0]; tempVertexIndex[1] = tempVertexIndex[0]; }
 							if (command.resetFlag) { stripLength = 0; }
@@ -1693,7 +1683,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							if (stripLength >= 2)
 							{
 								Tri tri{};
-
 								std::string texName = "default";
 								QuadUV uvs{};
 								int texIdx = command.texCoordIndex;
@@ -1706,7 +1695,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 									file.seekg(offLev + std::streampos(offLayout));
 									PSX::TextureLayout layout{};
 									Read(file, layout);
-
 									LayoutKey key(layout);
 									PixelBounds& bounds = textureToPixelBounds[key];
 									RawUV rawUV(layout);
@@ -1734,20 +1722,65 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							}
 							stripLength++;
 						}
+
+						// --- Wrap the base pose into AnimatedFace form. ---
+						std::vector<AnimatedFace> baseFaces(triList.size());
+						for (size_t t = 0; t < triList.size(); t++)
+						{
+							baseFaces[t].tri = triList[t];
+							baseFaces[t].doubleSided = triDoubleSided[t];
+						}
+
+						// Decodes one frame's raw per-vertex positions from its own file offset.
+						auto DecodeFrameVertices = [&](size_t frameFileOffset, const PSX::ModelFrame& frame) -> std::vector<Vec3>
+							{
+								Vec3 origin = ConvertPSXVec3(frame.pos, 256.0f);
+								std::vector<Vec3> raw(numVerts);
+								for (int vi = 0; vi < numVerts; vi++)
+								{
+									file.seekg(offLev + std::streampos(frameFileOffset + frame.vertexOffset + vi * sizeof(PSX::Vec3b)));
+									PSX::Vec3b vert;
+									Read(file, vert);
+									Vec3 pos;
+									pos.x = ((vert.x / 255.0f) + origin.x) * modelScale.x;
+									pos.y = ((vert.z / 255.0f) + origin.y) * modelScale.y;
+									pos.z = ((vert.y / 255.0f) + origin.z) * modelScale.z;
+									pos.x = -pos.x; pos.z = -pos.z;
+									raw[vi] = pos;
+								}
+								return raw;
+							};
+
+						// Remaps raw per-vertex positions into a full AnimatedFace list, cloning
+						// topology/color/uv/texture/doubleSided from baseFaces (constant across
+						// every frame by construction) and substituting only position.
+						auto RemapFrame = [&](const std::vector<Vec3>& rawVerts) -> std::vector<AnimatedFace>
+							{
+								std::vector<AnimatedFace> frame = baseFaces;
+								for (size_t t = 0; t < triSourceVertexIndices.size(); t++)
+									for (int c = 0; c < 3; c++)
+										frame[t].tri.p[c].pos = rawVerts[triSourceVertexIndices[t][c]];
+								return frame;
+							};
+
 						std::vector<ModelAnimation> animations;
 
-						if (isAnimated)
+						if (!isAnimated)
+						{
+							ModelAnimation staticAnim{};
+							staticAnim.name = ""; // synthetic: uniform "1 clip, 1 frame" wrapper for a static header, not a real named clip
+							staticAnim.interpolated = false;
+							staticAnim.hasRawNumFrames = false;
+							staticAnim.frames.push_back(baseFaces);
+							animations.push_back(std::move(staticAnim));
+						}
+						else
 						{
 							for (uint32_t a = 0; a < modelHeader.numAnimations; a++)
 							{
 								const PSX::ModelAnim& anim = animHeaders[a];
-
 								if (anim.offDeltaArray != 0)
 								{
-									// Compressed frames: the bitstream decoder's accumulator-reset
-									// behavior (per-frame vs. carried across frames) isn't confirmed
-									// yet -- see conversation notes on RenderBucket_ReadDeltaComponentFromStream.
-									// Skip rather than silently guess at motion data.
 									printf("SKIPPING compressed animation '%.16s' on model %s\n", anim.name, modelName.c_str());
 									continue;
 								}
@@ -1756,45 +1789,35 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 								animation.name = std::string(anim.name, strnlen(anim.name, sizeof(anim.name)));
 								animation.interpolated = (anim.numFrames & PSX::ANIM_INTERPOLATED_BIT) != 0;
 								size_t numStoredFrames = PSX::StoredFrameCount(anim.numFrames);
-								animation.frameCount = numStoredFrames;
 								animation.hasRawNumFrames = true;
-								animation.rawNumFrames = anim.numFrames; // exact bits, including the true logical count/parity
+								animation.rawNumFrames = anim.numFrames;
 
 								for (size_t f = 0; f < numStoredFrames; f++)
 								{
+									if (a == 0 && f == 0)
+									{
+										// Identical file bytes to baseFrameFileOffset, already decoded
+										// above -- reuse directly rather than re-reading through a
+										// second path that could silently diverge from this one.
+										animation.frames.push_back(baseFaces);
+										continue;
+									}
 									size_t offFrame = animOffsets[a] + sizeof(PSX::ModelAnim) + f * anim.frameSize;
 									file.seekg(offLev + std::streampos(offFrame));
 									PSX::ModelFrame animFrame{};
 									Read(file, animFrame);
-
-									Vec3 animOrigin = ConvertPSXVec3(animFrame.pos, 256.0f);
-
-									std::vector<Vec3> rawVerts(numVerts);
-									for (int vi = 0; vi < numVerts; vi++)
-									{
-										file.seekg(offLev + std::streampos(offFrame + animFrame.vertexOffset + vi * sizeof(PSX::Vec3b)));
-										PSX::Vec3b vert;
-										Read(file, vert);
-										Vec3 pos;
-										pos.x = ((vert.x / 255.0f) + animOrigin.x) * modelScale.x;
-										pos.y = ((vert.z / 255.0f) + animOrigin.y) * modelScale.y;
-										pos.z = ((vert.y / 255.0f) + animOrigin.z) * modelScale.z;
-										pos.x = -pos.x; pos.z = -pos.z;
-										rawVerts[vi] = pos;
-									}
-
-									std::vector<Vec3> frameCorners(triSourceVertexIndices.size() * 3);
-									for (size_t t = 0; t < triSourceVertexIndices.size(); t++)
-										for (int c = 0; c < 3; c++)
-											frameCorners[t * 3 + c] = rawVerts[triSourceVertexIndices[t][c]];
-
-									animation.frames.push_back(std::move(frameCorners));
+									animation.frames.push_back(RemapFrame(DecodeFrameVertices(offFrame, animFrame)));
 								}
 								animations.push_back(std::move(animation));
 							}
+							if (animations.empty())
+							{
+								m_instanceModels[modelName].SetValid(false);
+								continue;
+							}
 						}
 
-						m_instanceModels[modelName].m_headers.emplace_back(modelHeader, triList, triDoubleSided, colorCount, baseFrame, animations);
+						m_instanceModels[modelName].m_headers.emplace_back(modelHeader, baseFrame, colorCount, std::move(animations), isAnimated);
 					}
 				}
 			}
