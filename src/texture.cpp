@@ -364,7 +364,9 @@ bool Texture::CreateTexture()
 	}
 	m_semiTransparent = semiTransparentPx > 0;
 	if (!m_semiTransparent && m_blendMode == PSX::BlendMode::HALF_TRANSPARENT)
+	{ 
 		m_blendMode = PSX::BlendMode::ADDITIVE_TRANSLUCENT;
+	}
 	Texture::BPP bpp = GetBPP();
 	if (GetVRAMWidth() > TEXPAGE_WIDTH || GetHeight() > TEXPAGE_HEIGHT)
 	{

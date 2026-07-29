@@ -596,6 +596,33 @@ namespace
 		return false;
 	}
 
+
+	static bool FindMeshNodeRecursive(const tinygltf::Model& model, int nodeIdx, const Mat4& parentTransform,
+		int& outMeshIdx, int& outMeshNodeIdx, Mat4& outAncestorTransform)
+	{
+		const tinygltf::Node& node = model.nodes[nodeIdx];
+		if (node.mesh >= 0)
+		{
+			outMeshIdx = node.mesh;
+			outMeshNodeIdx = nodeIdx;
+			outAncestorTransform = parentTransform; // deliberately excludes this node's own local matrix
+			return true;
+		}
+		Mat4 world = Mat4Multiply(parentTransform, Mat4FromNode(node));
+		for (int child : node.children)
+			if (FindMeshNodeRecursive(model, child, world, outMeshIdx, outMeshNodeIdx, outAncestorTransform)) { return true; }
+		return false;
+	}
+
+	static bool FindMeshNode(const tinygltf::Model& model, int& outMeshIdx, int& outMeshNodeIdx, Mat4& outAncestorTransform)
+	{
+		if (model.scenes.empty()) { return false; }
+		int sceneIdx = model.defaultScene >= 0 ? model.defaultScene : 0;
+		for (int rootNode : model.scenes[sceneIdx].nodes)
+			if (FindMeshNodeRecursive(model, rootNode, Mat4{}, outMeshIdx, outMeshNodeIdx, outAncestorTransform)) { return true; }
+		return false;
+	}
+
 	static std::vector<AnimatedFace> WrapFaces(const std::vector<Tri>& faces, const std::vector<bool>& doubleSided)
 	{
 		std::vector<AnimatedFace> out(faces.size());
@@ -608,18 +635,205 @@ namespace
 	}
 }
 
-//bool NoOpImageLoader(tinygltf::Image* image, const int image_idx,
-//	std::string* err, std::string* warn,
-//	int req_width, int req_height,
-//	const unsigned char* bytes, int size,
-//	void* user_data)
-//{
-//	return true;
-//}
+namespace
+{
+	struct ChannelSampler
+	{
+		std::vector<float> times;
+		std::vector<float> values; // flat, numComponents per sample
+		int numComponents = 3;
+		std::string interpolation = "LINEAR"; // STEP, LINEAR; CUBICSPLINE unsupported (see below)
+		bool valid = false;
+	};
+
+	// Evaluates a channel at time t via binary search + STEP/LINEAR
+	// interpolation between the two surrounding real keyframes. Clamps to
+	// the first/last value outside the authored time range.
+	void EvaluateChannel(const ChannelSampler& ch, float t, float* out)
+	{
+		if (!ch.valid || ch.times.empty())
+		{
+			std::fill(out, out + ch.numComponents, 0.0f);
+			return;
+		}
+		if (t <= ch.times.front())
+		{
+			std::copy(ch.values.begin(), ch.values.begin() + ch.numComponents, out);
+			return;
+		}
+		if (t >= ch.times.back())
+		{
+			size_t last = (ch.times.size() - 1) * ch.numComponents;
+			std::copy(ch.values.begin() + last, ch.values.begin() + last + ch.numComponents, out);
+			return;
+		}
+		size_t hi = std::upper_bound(ch.times.begin(), ch.times.end(), t) - ch.times.begin();
+		size_t lo = hi - 1;
+		if (ch.interpolation == "STEP")
+		{
+			std::copy(ch.values.begin() + lo * ch.numComponents, ch.values.begin() + lo * ch.numComponents + ch.numComponents, out);
+			return;
+		}
+		float t0 = ch.times[lo], t1 = ch.times[hi];
+		float alpha = (t1 > t0) ? (t - t0) / (t1 - t0) : 0.0f;
+		for (int c = 0; c < ch.numComponents; c++)
+		{
+			float a = ch.values[lo * ch.numComponents + c];
+			float b = ch.values[hi * ch.numComponents + c];
+			out[c] = a + (b - a) * alpha;
+		}
+	}
+
+	// Quaternion lerp+renormalize ("nlerp"), not true slerp. A standard,
+	// widely-used approximation -- adequate at our fixed 30Hz sample rate
+	// for ordinary rotation content; only meaningfully diverges from true
+	// slerp on very large angular deltas between adjacent keyframes.
+	void EvaluateQuatChannel(const ChannelSampler& ch, float t, float outQuat[4])
+	{
+		if (!ch.valid || ch.times.empty()) { outQuat[0] = outQuat[1] = outQuat[2] = 0; outQuat[3] = 1; return; }
+		if (t <= ch.times.front() || t >= ch.times.back() || ch.interpolation == "STEP")
+		{
+			EvaluateChannel(ch, t, outQuat);
+			return;
+		}
+		size_t hi = std::upper_bound(ch.times.begin(), ch.times.end(), t) - ch.times.begin();
+		size_t lo = hi - 1;
+		float t0 = ch.times[lo], t1 = ch.times[hi];
+		float alpha = (t1 > t0) ? (t - t0) / (t1 - t0) : 0.0f;
+		float a[4], b[4];
+		std::copy(ch.values.begin() + lo * 4, ch.values.begin() + lo * 4 + 4, a);
+		std::copy(ch.values.begin() + hi * 4, ch.values.begin() + hi * 4 + 4, b);
+		float dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
+		float sign = (dot < 0.0f) ? -1.0f : 1.0f; // shortest-path fix
+		float q[4];
+		for (int i = 0; i < 4; i++) { q[i] = a[i] + (sign * b[i] - a[i]) * alpha; }
+		float len = std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+		if (len < 0.0001f) { outQuat[0] = outQuat[1] = outQuat[2] = 0; outQuat[3] = 1; }
+		else { for (int i = 0; i < 4; i++) outQuat[i] = q[i] / len; }
+	}
+
+	std::vector<float> ReadVec4Flat(const tinygltf::Model& model, int accessorIdx)
+	{
+		const tinygltf::Accessor& acc = model.accessors[accessorIdx];
+		const tinygltf::BufferView& bv = model.bufferViews[acc.bufferView];
+		const tinygltf::Buffer& buf = model.buffers[bv.buffer];
+		size_t stride = bv.byteStride != 0 ? bv.byteStride : sizeof(float) * 4;
+		const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
+		std::vector<float> out(acc.count * 4);
+		for (size_t i = 0; i < acc.count; i++)
+		{
+			const float* f = reinterpret_cast<const float*>(base + i * stride);
+			for (int c = 0; c < 4; c++) out[i * 4 + c] = f[c];
+		}
+		return out;
+	}
+
+	ChannelSampler ReadChannelSampler(const tinygltf::Model& model, const tinygltf::Animation& anim,
+		const std::string& targetPath, int targetNode, int numComponents)
+	{
+		ChannelSampler cs; cs.numComponents = numComponents;
+		for (const auto& ch : anim.channels)
+		{
+			if (ch.target_node != targetNode || ch.target_path != targetPath) { continue; }
+			const tinygltf::AnimationSampler& sampler = anim.samplers[ch.sampler];
+			if (sampler.interpolation == "CUBICSPLINE")
+			{
+				printf("WARNING: %s channel on node %d uses CUBICSPLINE -- unsupported, skipping this channel\n",
+					targetPath.c_str(), targetNode);
+				return cs; // valid stays false -> caller falls back to the node's static value
+			}
+			cs.times = ReadScalarAccessor(model, sampler.input);
+			cs.values = (numComponents == 4) ? ReadVec4Flat(model, sampler.output) : [&] {
+				std::vector<float> flat;
+				if (numComponents == 3)
+					for (const Vec3& v : ReadVec3Accessor(model, sampler.output)) { flat.push_back(v.x); flat.push_back(v.y); flat.push_back(v.z); }
+				return flat;
+				}();
+			cs.interpolation = sampler.interpolation;
+			cs.valid = true;
+			return cs;
+		}
+		return cs;
+	}
+}
 
 namespace
 {
-	
+
+
+	struct PrimData
+	{
+		std::vector<Vec3> basePositions; // per-corner, post index-expansion + node transform
+		std::vector<Vec3> localPositions;  // mesh-local space, pre-node-transform -- only used by the TRS bake path
+		std::vector<Vec2> uvs;
+		std::vector<Vec3> colors;
+		std::string materialName; // key into materialToTexture, or "" if untextured
+		bool doubleSided = false;
+		std::vector<uint32_t> cornerToVertex;
+		std::vector<std::vector<Vec3>> targetDeltasByVertex; // [target][vertex], pre-expansion
+	};
+
+
+	constexpr float GAME_FPS = 30.0f; // hardcoded: the PSX format has no fps field; frames are consumed 1-per-tick at the engine's fixed rate
+
+	std::vector<ModelAnimation> BuildAnimationsFromTRS(const tinygltf::Model& model, const std::vector<PrimData>& prims,
+		int meshNodeIdx, const Mat4& ancestorTransform,
+		const std::function<std::vector<AnimatedFace>(const std::function<Vec3(size_t, size_t)>&)>& buildFaces)
+	{
+		std::vector<ModelAnimation> out;
+		const tinygltf::Node& restNode = model.nodes[meshNodeIdx];
+
+		for (const tinygltf::Animation& anim : model.animations)
+		{
+			ChannelSampler tCh = ReadChannelSampler(model, anim, "translation", meshNodeIdx, 3);
+			ChannelSampler rCh = ReadChannelSampler(model, anim, "rotation", meshNodeIdx, 4);
+			ChannelSampler sCh = ReadChannelSampler(model, anim, "scale", meshNodeIdx, 3);
+			if (!tCh.valid && !rCh.valid && !sCh.valid) { continue; } // this Animation doesn't touch our node at all
+
+			float minTime = FLT_MAX, maxTime = -FLT_MAX;
+			for (const ChannelSampler* c : { &tCh, &rCh, &sCh })
+			{
+				if (!c->valid || c->times.empty()) { continue; }
+				minTime = std::min(minTime, c->times.front());
+				maxTime = std::max(maxTime, c->times.back());
+			}
+			if (minTime > maxTime) { continue; }
+
+			size_t frameCount = static_cast<size_t>(std::round((maxTime - minTime) * GAME_FPS)) + 1;
+			frameCount = std::clamp<size_t>(frameCount, 1, 4096); // sanity cap, matching decode-side bounds elsewhere
+
+			ModelAnimation animation{};
+			animation.name = !anim.name.empty() ? anim.name : ("anim_" + std::to_string(out.size()));
+			animation.interpolated = (tCh.interpolation == "LINEAR" || rCh.interpolation == "LINEAR" || sCh.interpolation == "LINEAR");
+			animation.hasRawNumFrames = false;
+
+			std::vector<double> restT = restNode.translation, restR = restNode.rotation, restS = restNode.scale;
+
+			for (size_t f = 0; f < frameCount; f++)
+			{
+				float t = minTime + f * (1.0f / GAME_FPS);
+
+				float tv[3], rv[4], sv[3];
+				if (tCh.valid) { EvaluateChannel(tCh, t, tv); }
+				else { tv[0] = restT.size() == 3 ? (float)restT[0] : 0; tv[1] = restT.size() == 3 ? (float)restT[1] : 0; tv[2] = restT.size() == 3 ? (float)restT[2] : 0; }
+				if (rCh.valid) { EvaluateQuatChannel(rCh, t, rv); }
+				else { rv[0] = restR.size() == 4 ? (float)restR[0] : 0; rv[1] = restR.size() == 4 ? (float)restR[1] : 0; rv[2] = restR.size() == 4 ? (float)restR[2] : 0; rv[3] = restR.size() == 4 ? (float)restR[3] : 1; }
+				if (sCh.valid) { EvaluateChannel(sCh, t, sv); }
+				else { sv[0] = restS.size() == 3 ? (float)restS[0] : 1; sv[1] = restS.size() == 3 ? (float)restS[1] : 1; sv[2] = restS.size() == 3 ? (float)restS[2] : 1; }
+
+				Mat4 localMat = Mat4FromTRS({ tv[0],tv[1],tv[2] }, { rv[0],rv[1],rv[2],rv[3] }, { sv[0],sv[1],sv[2] });
+				Mat4 frameMat = Mat4Multiply(ancestorTransform, localMat);
+
+				animation.frames.push_back(buildFaces([&](size_t p, size_t c) {
+					return Mat4TransformPoint(frameMat, prims[p].localPositions[c]);
+					}));
+			}
+			out.push_back(std::move(animation));
+		}
+		return out;
+	}
+
+
 	bool LoadGLTFHeaderData(const std::filesystem::path& gltfPath,
 		std::unordered_map<std::string, Texture>& materialToTexture,
 		std::vector<ModelAnimation>& outAnimations,
@@ -648,16 +862,7 @@ namespace
 		const tinygltf::Mesh& mesh = model.meshes[meshIdx];
 		std::filesystem::path gltfDir = gltfPath.parent_path();
 
-		struct PrimData
-		{
-			std::vector<Vec3> basePositions; // per-corner, post index-expansion + node transform
-			std::vector<Vec2> uvs;
-			std::vector<Vec3> colors;
-			std::string materialName; // key into materialToTexture, or "" if untextured
-			bool doubleSided = false;
-			std::vector<uint32_t> cornerToVertex;
-			std::vector<std::vector<Vec3>> targetDeltasByVertex; // [target][vertex], pre-expansion
-		};
+		
 		std::vector<PrimData> prims;
 		size_t globalNumTargets = SIZE_MAX;
 
@@ -680,6 +885,10 @@ namespace
 			pd.basePositions.reserve(pd.cornerToVertex.size());
 			for (uint32_t vi : pd.cornerToVertex)
 				pd.basePositions.push_back(Mat4TransformPoint(nodeTransform, rawPositions[vi]));
+
+			pd.localPositions.reserve(pd.cornerToVertex.size());
+			for (uint32_t vi : pd.cornerToVertex)
+				pd.localPositions.push_back(rawPositions[vi]);
 
 			auto uvIt = prim.attributes.find("TEXCOORD_0");
 			std::vector<Vec2> rawUVs = uvIt != prim.attributes.end() ? ReadVec2Accessor(model, uvIt->second) : std::vector<Vec2>();
@@ -789,50 +998,62 @@ namespace
 			};
 
 		outAnimations.clear();
-		if (model.animations.empty() || globalNumTargets == 0)
+
+		int meshNodeIdx = -1;
+		Mat4 ancestorTransform{};
+		FindMeshNode(model, meshIdx, meshNodeIdx, ancestorTransform);
+
+		if (!model.animations.empty() && globalNumTargets > 0)
 		{
-			ModelAnimation staticAnim{};
-			staticAnim.frames.push_back(baseFaces);
-			outAnimations.push_back(std::move(staticAnim));
-			outIsAnimated = false;
-			return true;
+			outIsAnimated = true;
+			for (const tinygltf::Animation& anim : model.animations)
+			{
+				const tinygltf::AnimationChannel* weightsChannel = nullptr;
+				for (const auto& ch : anim.channels)
+					if (ch.target_path == "weights") { weightsChannel = &ch; break; }
+				if (weightsChannel == nullptr) { continue; }
+
+				const tinygltf::AnimationSampler& sampler = anim.samplers[weightsChannel->sampler];
+				if (sampler.interpolation == "CUBICSPLINE")
+				{
+					printf("WARNING: animation '%s' uses CUBICSPLINE interpolation, which isn't supported -- skipping\n",
+						anim.name.empty() ? "?" : anim.name.c_str());
+					continue;
+				}
+				std::vector<float> times = ReadScalarAccessor(model, sampler.input);
+				std::vector<float> weightsFlat = ReadScalarAccessor(model, sampler.output);
+				if (times.empty() || weightsFlat.size() != times.size() * globalNumTargets) { continue; }
+
+				ModelAnimation animation{};
+				animation.name = !anim.name.empty() ? anim.name : ("anim_" + std::to_string(outAnimations.size()));
+				animation.interpolated = (sampler.interpolation == "LINEAR");
+				animation.hasRawNumFrames = false;
+
+				for (size_t f = 0; f < times.size(); f++)
+				{
+					const float* w = &weightsFlat[f * globalNumTargets];
+					animation.frames.push_back(BuildBlendedFrame(w, globalNumTargets));
+				}
+				if (!animation.frames.empty()) { outAnimations.push_back(std::move(animation)); }
+			}
 		}
 
-		outIsAnimated = true;
-		for (const tinygltf::Animation& anim : model.animations)
+		// Falls through here both when there were never any morph targets at all,
+		// AND when there were morph targets but no usable weights channel was
+		// found on them -- either way, try baking node TRS animation before
+		// giving up and calling the model static.
+		if (outAnimations.empty() || (outAnimations.size() == 1 && outAnimations[0].frames.size() <= 1))
 		{
-			const tinygltf::AnimationChannel* weightsChannel = nullptr;
-			for (const auto& ch : anim.channels)
-				if (ch.target_path == "weights") { weightsChannel = &ch; break; }
-			if (weightsChannel == nullptr) { continue; }
-
-			const tinygltf::AnimationSampler& sampler = anim.samplers[weightsChannel->sampler];
-			std::vector<float> times = ReadScalarAccessor(model, sampler.input);
-			std::vector<float> weightsFlat = ReadScalarAccessor(model, sampler.output);
-			if (times.empty() || weightsFlat.size() != times.size() * globalNumTargets) { continue; }
-
-			ModelAnimation animation{};
-			animation.name = !anim.name.empty() ? anim.name : ("anim_" + std::to_string(outAnimations.size()));
-			animation.interpolated = (sampler.interpolation == "LINEAR");
-			animation.hasRawNumFrames = false; // no PSX raw value to preserve for a glTF-authored animation
-
-			if (sampler.interpolation == "CUBICSPLINE")
+			if (meshNodeIdx >= 0 && !model.animations.empty())
 			{
-				// CUBICSPLINE packs (in-tangent, value, out-tangent) per keyframe --
-				// 3x the data, different layout than the flat per-time weight array we
-				// assume below. Not handled; skip this channel rather than
-				// misinterpret tangent data as weights.
-				printf("WARNING: animation '%s' uses CUBICSPLINE interpolation, which isn't supported -- skipping\n",
-					anim.name.empty() ? "?" : anim.name.c_str());
-				continue;
+				// TODO : change the fps setting so 1 frame is blender = 1 frame in game, regardless or blender scene fps
+				std::vector<ModelAnimation> trsAnims = BuildAnimationsFromTRS(model, prims, meshNodeIdx, ancestorTransform, BuildFaces);
+				if (!trsAnims.empty())
+				{
+					outAnimations = std::move(trsAnims);
+					outIsAnimated = true;
+				}
 			}
-
-			for (size_t f = 0; f < times.size(); f++)
-			{
-				const float* w = &weightsFlat[f * globalNumTargets];
-				animation.frames.push_back(BuildBlendedFrame(w, globalNumTargets));
-			}
-			if (!animation.frames.empty()) { outAnimations.push_back(std::move(animation)); }
 		}
 
 		if (outAnimations.empty())
@@ -1807,7 +2028,7 @@ void Instance::SetHitbox(const PSX::InstHitbox& hitbox)
 	m_hitbox.flags = hitbox.flags;
 	m_hitbox.halfExtent = ConvertFP(hitbox.halfExtent, FP_ONE_GEO);
 	m_hitbox.yOffset = ConvertFP(hitbox.center.y, FP_ONE_GEO) - m_pos.y;
-	printf("Instance %s, hE %d, hES %d\n", m_name, hitbox.halfExtent, hitbox.halfExtentSq);
+	//printf("Instance %s, hE %d, hES %d\n", m_name, hitbox.halfExtent, hitbox.halfExtentSq);
 }
 
 std::vector<uint8_t> Instance::Serialize(uint32_t offModel) const
