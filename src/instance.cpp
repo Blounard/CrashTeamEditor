@@ -574,28 +574,6 @@ namespace
 		);
 	}
 
-	static bool FindMeshNodeRecursive(const tinygltf::Model& model, int nodeIdx, const Mat4& parentTransform, int& outMeshIdx, Mat4& outTransform)
-	{
-		const tinygltf::Node& node = model.nodes[nodeIdx];
-		Mat4 world = Mat4Multiply(parentTransform, Mat4FromNode(node));
-		if (node.mesh >= 0) { outMeshIdx = node.mesh; outTransform = world; return true; }
-		for (int child : node.children)
-			if (FindMeshNodeRecursive(model, child, world, outMeshIdx, outTransform)) return true;
-		return false;
-	}
-
-	// Walks the default scene's graph to find the first mesh-bearing node and
-	// its fully-composed world transform (accounts for e.g. an empty root
-	// object with a child mesh, which Blender's exporter can produce).
-	static bool FindMeshNode(const tinygltf::Model& model, int& outMeshIdx, Mat4& outTransform)
-	{
-		if (model.scenes.empty()) { return false; }
-		int sceneIdx = model.defaultScene >= 0 ? model.defaultScene : 0;
-		for (int rootNode : model.scenes[sceneIdx].nodes)
-			if (FindMeshNodeRecursive(model, rootNode, Mat4{}, outMeshIdx, outTransform)) return true;
-		return false;
-	}
-
 
 	static bool FindMeshNodeRecursive(const tinygltf::Model& model, int nodeIdx, const Mat4& parentTransform,
 		int& outMeshIdx, int& outMeshNodeIdx, Mat4& outAncestorTransform)
@@ -853,8 +831,10 @@ namespace
 		if (!warn.empty()) { printf("glTF warning (%s): %s\n", gltfPath.string().c_str(), warn.c_str()); }
 		if (!ok) { printf("ERROR loading glTF %s: %s\n", gltfPath.string().c_str(), err.c_str()); return false; }
 
-		int meshIdx = -1; Mat4 nodeTransform{};
-		if (!FindMeshNode(model, meshIdx, nodeTransform))
+		int meshIdx = -1; 
+		int meshNodeIdx = -1;
+		Mat4 nodeTransform{};
+		if (!FindMeshNode(model, meshIdx, meshNodeIdx, nodeTransform))
 		{
 			if (model.meshes.empty()) { printf("ERROR: no mesh in %s\n", gltfPath.string().c_str()); return false; }
 			meshIdx = 0; // no scene graph present -- fall back to the first mesh, identity transform
@@ -999,10 +979,6 @@ namespace
 
 		outAnimations.clear();
 
-		int meshNodeIdx = -1;
-		Mat4 ancestorTransform{};
-		FindMeshNode(model, meshIdx, meshNodeIdx, ancestorTransform);
-
 		if (!model.animations.empty() && globalNumTargets > 0)
 		{
 			outIsAnimated = true;
@@ -1047,7 +1023,7 @@ namespace
 			if (meshNodeIdx >= 0 && !model.animations.empty())
 			{
 				// TODO : change the fps setting so 1 frame is blender = 1 frame in game, regardless or blender scene fps
-				std::vector<ModelAnimation> trsAnims = BuildAnimationsFromTRS(model, prims, meshNodeIdx, ancestorTransform, BuildFaces);
+				std::vector<ModelAnimation> trsAnims = BuildAnimationsFromTRS(model, prims, meshNodeIdx, nodeTransform, BuildFaces);
 				if (!trsAnims.empty())
 				{
 					outAnimations = std::move(trsAnims);
