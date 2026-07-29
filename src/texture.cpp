@@ -24,7 +24,11 @@ Texture::Texture(const std::filesystem::path& path)
 {
 	m_path = path;
 	m_blendMode = PSX::BlendMode::HALF_TRANSPARENT;
-	if (!CreateTexture()) { ClearTexture(); }
+	if (!CreateTexture()) 
+	{ 
+		ClearTexture(); 
+		printf("ERROR : Couldn't create texture from path %s\n", path);
+	}
 }
 
 
@@ -357,7 +361,9 @@ bool Texture::CreateTexture()
 		if (!foundColor) { m_clut.push_back(color); }
 		colorIndexes.push_back(clutIndex);
 	}
-	m_semiTransparent = semiTransparentPx >= (pxCount / 2);
+	m_semiTransparent = semiTransparentPx > 0;
+	if (!m_semiTransparent && m_blendMode == PSX::BlendMode::HALF_TRANSPARENT)
+		m_blendMode = PSX::BlendMode::ADDITIVE_TRANSLUCENT;
 	Texture::BPP bpp = GetBPP();
 	if (GetVRAMWidth() > TEXPAGE_WIDTH || GetHeight() > TEXPAGE_HEIGHT)
 	{
