@@ -322,6 +322,7 @@ public:
 	bool IsAnimated() const { return m_isAnimated; }
 	
 	void LoadOBJ(const std::filesystem::path& objFilename, std::unordered_map<std::string, Texture>& materialToTexture);
+	bool LoadGLTF(const std::filesystem::path& gltfPath, std::unordered_map<std::string, Texture>& materialToTexture);
 	void ExportOBJ(const std::filesystem::path& modelDir, std::string baseFileName, std::unordered_map<std::string, Texture>& materialToTexture);
 	void ExportGLTF(const std::filesystem::path& modelDir, const std::string& baseFileName, std::unordered_map<std::string, Texture>& materialToTexture) const;
 	nlohmann::json WriteMetadataJson(const std::string& objFile, const std::string& mtlFile, const std::string& gltfFile) const;

@@ -769,13 +769,22 @@ namespace
 
 		std::vector<AnimatedFace> baseFaces = BuildFaces([&](size_t p, size_t c) { return prims[p].basePositions[c]; });
 
-		auto BuildTargetFrame = [&](size_t targetIdx) -> std::vector<AnimatedFace>
+		auto BuildBlendedFrame = [&](const float* weights, size_t numWeights) -> std::vector<AnimatedFace>
 			{
 				return BuildFaces([&](size_t p, size_t c) -> Vec3
 					{
 						const PrimData& pd = prims[p];
-						if (targetIdx >= pd.targetDeltasByVertex.size()) { return pd.basePositions[c]; }
-						return pd.basePositions[c] + pd.targetDeltasByVertex[targetIdx][pd.cornerToVertex[c]];
+						uint32_t vi = pd.cornerToVertex[c];
+						Vec3 pos = pd.basePositions[c];
+						size_t n = std::min(numWeights, pd.targetDeltasByVertex.size());
+						for (size_t t = 0; t < n; t++)
+						{
+							float w = weights[t];
+							if (w == 0.0f) { continue; }
+							const Vec3& delta = pd.targetDeltasByVertex[t][vi];
+							pos = Vec3(pos.x + delta.x * w, pos.y + delta.y * w, pos.z + delta.z * w);
+						}
+						return pos;
 					});
 			};
 
@@ -807,13 +816,21 @@ namespace
 			animation.interpolated = (sampler.interpolation == "LINEAR");
 			animation.hasRawNumFrames = false; // no PSX raw value to preserve for a glTF-authored animation
 
+			if (sampler.interpolation == "CUBICSPLINE")
+			{
+				// CUBICSPLINE packs (in-tangent, value, out-tangent) per keyframe --
+				// 3x the data, different layout than the flat per-time weight array we
+				// assume below. Not handled; skip this channel rather than
+				// misinterpret tangent data as weights.
+				printf("WARNING: animation '%s' uses CUBICSPLINE interpolation, which isn't supported -- skipping\n",
+					anim.name.empty() ? "?" : anim.name.c_str());
+				continue;
+			}
+
 			for (size_t f = 0; f < times.size(); f++)
 			{
 				const float* w = &weightsFlat[f * globalNumTargets];
-				int activeTarget = -1;
-				for (size_t t = 0; t < globalNumTargets; t++)
-					if (w[t] > 0.5f) { activeTarget = (int)t; break; }
-				animation.frames.push_back(activeTarget < 0 ? baseFaces : BuildTargetFrame((size_t)activeTarget));
+				animation.frames.push_back(BuildBlendedFrame(w, globalNumTargets));
 			}
 			if (!animation.frames.empty()) { outAnimations.push_back(std::move(animation)); }
 		}
@@ -967,6 +984,19 @@ void InstanceModelHeader::LoadOBJ(const std::filesystem::path& objFilename, std:
 	//m_faceDoubleSided = std::vector<bool>(m_faces.size(), false); // TODO IMPLEMENT
 	m_hasScale = false;
 	m_hasOrigin = false;
+}
+
+bool InstanceModelHeader::LoadGLTF(const std::filesystem::path& gltfPath, std::unordered_map<std::string, Texture>& materialToTexture)
+{
+	std::vector<ModelAnimation> animations;
+	bool isAnimated = false;
+	if (LoadGLTFHeaderData(gltfPath, materialToTexture, animations, isAnimated))
+	{
+		m_animations = std::move(animations);
+		m_isAnimated = isAnimated;
+		return true;
+	}
+	return false;
 }
 
 void InstanceModelHeader::ExportOBJ(const std::filesystem::path& modelDir, std::string baseFileName, std::unordered_map<std::string, Texture>& materialToTexture)

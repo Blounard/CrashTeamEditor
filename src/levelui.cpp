@@ -573,6 +573,22 @@ bool InstanceModelHeader::RenderUI(std::unordered_map<std::string, Texture>& mat
 		ImGui::InputFloat3("##scale", m_scale.Data());
 		ImGui::EndDisabled();
 		ImGui::Text(("Triangle count: " + std::to_string(m_animations[0].frames[0].size())).c_str());
+		if (m_isAnimated)
+			ImGui::Text(("is animated : yes"));
+		else
+			ImGui::Text(("is animated : no"));
+
+		ImGui::Text(("AnimGroup: " + std::to_string(m_animations.size())).c_str());
+		for (size_t i = 0 ; i < m_animations.size(); i++)
+		{
+			ModelAnimation& anim = m_animations[i];
+			ImGui::Text(("Group: " + std::to_string(i) + ", Frames: " + std::to_string(anim.rawNumFrames) + ", Size: " + std::to_string(anim.frames.size())).c_str());
+		}
+
+
+
+
+
 
 		if (ImGui::Button("Delete LOD"))
 		{
@@ -635,12 +651,12 @@ bool InstanceModel::RenderUI(std::unordered_map<std::string, Texture>& materialT
 		}
 		if (ImGui::Button("Add LOD"))
 		{
-			auto selection = pfd::open_file("Model LOD File", Settings::m_lastOpenedModelFolder, { "CTR Model Files", "*.obj" }, pfd::opt::force_path).result();
+			auto selection = pfd::open_file("Model LOD File", Settings::m_lastOpenedModelFolder, { "CTR Model Files", "*.gltf" }, pfd::opt::force_path).result();
 			if (!selection.empty())
 			{
 				InstanceModelHeader header;
 				header.Clear();
-				header.LoadOBJ(selection.front(), materialToTexture);
+				header.LoadGLTF(selection.front(), materialToTexture);
 				if (!header.GetGeometry().empty())
 					m_headers.push_back(header);
 			}
