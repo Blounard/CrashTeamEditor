@@ -643,7 +643,8 @@ bool InstanceModel::RenderUI(std::unordered_map<std::string, Texture>& materialT
 			{
 				if (ImGui::TreeNode((texName + "##modelListtexture").c_str()))
 				{
-					//materialToTexture[texName].RenderUI({}, {}, refreshTextureStores);
+					std::vector<Quadblock> dummy;
+					materialToTexture[texName].RenderUI({}, dummy, refreshTextureStores);
 					ImGui::TreePop();
 				}
 			}

@@ -410,49 +410,74 @@ namespace detail
 
 namespace
 {
-	static std::vector<Vec3> ReadVec3Accessor(const tinygltf::Model& model, int accessorIdx)
+
+
+	static std::vector<float> ReadFloatAccessorFlat(const tinygltf::Model& model, int accessorIdx, int numComponents)
 	{
 		const tinygltf::Accessor& acc = model.accessors[accessorIdx];
-		const tinygltf::BufferView& bv = model.bufferViews[acc.bufferView];
-		const tinygltf::Buffer& buf = model.buffers[bv.buffer];
-		size_t stride = bv.byteStride != 0 ? bv.byteStride : sizeof(float) * 3;
-		const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
-		std::vector<Vec3> out(acc.count);
-		for (size_t i = 0; i < acc.count; i++)
+		std::vector<float> out(acc.count * numComponents, 0.0f);
+
+		if (acc.bufferView >= 0)
 		{
-			const float* f = reinterpret_cast<const float*>(base + i * stride);
-			out[i] = Vec3(f[0], f[1], f[2]);
+			const tinygltf::BufferView& bv = model.bufferViews[acc.bufferView];
+			const tinygltf::Buffer& buf = model.buffers[bv.buffer];
+			size_t stride = bv.byteStride != 0 ? bv.byteStride : sizeof(float) * numComponents;
+			const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
+			for (size_t i = 0; i < acc.count; i++)
+			{
+				const float* f = reinterpret_cast<const float*>(base + i * stride);
+				for (int c = 0; c < numComponents; c++) { out[i * numComponents + c] = f[c]; }
+			}
 		}
+
+		if (acc.sparse.count > 0)
+		{
+			const auto& sparse = acc.sparse;
+			const tinygltf::BufferView& idxBv = model.bufferViews[sparse.indices.bufferView];
+			const tinygltf::Buffer& idxBuf = model.buffers[idxBv.buffer];
+			const uint8_t* idxBase = idxBuf.data.data() + idxBv.byteOffset + sparse.indices.byteOffset;
+
+			const tinygltf::BufferView& valBv = model.bufferViews[sparse.values.bufferView];
+			const tinygltf::Buffer& valBuf = model.buffers[valBv.buffer];
+			const uint8_t* valBase = valBuf.data.data() + valBv.byteOffset + sparse.values.byteOffset;
+
+			for (int s = 0; s < sparse.count; s++)
+			{
+				uint32_t targetIndex;
+				switch (sparse.indices.componentType)
+				{
+				case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:  targetIndex = idxBase[s]; break;
+				case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT: targetIndex = reinterpret_cast<const uint16_t*>(idxBase)[s]; break;
+				case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT:   targetIndex = reinterpret_cast<const uint32_t*>(idxBase)[s]; break;
+				default: continue;
+				}
+				const float* v = reinterpret_cast<const float*>(valBase + s * numComponents * sizeof(float));
+				for (int c = 0; c < numComponents; c++) { out[targetIndex * numComponents + c] = v[c]; }
+			}
+		}
+		return out;
+	}
+
+
+	static std::vector<Vec3> ReadVec3Accessor(const tinygltf::Model& model, int accessorIdx)
+	{
+		std::vector<float> flat = ReadFloatAccessorFlat(model, accessorIdx, 3);
+		std::vector<Vec3> out(flat.size() / 3);
+		for (size_t i = 0; i < out.size(); i++) { out[i] = Vec3(flat[i * 3 + 0], flat[i * 3 + 1], flat[i * 3 + 2]); }
 		return out;
 	}
 
 	static std::vector<Vec2> ReadVec2Accessor(const tinygltf::Model& model, int accessorIdx)
 	{
-		const tinygltf::Accessor& acc = model.accessors[accessorIdx];
-		const tinygltf::BufferView& bv = model.bufferViews[acc.bufferView];
-		const tinygltf::Buffer& buf = model.buffers[bv.buffer];
-		size_t stride = bv.byteStride != 0 ? bv.byteStride : sizeof(float) * 2;
-		const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
-		std::vector<Vec2> out(acc.count);
-		for (size_t i = 0; i < acc.count; i++)
-		{
-			const float* f = reinterpret_cast<const float*>(base + i * stride);
-			out[i] = Vec2(f[0], f[1]);
-		}
+		std::vector<float> flat = ReadFloatAccessorFlat(model, accessorIdx, 2);
+		std::vector<Vec2> out(flat.size() / 2);
+		for (size_t i = 0; i < out.size(); i++) { out[i] = Vec2(flat[i * 2 + 0], flat[i * 2 + 1]); }
 		return out;
 	}
 
 	static std::vector<float> ReadScalarAccessor(const tinygltf::Model& model, int accessorIdx)
 	{
-		const tinygltf::Accessor& acc = model.accessors[accessorIdx];
-		const tinygltf::BufferView& bv = model.bufferViews[acc.bufferView];
-		const tinygltf::Buffer& buf = model.buffers[bv.buffer];
-		size_t stride = bv.byteStride != 0 ? bv.byteStride : sizeof(float);
-		const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
-		std::vector<float> out(acc.count);
-		for (size_t i = 0; i < acc.count; i++)
-			out[i] = *reinterpret_cast<const float*>(base + i * stride);
-		return out;
+		return ReadFloatAccessorFlat(model, accessorIdx, 1);
 	}
 
 	// COLOR_0 may be VEC3/VEC4 and FLOAT / normalized UBYTE / normalized
@@ -461,6 +486,11 @@ namespace
 	static std::vector<Vec3> ReadColorAccessor(const tinygltf::Model& model, int accessorIdx)
 	{
 		const tinygltf::Accessor& acc = model.accessors[accessorIdx];
+		if (acc.bufferView < 0)
+		{
+			printf("WARNING: COLOR_0 accessor has no bufferView (sparse-only colors unsupported) -- using default gray\n");
+			return std::vector<Vec3>(acc.count, Vec3(0.5f, 0.5f, 0.5f));
+		}
 		const tinygltf::BufferView& bv = model.bufferViews[acc.bufferView];
 		const tinygltf::Buffer& buf = model.buffers[bv.buffer];
 		int numComponents = acc.type == TINYGLTF_TYPE_VEC4 ? 4 : 3;
@@ -491,6 +521,11 @@ namespace
 	static std::vector<uint32_t> ReadIndices(const tinygltf::Model& model, int accessorIdx)
 	{
 		const tinygltf::Accessor& acc = model.accessors[accessorIdx];
+		if (acc.bufferView < 0)
+		{
+			printf("ERROR: index accessor has no bufferView -- unsupported, treating primitive as empty\n");
+			return {};
+		}
 		const tinygltf::BufferView& bv = model.bufferViews[acc.bufferView];
 		const tinygltf::Buffer& buf = model.buffers[bv.buffer];
 		const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset; // spec: no byteStride on index bufferViews
@@ -692,7 +727,7 @@ namespace
 
 	std::vector<float> ReadVec4Flat(const tinygltf::Model& model, int accessorIdx)
 	{
-		const tinygltf::Accessor& acc = model.accessors[accessorIdx];
+		/*const tinygltf::Accessor& acc = model.accessors[accessorIdx];
 		const tinygltf::BufferView& bv = model.bufferViews[acc.bufferView];
 		const tinygltf::Buffer& buf = model.buffers[bv.buffer];
 		size_t stride = bv.byteStride != 0 ? bv.byteStride : sizeof(float) * 4;
@@ -703,7 +738,8 @@ namespace
 			const float* f = reinterpret_cast<const float*>(base + i * stride);
 			for (int c = 0; c < 4; c++) out[i * 4 + c] = f[c];
 		}
-		return out;
+		return out;*/
+		return ReadFloatAccessorFlat(model, accessorIdx, 4);
 	}
 
 	ChannelSampler ReadChannelSampler(const tinygltf::Model& model, const tinygltf::Animation& anim,
@@ -752,8 +788,6 @@ namespace
 	};
 
 
-	constexpr float GAME_FPS = 30.0f; // hardcoded: the PSX format has no fps field; frames are consumed 1-per-tick at the engine's fixed rate
-
 	std::vector<ModelAnimation> BuildAnimationsFromTRS(const tinygltf::Model& model, const std::vector<PrimData>& prims,
 		int meshNodeIdx, const Mat4& ancestorTransform,
 		const std::function<std::vector<AnimatedFace>(const std::function<Vec3(size_t, size_t)>&)>& buildFaces)
@@ -768,28 +802,31 @@ namespace
 			ChannelSampler sCh = ReadChannelSampler(model, anim, "scale", meshNodeIdx, 3);
 			if (!tCh.valid && !rCh.valid && !sCh.valid) { continue; } // this Animation doesn't touch our node at all
 
-			float minTime = FLT_MAX, maxTime = -FLT_MAX;
+			const ChannelSampler* refCh = nullptr;
 			for (const ChannelSampler* c : { &tCh, &rCh, &sCh })
 			{
 				if (!c->valid || c->times.empty()) { continue; }
-				minTime = std::min(minTime, c->times.front());
-				maxTime = std::max(maxTime, c->times.back());
+				if (refCh == nullptr || c->times.size() > refCh->times.size()) { refCh = c; }
 			}
-			if (minTime > maxTime) { continue; }
+			if (refCh == nullptr) { continue; }
+			const std::vector<float>& sampleTimes = refCh->times;
 
-			size_t frameCount = static_cast<size_t>(std::round((maxTime - minTime) * GAME_FPS)) + 1;
-			frameCount = std::clamp<size_t>(frameCount, 1, 4096); // sanity cap, matching decode-side bounds elsewhere
+			if (sampleTimes.size() > 4096)
+			{
+				printf("WARNING: animation '%s' has %zu sampled frames, which is unusually large -- check the export's bake settings\n",
+					anim.name.c_str(), sampleTimes.size());
+			}
 
 			ModelAnimation animation{};
 			animation.name = !anim.name.empty() ? anim.name : ("anim_" + std::to_string(out.size()));
-			animation.interpolated = (tCh.interpolation == "LINEAR" || rCh.interpolation == "LINEAR" || sCh.interpolation == "LINEAR");
+			animation.interpolated = (refCh->interpolation == "LINEAR");
 			animation.hasRawNumFrames = false;
 
 			std::vector<double> restT = restNode.translation, restR = restNode.rotation, restS = restNode.scale;
 
-			for (size_t f = 0; f < frameCount; f++)
+			for (size_t f = 0; f < sampleTimes.size(); f++)
 			{
-				float t = minTime + f * (1.0f / GAME_FPS);
+				float t = sampleTimes[f];
 
 				float tv[3], rv[4], sv[3];
 				if (tCh.valid) { EvaluateChannel(tCh, t, tv); }
@@ -1114,9 +1151,11 @@ InstanceModelHeader::InstanceModelHeader(const nlohmann::json& headerJson, const
 	}
 	
 
-	if (headerJson.value("animated", false))
+	//if (headerJson.value("animated", false))
 	{
-		std::filesystem::path gltfPath = modelDir / headerJson.value("gltfFile", std::string());
+		std::string gltfFilename = headerJson.value("gltfFile", std::string());
+		printf("filename : %s\n", gltfFilename.c_str());
+		std::filesystem::path gltfPath = modelDir / gltfFilename;
 		std::vector<ModelAnimation> animations;
 		bool isAnimated = false;
 		if (LoadGLTFHeaderData(gltfPath, materialToTexture, animations, isAnimated))
@@ -1133,17 +1172,17 @@ InstanceModelHeader::InstanceModelHeader(const nlohmann::json& headerJson, const
 			m_isAnimated = false;
 		}
 	}
-	else
-	{
-		std::string objFile = headerJson.value("objFile", std::string());
-		std::string mtlFile = headerJson.value("mtlFile", std::string());
-		std::vector<bool> doubleSided;
-		//std::vector<Tri> faces = LoadFacesFromObjMtl(modelDir / objFile, modelDir / mtlFile, materialToTexture, doubleSided);
-		ModelAnimation staticAnim{};
-		//staticAnim.frames.push_back(WrapFaces(faces, doubleSided));
-		m_animations.push_back(std::move(staticAnim));
-		m_isAnimated = false;
-	}
+	//else
+	//{
+	//	std::string objFile = headerJson.value("objFile", std::string());
+	//	std::string mtlFile = headerJson.value("mtlFile", std::string());
+	//	std::vector<bool> doubleSided;
+	//	//std::vector<Tri> faces = LoadFacesFromObjMtl(modelDir / objFile, modelDir / mtlFile, materialToTexture, doubleSided);
+	//	ModelAnimation staticAnim{};
+	//	//staticAnim.frames.push_back(WrapFaces(faces, doubleSided));
+	//	m_animations.push_back(std::move(staticAnim));
+	//	m_isAnimated = false;
+	//}
 
 }
 
@@ -1510,6 +1549,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	header.offStaticDeltaArray = 0; // compressed static vertices unsupported by this encoder -- intentional
 
 	const std::vector<AnimatedFace>& baseFaces = m_animations[0].frames[0];
+	
 	auto PreFlip = [](const Vec3& pos) { return Vec3(-pos.x, pos.y, -pos.z); };
 
 	// --- Keep only animations whose every frame still matches base topology
