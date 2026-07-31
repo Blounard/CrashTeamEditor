@@ -1306,83 +1306,16 @@ void InstanceModelHeader::ExportOBJ(const std::filesystem::path& modelDir, std::
 }
 
 
-namespace
-{
-	// Accumulates glTF binary buffer content + JSON accessors/bufferViews.
-	// Reuses AppendValue/AppendPadding from SerializeInto's helpers.
-	struct GltfBuilder
-	{
-		std::vector<uint8_t> bin;
-		nlohmann::json bufferViews = nlohmann::json::array();
-		nlohmann::json accessors = nlohmann::json::array();
 
-		int AddVec3Accessor(const std::vector<Vec3>& data, bool withBounds)
-		{
-			AppendPadding(bin, 4);
-			size_t off = bin.size();
-			Vec3 mn(FLT_MAX, FLT_MAX, FLT_MAX), mx(-FLT_MAX, -FLT_MAX, -FLT_MAX);
-			for (const Vec3& v : data)
-			{
-				AppendValue(bin, v.x); AppendValue(bin, v.y); AppendValue(bin, v.z);
-				mn.x = std::min(mn.x, v.x); mn.y = std::min(mn.y, v.y); mn.z = std::min(mn.z, v.z);
-				mx.x = std::max(mx.x, v.x); mx.y = std::max(mx.y, v.y); mx.z = std::max(mx.z, v.z);
-			}
-			int bv = (int)bufferViews.size();
-			bufferViews.push_back({ {"buffer",0}, {"byteOffset",off}, {"byteLength",bin.size() - off} });
-			nlohmann::json acc = { {"bufferView",bv}, {"componentType",5126}, {"count",data.size()}, {"type","VEC3"} };
-			if (withBounds) { acc["min"] = { mn.x,mn.y,mn.z }; acc["max"] = { mx.x,mx.y,mx.z }; }
-			int idx = (int)accessors.size(); accessors.push_back(acc); return idx;
-		}
-
-		int AddVec2Accessor(const std::vector<Vec2>& data)
-		{
-			AppendPadding(bin, 4);
-			size_t off = bin.size();
-			for (const Vec2& v : data) { AppendValue(bin, v.x); AppendValue(bin, v.y); }
-			int bv = (int)bufferViews.size();
-			bufferViews.push_back({ {"buffer",0}, {"byteOffset",off}, {"byteLength",bin.size() - off} });
-			int idx = (int)accessors.size();
-			accessors.push_back({ {"bufferView",bv}, {"componentType",5126}, {"count",data.size()}, {"type","VEC2"} });
-			return idx;
-		}
-
-		int AddScalarAccessor(const std::vector<float>& data, bool withBounds)
-		{
-			AppendPadding(bin, 4);
-			size_t off = bin.size();
-			float mn = FLT_MAX, mx = -FLT_MAX;
-			for (float v : data) { AppendValue(bin, v); mn = std::min(mn, v); mx = std::max(mx, v); }
-			int bv = (int)bufferViews.size();
-			bufferViews.push_back({ {"buffer",0}, {"byteOffset",off}, {"byteLength",bin.size() - off} });
-			nlohmann::json acc = { {"bufferView",bv}, {"componentType",5126}, {"count",data.size()}, {"type","SCALAR"} };
-			if (withBounds) { acc["min"] = { mn }; acc["max"] = { mx }; }
-			int idx = (int)accessors.size(); accessors.push_back(acc); return idx;
-		}
-	};
-
-	struct GroupKey
-	{
-		std::string texture; bool doubleSided;
-		bool operator==(const GroupKey& o) const { return texture == o.texture && doubleSided == o.doubleSided; }
-	};
-	struct GroupKeyHash
-	{
-		size_t operator()(const GroupKey& k) const { return std::hash<std::string>{}(k.texture) ^ (k.doubleSided ? 1u : 0u); }
-	};
-}
 
 void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, const std::string& baseFileName,
 	std::unordered_map<std::string, Texture>& materialToTexture) const
 {
 	const std::vector<AnimatedFace>& baseFaces = m_animations[0].frames[0];
-
-	std::unordered_map<GroupKey, std::vector<size_t>, GroupKeyHash> groups;
+	std::map<std::pair<std::string, bool>, std::vector<size_t>> groups;
 	for (size_t i = 0; i < baseFaces.size(); i++)
 		groups[{baseFaces[i].tri.texture, baseFaces[i].doubleSided}].push_back(i);
 
-	// Every frame after frame 0, across every animation, becomes one morph
-	// target, in a flat global order. Track which slice of that order
-	// belongs to which named animation.
 	struct AnimRange { size_t firstTarget; size_t frameCount; };
 	std::vector<AnimRange> animRanges(m_animations.size());
 	std::vector<const std::vector<AnimatedFace>*> targetFrames;
@@ -1394,17 +1327,64 @@ void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, cons
 	}
 	const size_t numTargets = targetFrames.size();
 
-	GltfBuilder gb;
-	nlohmann::json primitives = nlohmann::json::array();
-	nlohmann::json materials = nlohmann::json::array();
-	nlohmann::json textures = nlohmann::json::array();
-	nlohmann::json images = nlohmann::json::array();
+	tinygltf::Model model;
+	model.asset.version = "2.0";
+	model.asset.generator = "CTR Instance Model Exporter";
+
+	std::vector<uint8_t> bin;
+	auto AddAccessor = [&](const float* data, size_t elemCount, int elemFloats, int type, bool withBounds) -> int
+		{
+			while (bin.size() % 4 != 0) { bin.push_back(0); }
+			size_t byteOffset = bin.size();
+			size_t totalFloats = elemCount * static_cast<size_t>(elemFloats);
+			const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data);
+			bin.insert(bin.end(), bytes, bytes + totalFloats * sizeof(float));
+
+			tinygltf::BufferView bv;
+			bv.buffer = 0;
+			bv.byteOffset = byteOffset;
+			bv.byteLength = totalFloats * sizeof(float);
+			int bvIdx = static_cast<int>(model.bufferViews.size());
+			model.bufferViews.push_back(bv);
+
+			tinygltf::Accessor acc;
+			acc.bufferView = bvIdx;
+			acc.byteOffset = 0;
+			acc.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
+			acc.count = elemCount;
+			acc.type = type;
+			if (withBounds)
+			{
+				std::vector<double> mn(elemFloats, DBL_MAX), mx(elemFloats, -DBL_MAX);
+				for (size_t i = 0; i < elemCount; i++)
+					for (int c = 0; c < elemFloats; c++)
+					{
+						double v = data[i * elemFloats + c];
+						mn[c] = std::min(mn[c], v);
+						mx[c] = std::max(mx[c], v);
+					}
+				acc.minValues = mn;
+				acc.maxValues = mx;
+			}
+			int idx = static_cast<int>(model.accessors.size());
+			model.accessors.push_back(acc);
+			return idx;
+		};
+
 	std::unordered_map<std::string, int> textureFileToImageIdx;
+	tinygltf::Mesh mesh;
+	mesh.name = baseFileName;
 
 	for (auto& [key, faceIndices] : groups)
 	{
-		std::vector<Vec3> positions, colors; std::vector<Vec2> uvs;
-		positions.reserve(faceIndices.size() * 3); colors.reserve(faceIndices.size() * 3); uvs.reserve(faceIndices.size() * 3);
+		const std::string& texName = key.first;
+		bool doubleSided = key.second;
+
+		std::vector<Vec3> positions, colors;
+		std::vector<Vec2> uvs;
+		positions.reserve(faceIndices.size() * 3);
+		uvs.reserve(faceIndices.size() * 3);
+		colors.reserve(faceIndices.size() * 3);
 		for (size_t fi : faceIndices)
 			for (int c = 0; c < 3; c++)
 			{
@@ -1414,11 +1394,12 @@ void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, cons
 				colors.push_back(Vec3(col.r / 255.0f, col.g / 255.0f, col.b / 255.0f));
 			}
 
-		int posAcc = gb.AddVec3Accessor(positions, true);
-		int uvAcc = gb.AddVec2Accessor(uvs);
-		int colAcc = gb.AddVec3Accessor(colors, false);
+		tinygltf::Primitive prim;
+		prim.mode = TINYGLTF_MODE_TRIANGLES;
+		prim.attributes["POSITION"] = AddAccessor(&positions[0].x, positions.size(), 3, TINYGLTF_TYPE_VEC3, true);
+		prim.attributes["TEXCOORD_0"] = AddAccessor(&uvs[0].x, uvs.size(), 2, TINYGLTF_TYPE_VEC2, false);
+		prim.attributes["COLOR_0"] = AddAccessor(&colors[0].x, colors.size(), 3, TINYGLTF_TYPE_VEC3, false);
 
-		nlohmann::json targetsJson = nlohmann::json::array();
 		for (size_t t = 0; t < numTargets; t++)
 		{
 			std::vector<Vec3> deltas;
@@ -1426,53 +1407,62 @@ void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, cons
 			for (size_t fi : faceIndices)
 				for (int c = 0; c < 3; c++)
 					deltas.push_back((*targetFrames[t])[fi].tri.p[c].pos - baseFaces[fi].tri.p[c].pos);
-			targetsJson.push_back({ {"POSITION", gb.AddVec3Accessor(deltas, true)} });
+			std::map<std::string, int> target;
+			target["POSITION"] = AddAccessor(&deltas[0].x, deltas.size(), 3, TINYGLTF_TYPE_VEC3, true);
+			prim.targets.push_back(target);
 		}
 
-		int matIdx = (int)materials.size();
-		nlohmann::json mat = {
-			{"name", key.texture.empty() ? std::string("notex") : key.texture},
-			{"doubleSided", key.doubleSided},
-			{"pbrMetallicRoughness", { {"baseColorFactor", {1.0,1.0,1.0,1.0}}, {"metallicFactor",0.0}, {"roughnessFactor",1.0} }},
-			{"extensions", { {"KHR_materials_unlit", nlohmann::json::object()} }}
-		};
-		//auto texIt = materialToTexture.find(key.texture);
-		//if (!key.texture.empty() && texIt != materialToTexture.end())
-		if (!key.texture.empty() && materialToTexture.contains(key.texture) && !materialToTexture[key.texture].IsEmpty())
+		tinygltf::Material mat;
+		mat.name = texName.empty() ? "notex" : texName;
+		mat.doubleSided = doubleSided;
+		mat.pbrMetallicRoughness.baseColorFactor = { 1.0, 1.0, 1.0, 1.0 };
+		mat.pbrMetallicRoughness.metallicFactor = 0.0;
+		mat.pbrMetallicRoughness.roughnessFactor = 1.0;
+		mat.extensions["KHR_materials_unlit"] = tinygltf::Value(std::map<std::string, tinygltf::Value>());
+
+		auto texIt = materialToTexture.find(texName);
+		if (!texName.empty() && texIt != materialToTexture.end() && !texIt->second.IsEmpty())
 		{
-			//std::filesystem::path src = texIt->second.GetPath();
-			std::filesystem::path src = materialToTexture[key.texture].GetPath();
+			std::filesystem::path src = texIt->second.GetPath();
 			std::filesystem::copy_file(src, modelDir / src.filename(), std::filesystem::copy_options::overwrite_existing);
 			std::string filename = src.filename().string();
-			int imgIdx;
-			auto it = textureFileToImageIdx.find(filename);
-			if (it != textureFileToImageIdx.end()) { imgIdx = it->second; }
-			else { imgIdx = (int)images.size(); images.push_back({ {"uri", filename} }); textureFileToImageIdx[filename] = imgIdx; }
-			int texIdx = (int)textures.size();
-			textures.push_back({ {"source", imgIdx} });
-			mat["pbrMetallicRoughness"]["baseColorTexture"] = { {"index", texIdx} };
-		}
-		materials.push_back(mat);
 
-		nlohmann::json prim = { {"attributes", {{"POSITION",posAcc},{"TEXCOORD_0",uvAcc},{"COLOR_0",colAcc}}}, {"material", matIdx} };
-		if (!targetsJson.empty()) { prim["targets"] = targetsJson; }
-		primitives.push_back(prim);
+			int imgIdx;
+			auto imgIt = textureFileToImageIdx.find(filename);
+			if (imgIt != textureFileToImageIdx.end()) { imgIdx = imgIt->second; }
+			else
+			{
+				tinygltf::Image img;
+				img.uri = filename;
+				imgIdx = static_cast<int>(model.images.size());
+				model.images.push_back(img);
+				textureFileToImageIdx[filename] = imgIdx;
+			}
+			tinygltf::Texture tex;
+			tex.source = imgIdx;
+			int texIdx = static_cast<int>(model.textures.size());
+			model.textures.push_back(tex);
+			mat.pbrMetallicRoughness.baseColorTexture.index = texIdx;
+		}
+
+		prim.material = static_cast<int>(model.materials.size());
+		model.materials.push_back(mat);
+		mesh.primitives.push_back(prim);
 	}
 
-	nlohmann::json mesh = { {"name", baseFileName}, {"primitives", primitives} };
-	if (numTargets > 0) { mesh["weights"] = std::vector<float>(numTargets, 0.0f); }
+	if (numTargets > 0) { mesh.weights = std::vector<double>(numTargets, 0.0); }
+	model.meshes.push_back(mesh);
 
-	// --- Animations: one per ModelAnimation with real motion. Each channel
-	// drives the same shared node.weights array; unrelated animations' slices
-	// stay zero outside their own contiguous target range. ---
-	nlohmann::json animationsJson = nlohmann::json::array();
-	constexpr float ASSUMED_SECONDS_PER_FRAME = 1.0f / 30.0f; // UNCONFIRMED fps -- tune if playback speed matters
+	// --- Animations: one per ModelAnimation with real motion, each driving
+	// the shared node's weights array over its own contiguous target range. ---
+	constexpr float ASSUMED_SECONDS_PER_FRAME = 1.0f / 30.0f; 
 	for (size_t a = 0; a < m_animations.size(); a++)
 	{
 		if (m_animations[a].frames.size() <= 1) { continue; }
 		const AnimRange& range = animRanges[a];
 
-		std::vector<float> times, weightsFlat;
+		std::vector<float> times;
+		std::vector<float> weightsFlat;
 		for (size_t f = 0; f < range.frameCount; f++)
 		{
 			times.push_back(f * ASSUMED_SECONDS_PER_FRAME);
@@ -1481,36 +1471,51 @@ void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, cons
 			weightsFlat.insert(weightsFlat.end(), w.begin(), w.end());
 		}
 
-		int timeAcc = gb.AddScalarAccessor(times, true);
-		int wAcc = gb.AddScalarAccessor(weightsFlat, false);
+		tinygltf::AnimationSampler sampler;
+		sampler.input = AddAccessor(times.data(), times.size(), 1, TINYGLTF_TYPE_SCALAR, true);
+		sampler.output = AddAccessor(weightsFlat.data(), weightsFlat.size(), 1, TINYGLTF_TYPE_SCALAR, false);
+		sampler.interpolation = m_animations[a].interpolated ? "LINEAR" : "STEP";
 
-		animationsJson.push_back({
-			{"name", m_animations[a].name.empty() ? ("anim_" + std::to_string(a)) : m_animations[a].name},
-			{"samplers", { {{"input",timeAcc},{"output",wAcc},{"interpolation", m_animations[a].interpolated ? "LINEAR" : "STEP"}} }},
-			{"channels", { {{"sampler",0},{"target",{{"node",0},{"path","weights"}}}} }}
-			});
+		tinygltf::AnimationChannel channel;
+		channel.sampler = 0;
+		channel.target_node = 0;
+		channel.target_path = "weights";
+
+		tinygltf::Animation anim;
+		anim.name = m_animations[a].name.empty() ? ("anim_" + std::to_string(a)) : m_animations[a].name;
+		anim.samplers.push_back(sampler);
+		anim.channels.push_back(channel);
+		model.animations.push_back(anim);
 	}
 
-	nlohmann::json gltf;
-	gltf["asset"] = { {"version","2.0"}, {"generator","CTR Instance Model Exporter"} };
-	if (!materials.empty()) { gltf["extensionsUsed"] = nlohmann::json::array({ "KHR_materials_unlit" }); }
-	gltf["scene"] = 0;
-	gltf["scenes"] = nlohmann::json::array({ {{"nodes", {0}}} });
-	gltf["nodes"] = nlohmann::json::array({ {{"name", baseFileName}, {"mesh", 0}} });
-	gltf["meshes"] = nlohmann::json::array({ mesh });
-	if (!materials.empty()) { gltf["materials"] = materials; }
-	if (!textures.empty()) { gltf["textures"] = textures; }
-	if (!images.empty()) { gltf["images"] = images; }
-	if (!animationsJson.empty()) { gltf["animations"] = animationsJson; }
-	gltf["accessors"] = gb.accessors;
-	gltf["bufferViews"] = gb.bufferViews;
-	gltf["buffers"] = nlohmann::json::array({ {{"uri", baseFileName + ".bin"}, {"byteLength", gb.bin.size()}} });
+	tinygltf::Node node;
+	node.name = baseFileName;
+	node.mesh = 0;
+	model.nodes.push_back(node);
 
-	std::ofstream binFile(modelDir / (baseFileName + ".bin"), std::ios::binary);
-	binFile.write(reinterpret_cast<const char*>(gb.bin.data()), gb.bin.size());
+	tinygltf::Scene scene;
+	scene.nodes.push_back(0);
+	model.scenes.push_back(scene);
+	model.defaultScene = 0;
 
-	std::ofstream gltfFile(modelDir / (baseFileName + ".gltf"));
-	gltfFile << std::setw(2) << gltf << std::endl;
+	if (!model.materials.empty()) { model.extensionsUsed.push_back("KHR_materials_unlit"); }
+
+	tinygltf::Buffer buffer;
+	buffer.data = std::move(bin);
+	model.buffers.push_back(buffer);
+
+	tinygltf::TinyGLTF writer;
+	// embedBuffers=false + no buffer.uri set -> tinygltf writes an external
+	// .bin next to the .gltf and fills in the uri itself. embedImages=false
+	// since our Images only ever carry a .uri (the PNG copied above), never
+	// pixel data -- nothing for tinygltf to embed.
+	bool ok = writer.WriteGltfSceneToFile(&model, (modelDir / (baseFileName + ".gltf")).string(),
+		/*embedImages=*/false, /*embedBuffers=*/false,
+		/*prettyPrint=*/true, /*writeBinary=*/false);
+	if (!ok)
+	{
+		printf("ERROR: tinygltf failed to write %s\n", (modelDir / (baseFileName + ".gltf")).string().c_str());
+	}
 }
 
 nlohmann::json InstanceModelHeader::WriteMetadataJson(const std::string& objFile, const std::string& mtlFile, const std::string& gltfFile) const
