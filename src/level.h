@@ -203,9 +203,3 @@ private:
 	int m_openInstanceIndex = -1;
 	int m_closeInstanceIndex = -1;
 };
-
-static std::string DecodePsxTextureToPng(
-	const uint8_t* pixelData, size_t pixelDataSize,
-	const uint16_t* palette, size_t paletteSize,
-	uint16_t width, uint16_t height, uint8_t bpp,
-	const std::string& outputPath);
