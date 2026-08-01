@@ -1238,6 +1238,76 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	PSX::LevHeader header = {};
 	Read(file, header);
 
+
+	m_spawntypes.clear();
+	printf("NumSpwanType2 : %d at offset 0x%x\n", header.numSpawnType_2, header.offSpawnType_2);
+	if (header.offSpawnType_2 != 0)
+	{	
+		for (uint32_t i = 0; i < header.numSpawnType_2; i++)
+		{
+			std::vector<Vec3> spawntype;
+			file.seekg(offLev + std::streampos(header.offSpawnType_2 + i * sizeof(PSX::SpawnType2)));
+			PSX::SpawnType2 st2{};
+			Read(file, st2);
+			printf("SpawnType2 ID %d, numCoord : %d, offCoord : 0x%x\n", i, st2.numCoord, st2.offPos);
+			if (st2.offPos != 0)
+			{
+				for (uint32_t j = 0; j < st2.numCoord; j++)
+				{
+					file.seekg(offLev + std::streampos(st2.offPos + j * sizeof(PSX::Vec3)));
+					PSX::Vec3 pos{};
+					Read(file, pos);
+					Vec3 realPos = ConvertPSXVec3(pos, FP_ONE_GEO);
+					//printf("Coord ID %d, x : %.2f, y : %.2f, z : %.2f\n", j, realPos.x, realPos.y, realPos.z);
+					spawntype.push_back(realPos);
+				}
+			}
+			m_spawntypes.push_back(spawntype);
+		}
+	}
+
+	m_spawntypesPosRot.clear();
+	printf("NumSpwanType2 PosRot: %d at offset 0x%x\n", header.numSpawnType_2_posRot, header.offSpawnType_2_posRot);
+	if (header.offSpawnType_2_posRot != 0)
+	{
+		for (uint32_t i = 0; i < header.numSpawnType_2_posRot; i++)
+		{
+			std::vector<Spawn> spawntypePosRot;
+			file.seekg(offLev + std::streampos(header.offSpawnType_2_posRot + i * sizeof(PSX::SpawnType2)));
+			PSX::SpawnType2 st2{};
+			Read(file, st2);
+			printf("SpawnType2 ID %d, numCoord : %d, offCoord : 0x%x\n", i, st2.numCoord, st2.offPos);
+			if (st2.offPos != 0)
+			{
+				for (uint32_t j = 0; j < st2.numCoord; j++)
+				{
+					file.seekg(offLev + std::streampos(st2.offPos + j * sizeof(PSX::Spawn)));
+					PSX::Spawn spwn{};
+					Read(file, spwn);
+					Spawn realSpwn{};
+					realSpwn.pos = ConvertPSXVec3(spwn.pos, FP_ONE_GEO);
+					realSpwn.rot = ConvertPSXAngle(spwn.rot);
+					//printf("Coord ID %d, x : %.2f, y : %.2f, z : %.2f\n", j, realSpwn.pos.x, realSpwn.pos.y, realSpwn.pos.z);
+					spawntypePosRot.push_back(realSpwn);
+				}
+			}
+			m_spawntypesPosRot.push_back(spawntypePosRot);
+		}
+	}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 	m_configFlags = header.config;
 	m_clearColor = ConvertColor(header.clear);
 	m_stars = ConvertStars(header.stars);
@@ -1528,6 +1598,8 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							(!isAnimated && modelHeader.offStaticDeltaArray != 0) ||   // compressed static: still unsupported
 							(isAnimated && modelHeader.offFrameData != 0))             // ambiguous per RenderBucket_GetFrame
 						{
+							printf("Couldn't import model %s, offAnim 0x%x, numAnim %d, offCommand 0x%x, offAnimTex 0x%x, offColors 0x%x, offSDT 0x%x, offFrameData 0x%x\n",
+								modelName, modelHeader.offAnimations, modelHeader.numAnimations, modelHeader.offCommandList, modelHeader.offAnimtex, modelHeader.offColors, modelHeader.offStaticDeltaArray, modelHeader.offFrameData);
 							m_instanceModels[modelName].SetValid(false);
 							continue;
 						}
@@ -2756,9 +2828,12 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	std::vector<std::vector<uint32_t>> uniqueVisNodes;
 	std::map<std::vector<uint32_t>, size_t> visNodesOffsetMap;
 	std::vector<std::tuple<std::vector<uint32_t>, size_t>> visibleQuads;
+	std::vector<std::vector<uint32_t>> uniqueVisQuads;
+	std::map<std::vector<uint32_t>, size_t> visQuadsOffsetMap;
 	std::vector<std::tuple<std::vector<uint32_t>, size_t>> visibleInstances;
 	size_t visNodeSize = static_cast<size_t>(std::ceil(static_cast<float>(bspNodes.size()) / static_cast<float>(BITS_PER_SLOT)));
 	size_t visQuadSize = static_cast<size_t>(std::ceil(static_cast<float>(m_quadblocks.size()) / static_cast<float>(BITS_PER_SLOT)));
+
 	std::vector<uint32_t> visibleNodeAll(visNodeSize, 0xFFFFFFFF);
 	for (const BSP* bsp : orderedBSPNodes)
 	{
@@ -2767,19 +2842,24 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 
 	std::vector<uint32_t> visibleQuadsAll(visQuadSize, 0xFFFFFFFF);
 	size_t quadIndex = 0;
-	const bool validVisTree = !m_bspVis.IsEmpty();
-	const std::vector<const BSP*> bspLeaves = m_bsp.GetLeaves();
-	std::unordered_map<size_t, const BSP*> idToLeaf;
-	std::unordered_map<const BSP*, size_t> leafToMatrix;
-	for (const BSP* leaf : bspLeaves) { idToLeaf[leaf->GetId()] = leaf; }
-	for (size_t i = 0; i < bspLeaves.size(); i++) { leafToMatrix[bspLeaves[i]] = i; }
 	for (const Quadblock* quad : orderedQuads)
 	{
 		if (quad->GetFlags() & QuadFlags::INVISIBLE_TRIGGER)
 		{
 			visibleQuadsAll[quadIndex / BITS_PER_SLOT] &= ~(1 << (quadIndex % BITS_PER_SLOT));
 		}
-		if (validVisTree)
+		quadIndex++;
+	}
+	
+	const bool validVisTree = !m_bspVis.IsEmpty();
+	const std::vector<const BSP*> bspLeaves = m_bsp.GetLeaves();
+	std::unordered_map<size_t, const BSP*> idToLeaf;
+	std::unordered_map<const BSP*, size_t> leafToMatrix;
+	for (const BSP* leaf : bspLeaves) { idToLeaf[leaf->GetId()] = leaf; }
+	for (size_t i = 0; i < bspLeaves.size(); i++) { leafToMatrix[bspLeaves[i]] = i; }
+	if (validVisTree)
+	{
+		for (const Quadblock* quad : orderedQuads)
 		{
 			std::vector<uint32_t> visNodes(visNodeSize, 0x0);
 			const BSP* bspLeaf = idToLeaf[quad->GetBSPID()];
@@ -2808,18 +2888,51 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 				currOffset += visNodes.size() * sizeof(uint32_t);
 			}
 		}
-		quadIndex++;
+		for (const Quadblock* quad : orderedQuads)
+		{
+			std::vector<uint32_t> visQuads(visQuadSize, 0x0);
+			const BSP* bspLeaf = idToLeaf[quad->GetBSPID()];
+			const size_t matrixId = leafToMatrix[bspLeaf];
+			/*for (size_t i = 0; i < bspLeaves.size(); i++)
+			{
+				if (m_bspVis.Get(matrixId, i))
+				{
+					quadIndex = 0;
+					for (const Quadblock* quad : orderedQuads)
+					{
+						if (leafToMatrix[idToLeaf[quad->GetBSPID()]] == i)
+						{
+							visQuads[quadIndex / BITS_PER_SLOT] |= (1 << (quadIndex % BITS_PER_SLOT));
+						}
+						quadIndex++;
+					}
+				}
+			}*/
+			visQuads = visibleQuadsAll; //Saves space, doesn't seem to cost performances.
+			if (visQuadsOffsetMap.contains(visQuads))
+			{
+				visibleQuads.push_back({ visQuads, visQuadsOffsetMap.at(visQuads) });
+			}
+			else
+			{
+				visQuadsOffsetMap[visQuads] = currOffset;
+				visibleQuads.push_back({ visQuads, currOffset });
+				uniqueVisQuads.push_back(visQuads);
+				currOffset += visQuads.size() * sizeof(uint32_t);
+			}
+		}
 	}
-	printf("visibleNodesOffsetMapSize %d\n", visNodesOffsetMap.size());
-	if (!validVisTree)
+	else // not valid vistree
 	{
 		visibleNodes.push_back({visibleNodeAll, currOffset});
 		uniqueVisNodes.push_back(visibleNodeAll);
 		currOffset += visibleNodeAll.size() * sizeof(uint32_t);
-	}
 
-	visibleQuads.push_back({visibleQuadsAll, currOffset});
-	currOffset += visibleQuadsAll.size() * sizeof(uint32_t);
+		visibleQuads.push_back({ visibleQuadsAll, currOffset });
+		currOffset += visibleQuadsAll.size() * sizeof(uint32_t);
+	}
+	printf("visibleNodesOffsetMapSize %d\n", visNodesOffsetMap.size());
+	printf("visibleQuadsOffsetMapSize %d\n", visQuadsOffsetMap.size());
 
 	std::vector<uint32_t> visibleInstancesDummy;
 	visibleInstancesDummy.push_back(0xFFFFFFFF);
@@ -2834,9 +2947,16 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	for (size_t quadCount = 0; quadCount < orderedQuads.size(); quadCount++)
 	{
 		PSX::VisibleSet set = {};
-		if (validVisTree) { set.offVisibleBSPNodes = static_cast<uint32_t>(std::get<size_t>(visibleNodes[quadCount])); }
-		else { set.offVisibleBSPNodes = static_cast<uint32_t>(std::get<size_t>(visibleNodes[0])); }
-		set.offVisibleQuadblocks = static_cast<uint32_t>(std::get<size_t>(visibleQuads[0]));
+		if (validVisTree) 
+		{ 
+			set.offVisibleBSPNodes = static_cast<uint32_t>(std::get<size_t>(visibleNodes[quadCount]));
+			set.offVisibleQuadblocks = static_cast<uint32_t>(std::get<size_t>(visibleQuads[quadCount]));
+		}
+		else 
+		{ 
+			set.offVisibleBSPNodes = static_cast<uint32_t>(std::get<size_t>(visibleNodes[0])); 
+			set.offVisibleQuadblocks = static_cast<uint32_t>(std::get<size_t>(visibleQuads[0]));
+		}
 		if (orderedQuads.size() % 2 == 0 && quadCount == 0)
 			set.offVisibleInstances = static_cast<uint32_t>(0);
 		else
@@ -2952,6 +3072,55 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	//printf(nameof(offExtraHeader) " = %zx\n", offExtraHeader);
 	currOffset += sizeof(extraHeader);
 
+
+	size_t offSpawnType = currOffset;
+	std::vector<PSX::SpawnType2> serializedSpawnTypeHeader;
+	std::vector<std::vector<PSX::Vec3>> serializedSpawnTypes;
+	serializedSpawnTypes.resize(m_spawntypes.size());
+	for (std::vector<Vec3>& spawnType : m_spawntypes)
+	{
+		PSX::SpawnType2 psxSpawnType{};
+		psxSpawnType.numCoord = static_cast<uint32_t>(spawnType.size());
+		serializedSpawnTypeHeader.push_back(psxSpawnType);
+		currOffset += sizeof(psxSpawnType);
+	}
+	for (size_t i = 0; i < serializedSpawnTypeHeader.size(); i++)
+	{
+		serializedSpawnTypeHeader[i].offPos = static_cast<uint32_t>(currOffset);
+		std::vector<Vec3>& spawnType = m_spawntypes[i];
+		for (Vec3& pos : spawnType)
+		{
+			serializedSpawnTypes[i].push_back(ConvertVec3(pos, FP_ONE_GEO));
+			currOffset += sizeof(PSX::Vec3);
+		}
+	}
+
+	size_t offSpawnTypePosRot = currOffset;
+	std::vector<PSX::SpawnType2> serializedSpawnTypePosRotHeader;
+	std::vector<std::vector<PSX::Spawn>> serializedSpawnPosRotTypes;
+	serializedSpawnPosRotTypes.resize(m_spawntypesPosRot.size());
+	for (std::vector<Spawn>& spawnType : m_spawntypesPosRot)
+	{
+		PSX::SpawnType2 psxSpawnType{};
+		psxSpawnType.numCoord = static_cast<uint32_t>(spawnType.size());
+		serializedSpawnTypePosRotHeader.push_back(psxSpawnType);
+		currOffset += sizeof(psxSpawnType);
+	}
+	for (size_t i = 0; i < serializedSpawnTypePosRotHeader.size(); i++)
+	{
+		serializedSpawnTypePosRotHeader[i].offPos = static_cast<uint32_t>(currOffset);
+		std::vector<Spawn>& spawnType = m_spawntypesPosRot[i];
+		for (Spawn& spawn : spawnType)
+		{
+			PSX::Spawn psxSpawn{};
+			psxSpawn.pos = ConvertVec3(spawn.pos, FP_ONE_GEO);
+			psxSpawn.rot = ConvertAngle(spawn.rot);
+			serializedSpawnPosRotTypes[i].push_back(psxSpawn);
+			currOffset += sizeof(PSX::Spawn);
+		}
+	}
+
+
 	constexpr size_t BOT_PATH_COUNT = 3;
 	PSX::levAINavTable navTable{};
 	std::vector<std::vector<uint8_t>> serializedBotPaths;
@@ -3033,6 +3202,10 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	header.offCheckpointNodes = static_cast<uint32_t>(offCheckpoints);
 	header.offVisMem = static_cast<uint32_t>(offVisMem);
 	header.offLevNavTable = static_cast<uint32_t>(offNavTable);
+	header.offSpawnType_2 = static_cast<uint32_t>(offSpawnType);
+	header.numSpawnType_2 = static_cast<uint32_t>(serializedSpawnTypeHeader.size());
+	header.offSpawnType_2_posRot = static_cast<uint32_t>(offSpawnTypePosRot);
+	header.numSpawnType_2_posRot = static_cast<uint32_t>(serializedSpawnTypePosRotHeader.size());
 	
 	// Set skybox pointer in header if enabled
 	if (m_skybox.IsReady())
@@ -3076,7 +3249,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 
 		serializedModels[i] = model.Serialize(offModel, m_materialToTexture, modelPointerLocations[i]);
 
-		printf("offModel[%s] = %zx (%zu bytes)\n", modelName.c_str(), (size_t)offModel, serializedModels[i].size());
+		//printf("offModel[%s] = %zx (%zu bytes)\n", modelName.c_str(), (size_t)offModel, serializedModels[i].size());
 		currOffset += serializedModels[i].size();
 	}
 
@@ -3324,6 +3497,28 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		pointerMap.push_back(static_cast<uint32_t>(offset));
 	}
 
+	if (header.offSpawnType_2 != 0)
+	{
+		pointerMap.push_back(CALCULATE_OFFSET(PSX::LevHeader, offSpawnType_2, offHeader));
+		uint32_t i = 0;
+		for (PSX::SpawnType2 st2 : serializedSpawnTypeHeader)
+		{
+			pointerMap.push_back(CALCULATE_OFFSET(PSX::SpawnType2, offPos, offSpawnType + i * sizeof(PSX::SpawnType2) ));
+			i++;
+		}
+	}
+
+	if (header.offSpawnType_2_posRot != 0)
+	{
+		pointerMap.push_back(CALCULATE_OFFSET(PSX::LevHeader, offSpawnType_2_posRot, offHeader));
+		uint32_t i = 0;
+		for (PSX::SpawnType2 st2 : serializedSpawnTypePosRotHeader)
+		{
+			pointerMap.push_back(CALCULATE_OFFSET(PSX::SpawnType2, offPos, offSpawnTypePosRot + i * sizeof(PSX::SpawnType2)));
+			i++;
+		}
+	}
+
 	for (size_t i = 0; i < 3; i++)
 	{
 		if (m_botPaths[i].IsValid())
@@ -3341,11 +3536,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	if (!animData.empty()) { Write(file, animData.data(), animData.size()); }
 	for (const std::vector<uint8_t>& serializedQuad : serializedQuads) { Write(file, serializedQuad.data(), serializedQuad.size()); }
 	for (const auto& visNode : uniqueVisNodes) { Write(file, visNode.data(), visNode.size() * sizeof(uint32_t)); }
-	for (const auto& tuple : visibleQuads)
-	{
-		const std::vector<uint32_t>& visibleQuad = std::get<0>(tuple);
-		Write(file, visibleQuad.data(), visibleQuad.size() * sizeof(uint32_t));
-	}
+	for (const auto& visQuad : uniqueVisQuads) { Write(file, visQuad.data(), visQuad.size() * sizeof(uint32_t)); }
 	for (const auto& tuple : visibleInstances)
 	{
 		const std::vector<uint32_t>& visibleInst = std::get<0>(tuple);
@@ -3359,6 +3550,10 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	if (!m_oxideGhost.empty()) { Write(file, m_oxideGhost.data(), m_oxideGhost.size()); }
 	Write(file, spawnMeta.data(), spawnMeta.size() * sizeof(int16_t));
 	Write(file, &extraHeader, sizeof(extraHeader));
+	for (PSX::SpawnType2 st2 : serializedSpawnTypeHeader) { Write(file, &st2, sizeof(st2)); }
+	for (auto& spawntypes : serializedSpawnTypes) { for (PSX::Vec3 pos : spawntypes) { Write(file, &pos, sizeof(pos)); } }
+	for (PSX::SpawnType2 st2 : serializedSpawnTypePosRotHeader) { Write(file, &st2, sizeof(st2)); }
+	for (auto& spawntypes : serializedSpawnPosRotTypes) { for (PSX::Spawn pos : spawntypes) { Write(file, &pos, sizeof(pos)); } }
 	Write(file, &navTable, sizeof(navTable));
 	for (const std::vector<uint8_t>& serializedBotPath : serializedBotPaths) { Write(file, serializedBotPath.data(), serializedBotPath.size()); }
 	Write(file, visMemNodesP1.data(), visMemNodesP1.size() * sizeof(uint32_t));

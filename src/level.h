@@ -200,6 +200,8 @@ private:
 	std::vector<uint16_t> m_vramData;
 
 	std::vector<Instance> m_instances;
+	std::vector<std::vector<Vec3>> m_spawntypes;
+	std::vector<std::vector<Spawn>> m_spawntypesPosRot;
 	int m_openInstanceIndex = -1;
 	int m_closeInstanceIndex = -1;
 };

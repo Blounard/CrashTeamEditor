@@ -387,6 +387,12 @@ namespace PSX
 		uint32_t offsets[LevelExtra::COUNT];
 	};
 
+	struct SpawnType2
+	{
+		uint32_t numCoord;
+		uint32_t offPos;
+	};
+
 	struct Vertex
 	{
 		PSX::Vec3 pos; // 0x0
