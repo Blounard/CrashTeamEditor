@@ -980,10 +980,11 @@ void Level::RenderUI(Renderer& renderer)
 			{
 				if (ImGui::TreeNodeEx("BSP Settings", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					if (ImGui::InputInt("Max Quad Per Leaf", &m_maxQuadPerLeaf)) { m_maxQuadPerLeaf = std::max(m_maxQuadPerLeaf, 1); }
+					if (ImGui::InputInt("Max Quad Per Leaf", &m_bspSettings.maxQuadPerLeaf)) { m_bspSettings.maxQuadPerLeaf = std::max(m_bspSettings.maxQuadPerLeaf, 1); }
 					ImGui::SetItemTooltip("Lower values improve rendering performance, but increases file size and slows down vis tree generation.");
-					if (ImGui::InputFloat("Max Leaf Axis Length", &m_maxLeafAxisLength)) { m_maxLeafAxisLength = std::max(m_maxLeafAxisLength, 0.0f); }
+					if (ImGui::InputFloat("Max Leaf Axis Length", &m_bspSettings.maxAxisDistance)) { m_bspSettings.maxAxisDistance = std::max(m_bspSettings.maxAxisDistance, 0.0f); }
 					ImGui::SetItemTooltip("Lower values improve rendering performance, but increases file size and slows down vis tree generation.");
+					ImGui::Checkbox("Separate Material", &m_bspSettings.separateMaterial);
 
 					ImGui::TreePop();
 				}

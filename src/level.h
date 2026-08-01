@@ -118,8 +118,7 @@ private:
 	bool m_showLogWindow;
 	bool m_showHotReloadWindow;
 	bool m_loaded;
-	int m_maxQuadPerLeaf;
-	float m_maxLeafAxisLength;
+	BSPTreeSettings m_bspSettings;
 	VisTreeSettings m_visTreeSettings;
 	BotPathSettings m_botPathSettings;
 
