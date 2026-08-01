@@ -2054,7 +2054,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	size_t bspSize = 0;
 	for (const BSP* bsp : orderedBSPNodes)
 	{
-		serializedBSPs.push_back(bsp->Serialize(currOffset));
+		serializedBSPs.push_back(bsp->Serialize(currOffset, m_quadblocks));
 		bspSize += serializedBSPs.back().size();
 		if (bsp->IsBranch()) { continue; }
 		const std::vector<size_t>& quadIndexes = bsp->GetQuadblockIndexes();

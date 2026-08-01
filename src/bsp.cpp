@@ -552,7 +552,7 @@ void BSP::Generate(const std::vector<Quadblock>& quadblocks, const size_t maxQua
 
 std::vector<uint8_t> BSP::Serialize(size_t offQuads, const std::vector<Quadblock>& quadblocks) const
 {
-	return m_node == BSPNode::BRANCH ? SerializeBranch() : SerializeLeaf(offQuads);
+	return m_node == BSPNode::BRANCH ? SerializeBranch(quadblocks) : SerializeLeaf(offQuads);
 }
 
 float BSP::GetAxisMidpoint(const AxisSplit axis) const
@@ -630,7 +630,7 @@ bool BSP::IsInvisible(const std::vector<Quadblock>& quadblocks)
 	// Check if all quads in the node are invisible
 	for (size_t quadID : m_quadblockIndexes)
 	{
-		if (quadID < quadblocks.size() && !(quadblocks[quadID].GetFlags & QuadFlags::INVISIBLE_TRIGGER))
+		if (quadID < quadblocks.size() && !(quadblocks[quadID].GetFlags() & QuadFlags::INVISIBLE_TRIGGER))
 			return false;
 	}
 	return true;
