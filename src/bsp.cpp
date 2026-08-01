@@ -657,7 +657,7 @@ std::vector<uint8_t> BSP::SerializeBranch(const std::vector<Quadblock>& quadbloc
 		if (!m_left->IsBranch())
 		{
 			branch.leftChild |= BSPID::LEAF;
-			if (m_left->IsInvisible())
+			if (m_left->IsInvisible(quadblocks))
 				branch.leftChild |= BSPID::INVISIBLE;
 		}
 			
@@ -671,7 +671,7 @@ std::vector<uint8_t> BSP::SerializeBranch(const std::vector<Quadblock>& quadbloc
 		if (!m_right->IsBranch())
 		{
 			branch.rightChild |= BSPID::LEAF;
-			if (m_right->IsInvisible())
+			if (m_right->IsInvisible(quadblocks))
 				branch.rightChild |= BSPID::INVISIBLE;
 		}
 
