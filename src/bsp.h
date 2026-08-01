@@ -70,6 +70,7 @@ public:
 	void SetQuadblockIndexes(const std::vector<size_t>& quadblockIndexes);
 	void SetParent(BSP* parent);
 	void Clear();
+	bool NeedSplitGeometry(const BSPTreeSettings settings);
 	bool SplitLeafGeometry(const std::vector<Quadblock>& quadblocks, const AxisSplit axis, const float midpoint);
 	bool SplitLeafMaterial(const std::vector<Quadblock>& quadblocks);
 	void MergeBranch();

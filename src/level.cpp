@@ -75,8 +75,7 @@ void Level::Clear(bool clearErrors)
 	m_rendererSelectedQuadblockIndexes.clear();
 	//m_genVisTree = false;
 	m_bspVis.Clear();
-	m_maxQuadPerLeaf = 31;
-	m_maxLeafAxisLength = 64.0f;
+	m_bspSettings = BSPTreeSettings();
 	m_visTreeSettings = VisTreeSettings();
 	m_pythonConsole.clear();
 	m_saveScript = false;
@@ -254,7 +253,7 @@ bool Level::GenerateBSP()
 	for (size_t i = 0; i < m_quadblocks.size(); i++) { quadIndexes.push_back(i); }
 	m_bsp.Clear();
 	m_bsp.SetQuadblockIndexes(quadIndexes);
-	m_bsp.Generate(m_quadblocks, m_maxQuadPerLeaf, m_maxLeafAxisLength);
+	m_bsp.GenerateTree(m_quadblocks, m_bspSettings);
 	if (m_bsp.IsValid())
 	{
 		GenerateRenderBspData();
@@ -1691,6 +1690,17 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	if (m_bsp.IsEmpty()) { GenerateBSP(); }
 
 	std::vector<const BSP*> bspNodes = m_bsp.GetTree();
+	std::set<size_t> bspIds;
+	for (const BSP* bsp : bspNodes) { bspIds.insert(bsp->GetId()); }
+	size_t bspcounter = 0;
+	for (size_t bspid : bspIds)
+	{
+		if (bspcounter != bspid)
+		{
+			printf("BSP ID MISMATCH AT ID %d\n", bspcounter);
+		}
+		bspcounter++;
+	}
 	std::vector<const BSP*> orderedBSPNodes(bspNodes.size());
 	for (const BSP* bsp : bspNodes) { orderedBSPNodes[bsp->GetId()] = bsp; }
 

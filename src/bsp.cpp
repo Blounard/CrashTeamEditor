@@ -3,6 +3,7 @@
 
 #include <cstring>
 #include <set>
+#include <map>
 
 static size_t g_id = 0;
 static std::set<size_t> g_idSet = {};
@@ -25,7 +26,6 @@ size_t FindAvailableID()
 		printf("Error in BSP ID allocation : %d\n", id);
 		return 0;
 	}
-
 }
 
 BSP::BSP()
@@ -324,6 +324,19 @@ bool BSP::SplitLeafGeometry(const std::vector<Quadblock>& quadblocks, const Axis
 	m_right = new BSP(BSPNode::LEAF, right_quad_indexes, this, quadblocks);
 	m_right->m_bbox = ComputeBoundingBox(quadblocks, right_quad_indexes);
 
+	//printf("Split : %d -> %d + %d\n", m_quadblockIndexes.size(), left_quad_indexes.size(), right_quad_indexes.size());
+	//float parent;
+	//float left;
+	//float right;
+	//switch (axis)
+	//{
+	//case AxisSplit::X: parent = m_bbox.AxisLength().x; left = m_left->m_bbox.AxisLength().x; right = m_right->m_bbox.AxisLength().x;  break;
+	//case AxisSplit::Y: parent = m_bbox.AxisLength().y; left = m_left->m_bbox.AxisLength().y; right = m_right->m_bbox.AxisLength().y;  break;
+	//case AxisSplit::Z: parent = m_bbox.AxisLength().z; left = m_left->m_bbox.AxisLength().z; right = m_right->m_bbox.AxisLength().z;  break;
+	//default: return false; // Invalid axis
+	//}
+	//printf("Split %.2f -> %.2f + %.2f\n\n", parent, left, right);
+
 	return true;
 }
 
@@ -393,44 +406,42 @@ void BSP::MergeBranch()
 }
 
 
-bool NeedSplitGeometry(BSP* leaf, const BSPTreeSettings settings)
+bool BSP::NeedSplitGeometry(const BSPTreeSettings settings)
 {
-	const std::vector<size_t>& indexes = leaf->m_quadblockIndexes;
-	if (indexes.size() <= 1) { return false; }
-	if ((int)indexes.size() > settings.maxQuadPerLeaf) { return true; }
-	const BoundingBox& bbox = leaf->m_bbox;
-	if (bbox.max.x - bbox.min.x > settings.maxAxisDistance) { return true; }
-	if (bbox.max.y - bbox.min.y > settings.maxAxisDistance) { return true; }
-	if (bbox.max.z - bbox.min.z > settings.maxAxisDistance) { return true; }
+	if (m_quadblockIndexes.size() <= 1) { return false; }
+	if ((int)m_quadblockIndexes.size() > settings.maxQuadPerLeaf) { return true; }
+	if (m_bbox.max.x - m_bbox.min.x > settings.maxAxisDistance) { return true; }
+	if (m_bbox.max.y - m_bbox.min.y > settings.maxAxisDistance) { return true; }
+	if (m_bbox.max.z - m_bbox.min.z > settings.maxAxisDistance) { return true; }
 	return false;
 }
 
 void BSP::FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& outAxis, float& outMidpoint)
 {
-	float minSize = std::numeric_limits<float>::max();
+	float maxSize = std::numeric_limits<float>::min();
 
 	for (AxisSplit axis : { AxisSplit::X, AxisSplit::Y, AxisSplit::Z })
 	{
 		switch (axis)
 		{
 		case AxisSplit::X:
-			if (m_bbox.max.x - m_bbox.min.x < minSize)
+			if (m_bbox.max.x - m_bbox.min.x > maxSize)
 			{
-				minSize = m_bbox.max.x - m_bbox.min.x;
+				maxSize = m_bbox.max.x - m_bbox.min.x;
 				outAxis = AxisSplit::X;
 			}
 			break;
 		case AxisSplit::Y:
-			if (m_bbox.max.y - m_bbox.min.y < minSize)
+			if (m_bbox.max.y - m_bbox.min.y > maxSize)
 			{
-				minSize = m_bbox.max.y - m_bbox.min.y;
+				maxSize = m_bbox.max.y - m_bbox.min.y;
 				outAxis = AxisSplit::Y;
 			}
 			break;
 		case AxisSplit::Z:
-			if (m_bbox.max.z - m_bbox.min.z < minSize)
+			if (m_bbox.max.z - m_bbox.min.z > maxSize)
 			{
-				minSize = m_bbox.max.z - m_bbox.min.z;
+				maxSize = m_bbox.max.z - m_bbox.min.z;
 				outAxis = AxisSplit::Z;
 			}
 			break;
@@ -441,7 +452,7 @@ void BSP::FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& out
 	for (size_t idx : m_quadblockIndexes)
 	{
 		const Vec3& c = quadblocks[idx].GetCenter();
-		switch (axis)
+		switch (outAxis)
 		{
 		case AxisSplit::X: centers.push_back(c.x); break;
 		case AxisSplit::Y: centers.push_back(c.y); break;
@@ -467,7 +478,7 @@ void BSP::GenerateTree(const std::vector<Quadblock>& quadblocks, const BSPTreeSe
 		BSP* node = worklist.back();
 		worklist.pop_back();
 
-		if (NeedSplitGeometry(node))
+		if (node->NeedSplitGeometry(settings))
 		{ 
 			AxisSplit axis; float midpoint;
 			node->FindBestSplit(quadblocks, axis, midpoint);
@@ -480,6 +491,7 @@ void BSP::GenerateTree(const std::vector<Quadblock>& quadblocks, const BSPTreeSe
 			// By this point, the node needs a split, but couldn't be achieved : 
 			// Only happen when all quad's midpoint have the same coordinate alongside the split axis.
 			// For now we simply let this in the same leaf.
+			printf("WARNING : BSP Tree Generation produced a leaf that need splitting but can't be split\n");
 		}
 
 		if (settings.separateMaterial)
