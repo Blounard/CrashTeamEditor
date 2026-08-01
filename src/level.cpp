@@ -1701,6 +1701,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		}
 		bspcounter++;
 	}
+	// TODO code a guard that changes bsp id if mismatch
 	std::vector<const BSP*> orderedBSPNodes(bspNodes.size());
 	for (const BSP* bsp : bspNodes) { orderedBSPNodes[bsp->GetId()] = bsp; }
 
