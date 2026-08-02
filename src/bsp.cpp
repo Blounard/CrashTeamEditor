@@ -383,6 +383,38 @@ bool BSP::SplitLeafMaterial(const std::vector<Quadblock>& quadblocks)
 }
 
 
+bool BSP::SplitLeafWater(const std::vector<Quadblock>& quadblocks)
+{
+	//Split a leaf into a subtree, separating all quad by water.
+
+	if (IsBranch()) { return false; }
+
+	std::vector<size_t> left_quad_indexes;
+	std::vector<size_t> right_quad_indexes;
+	for (size_t idx : m_quadblockIndexes)
+	{
+		if (quadblocks[idx].GetWater())
+			left_quad_indexes.push_back(idx);
+		else
+			right_quad_indexes.push_back(idx);
+	}
+	if (left_quad_indexes.empty() || right_quad_indexes.empty())
+		return false;
+
+	m_node = BSPNode::BRANCH;
+	m_flags &= ~BSPFlags::LEAF;
+	m_axis = AxisSplit::NONE;
+
+	m_left = new BSP(BSPNode::LEAF, left_quad_indexes, this, quadblocks);
+	m_left->m_bbox = ComputeBoundingBox(quadblocks, left_quad_indexes);
+
+	m_right = new BSP(BSPNode::LEAF, right_quad_indexes, this, quadblocks);
+	m_right->m_bbox = ComputeBoundingBox(quadblocks, right_quad_indexes);
+
+	return true;
+}
+
+
 void BSP::MergeBranch()
 {
 	// Merge all children from a branch into a single leaf
@@ -497,6 +529,7 @@ void BSP::GenerateTree(const std::vector<Quadblock>& quadblocks, const BSPTreeSe
 		{
 			node->SplitLeafMaterial(quadblocks);
 		}
+		node->SplitLeafWater(quadblocks);
 	}
 }
 

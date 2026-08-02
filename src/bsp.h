@@ -79,6 +79,7 @@ public:
 	bool NeedSplitGeometry(const BSPTreeSettings settings);
 	bool SplitLeafGeometry(const std::vector<Quadblock>& quadblocks, const AxisSplit axis, const float midpoint);
 	bool SplitLeafMaterial(const std::vector<Quadblock>& quadblocks);
+	bool SplitLeafWater(const std::vector<Quadblock>& quadblocks);
 	void MergeBranch();
 	void FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& outAxis, float& outMidpoint);
 	void GenerateTree(const std::vector<Quadblock>& quadblocks, const BSPTreeSettings settings);
