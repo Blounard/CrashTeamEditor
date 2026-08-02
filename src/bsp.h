@@ -93,8 +93,9 @@ private:
 	float Split(std::vector<size_t>& left, std::vector<size_t>& right, const AxisSplit axis, const std::vector<Quadblock>& quadblocks) const;
 	void GenerateOffspring(std::vector<size_t>& left, std::vector<size_t>& right, const std::vector<Quadblock>& quadblocks, const size_t maxQuadsPerLeaf, const float maxAxisLength);
 	bool IsInvisible(const std::vector<Quadblock>& quadblocks);
+	bool HasWater(const std::vector<Quadblock>& quadblocks) const;
 	std::vector<uint8_t> SerializeBranch(const std::vector<Quadblock>& quadblocks) const;
-	std::vector<uint8_t> SerializeLeaf(size_t offQuads) const;
+	std::vector<uint8_t> SerializeLeaf(size_t offQuads, const std::vector<Quadblock>& quadblocks) const;
 
 private:
 	size_t m_id;

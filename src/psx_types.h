@@ -166,7 +166,7 @@ namespace PSX
 		uint32_t offUnk_0x1C; // 0x1C
 		uint32_t offUnk_0x20; // 0x20
 		uint32_t offModelInstances; // 0x24
-		uint32_t offUnk_0x28; // 0x28
+		uint32_t offUnk_0x28; // 0x28 //Pointer to a VisibleSet. Used when a quad doesn't have a valid VisibleSet pointer
 		uint32_t null_0x2C; // 0x2C
 		uint32_t null_0x30; // 0x30
 		uint32_t numWaterVertices; // 0x34
@@ -254,7 +254,7 @@ namespace PSX
 
 	struct OceanVertex
 	{
-		int16_t data[2]; // colors ?
+		int16_t data[28]; // colors ?
 	};
 
 	struct Quadblock

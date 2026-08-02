@@ -585,7 +585,7 @@ void BSP::Generate(const std::vector<Quadblock>& quadblocks, const size_t maxQua
 
 std::vector<uint8_t> BSP::Serialize(size_t offQuads, const std::vector<Quadblock>& quadblocks) const
 {
-	return m_node == BSPNode::BRANCH ? SerializeBranch(quadblocks) : SerializeLeaf(offQuads);
+	return m_node == BSPNode::BRANCH ? SerializeBranch(quadblocks) : SerializeLeaf(offQuads, quadblocks);
 }
 
 float BSP::GetAxisMidpoint(const AxisSplit axis) const
@@ -669,6 +669,19 @@ bool BSP::IsInvisible(const std::vector<Quadblock>& quadblocks)
 	return true;
 }
 
+
+bool BSP::HasWater(const std::vector<Quadblock>& quadblocks) const
+{
+	// Check if all quads in the node are invisible
+	for (size_t quadID : m_quadblockIndexes)
+	{
+		if (quadID < quadblocks.size() && (quadblocks[quadID].GetWater()))
+			return true;
+	}
+	return false;
+}
+
+
 std::vector<uint8_t> BSP::SerializeBranch(const std::vector<Quadblock>& quadblocks) const
 {
 	PSX::BSPBranch branch = {};
@@ -725,11 +738,15 @@ std::vector<uint8_t> BSP::SerializeBranch(const std::vector<Quadblock>& quadbloc
 	return buffer;
 }
 
-std::vector<uint8_t> BSP::SerializeLeaf(size_t offQuads) const
+std::vector<uint8_t> BSP::SerializeLeaf(size_t offQuads, const std::vector<Quadblock>& quadblocks) const
 {
 	PSX::BSPLeaf leaf = {};
 	std::vector<uint8_t> buffer(sizeof(leaf));
 	leaf.flag = m_flags;
+	if (HasWater(quadblocks))
+		leaf.flag |= BSPFlags::WATER;
+	else
+		leaf.flag &= ~BSPFlags::WATER;
 	leaf.id = static_cast<uint16_t>(m_id);
 	leaf.bbox.min = ConvertVec3(m_bbox.min, FP_ONE_GEO);
 	leaf.bbox.max = ConvertVec3(m_bbox.max, FP_ONE_GEO);
