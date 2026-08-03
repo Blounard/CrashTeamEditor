@@ -168,6 +168,8 @@ public:
 	void SetUVs(const QuadUV& uvs);
 	void SetFaceUVs(size_t faceIndex, const QuadUV& uvs);
 	void SetMaterial(const std::string& material);
+	void SetOceanVertex(PSX::OceanVertex overt, size_t vertId);
+	PSX::OceanVertex GetOceanVertex(size_t vertId) const ;
 	void Translate(float ratio, const Vec3& direction);
 	const BoundingBox& GetBoundingBox() const;
 	std::vector<Primitive> ToGeometry(bool filterTriangles = false, const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>* overrideUvs = nullptr, const std::filesystem::path* overrideTexturePath = nullptr) const;
@@ -201,6 +203,7 @@ private:
 	int m_drawOrderHigh;
 	bool m_hide;
 	Vertex m_p[NUM_VERTICES_QUADBLOCK];
+	PSX::OceanVertex m_oVert[NUM_VERTICES_QUADBLOCK]; // INDEXED WITH PSX QUADBLOCK VERTEX ORDER
 	BoundingBox m_bbox;
 	std::string m_name;
 	std::string m_material;

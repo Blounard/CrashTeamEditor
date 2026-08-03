@@ -254,7 +254,10 @@ namespace PSX
 
 	struct OceanVertex
 	{
-		int16_t data[28]; // colors ?
+		int16_t frames[NUM_FRAME_OVERT]; // colors ?
+		bool operator==(const OceanVertex& other) const {
+			return std::memcmp(frames, other.frames, sizeof(frames)) == 0;
+		}
 	};
 
 	struct Quadblock
@@ -422,6 +425,22 @@ struct std::hash<PSX::VisibleSet>
 		return seed;
 	}
 };
+
+template<>
+struct std::hash<PSX::OceanVertex>
+{
+	inline std::size_t operator()(const PSX::OceanVertex& key) const noexcept
+	{
+		std::size_t seed = 0;
+		for (size_t i = 0; i < NUM_FRAME_OVERT; i++)
+		{
+			HashCombine(seed, key.frames[i]);
+		}
+		return seed;
+	}
+};
+
+
 
 static constexpr int16_t FP_ONE = 0x1000;
 static constexpr int16_t FP_ONE_GEO = 64;
