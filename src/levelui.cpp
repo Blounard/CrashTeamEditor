@@ -466,6 +466,19 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 			return true;
 		}
 	}
+	else if constexpr (M == MaterialType::WATER)
+	{
+		T& preview = GetPreview(material);
+		ImGui::Checkbox("Water", &preview);
+		ImGui::SameLine();
+
+		static ButtonUI waterApplyButton = ButtonUI();
+		if (waterApplyButton.Show(("Apply##water" + material).c_str(), "Water successfully updated.", UnsavedChanges(material)))
+		{
+			Apply(material, quadblockIndexes, quadblocks);
+			return true;
+		}
+		}
 	return false;
 }
 
@@ -623,7 +636,8 @@ void Level::RenderUI(Renderer& renderer)
 			{
 				UIFlagCheckbox(m_configFlags, LevConfigFlags::ENABLE_SKYBOX_GRADIENT, "Enable Skybox Gradient");
 				UIFlagCheckbox(m_configFlags, LevConfigFlags::MASK_GRAB_UNDERWATER, "Mask Grab Underwater");
-				UIFlagCheckbox(m_configFlags, LevConfigFlags::ANIMATE_WATER_VERTEX, "Animate Water Vertex");
+				UIFlagCheckbox(m_configFlags, LevConfigFlags::ANIMATE_WATER_VERTEX, "Animated VColors");
+				ImGui::SetItemTooltip("This flag decide if you can use Water, or Animated VColors (Roo Tubes effect). They are mutually exclusive");
 				ImGui::TreePop();
 			}
 			if (ImGui::TreeNode("Sky Gradient"))
@@ -720,6 +734,76 @@ void Level::RenderUI(Renderer& renderer)
 				}
 				ImGui::TreePop();
 			}
+
+			if (ImGui::TreeNode("Water"))
+			{
+				if (ImGui::TreeNode("Settings##Water"))
+				{
+				//	// --- Tiling & Flow ---
+				//	if (ImGui::InputFloat("Texels Per Unit", &m_waterAnimSettings.texelsPerUnit))
+				//	{
+				//		m_waterAnimSettings.texelsPerUnit = std::max(m_waterAnimSettings.texelsPerUnit, 0.1f);
+				//	}
+				//	ImGui::SetItemTooltip("Tiling density: texels of the 64x64 map per world unit.");
+
+				//	// Contiguous float members (X and Z) can be edited together using InputFloat2
+				//	ImGui::InputFloat2("Flow Direction (X, Z)", &m_waterAnimSettings.flowDirX);
+				//	ImGui::SetItemTooltip("Flow direction in XZ space.");
+
+				//	ImGui::InputInt2("Flow Loops (U, V)", &m_waterAnimSettings.flowLoopsU);
+				//	ImGui::SetItemTooltip("Integer tile-widths crossed over the 28-frame loop (seamless).");
+
+				//	ImGui::Separator();
+
+				//	// --- Ripple / Wave Distortion ---
+				//	ImGui::InputFloat2("Ripple Amplitude (U, V)", &m_waterAnimSettings.rippleAmpU);
+				//	ImGui::SetItemTooltip("Texel amplitude of the wave distortion.");
+
+				//	ImGui::InputFloat("Ripple Frequency", &m_waterAnimSettings.rippleFreq);
+				//	ImGui::SetItemTooltip("Spatial frequency (1 / world units).");
+
+				//	ImGui::InputInt("Ripple Cycles Time", &m_waterAnimSettings.rippleCyclesTime);
+				//	ImGui::SetItemTooltip("Integer temporal cycles over the loop (seamless).");
+
+				//	ImGui::Separator();
+
+					// --- Brightness & Shimmer ---
+					if (ImGui::DragFloat("Base Brightness", &m_waterAnimSettings.baseBrightness, 0.1f, 0.0f, 15.0f, "%.1f"))
+					{
+						m_waterAnimSettings.baseBrightness = Clamp(m_waterAnimSettings.baseBrightness, 0.0f, 15.0f);
+					}
+					ImGui::SetItemTooltip("Base brightness (range 0 to 15).");
+
+					if (ImGui::DragFloat("Brightness amplitude", &m_waterAnimSettings.brightAmp, 0.1f, 0.0f, 15.0f, "%.1f"))
+					{
+						m_waterAnimSettings.brightAmp = Clamp(m_waterAnimSettings.brightAmp, 0.0f, 15.0f);
+					}
+					ImGui::SetItemTooltip("Base lighting brightness (range 0 to 15).");
+
+					ImGui::DragFloat("Wave Length", &m_waterAnimSettings.brightWaveLength, 0.1f, 0.0f, 100.0f, "%.1f");
+					ImGui::DragFloat("Wave Angle", &m_waterAnimSettings.brightWaveDirectionDeg, 1.0f, 0.0f, 360.0f, "%.1f");
+						
+					ImGui::InputInt("Brightness Cycles Time", &m_waterAnimSettings.brightWaveCycle);
+					ImGui::SetItemTooltip("Temporal cycles over loop (different from ripple cycles so waves and shimmer don't lock-step).");
+
+				//	ImGui::Separator();
+
+				//	// --- Variation ---
+				//	ImGui::InputFloat("Seed", &m_waterAnimSettings.seed);
+				//	ImGui::SetItemTooltip("Vary between separate, unconnected water bodies.");
+
+					ImGui::TreePop();
+				}
+				m_materialToTexture[m_envMapMatName].RenderUI({}, m_quadblocks, [&]() { this->UpdateAnimationRenderData(); });
+				static std::string buttonMessage;
+				static ButtonUI generateWaterButton = ButtonUI();
+				if (generateWaterButton.Show("Generate Water Animations", buttonMessage, false))
+				{
+					if (GenerateOceanVertices()) { buttonMessage = "Successfully generated the ocean animations."; }
+					else { buttonMessage = "Failed to create water (this shouldn't be possible)."; }
+				}
+				ImGui::TreePop();
+			}
 		}
 		ImGui::End();
 	}
@@ -755,6 +839,7 @@ void Level::RenderUI(Renderer& renderer)
 					
 					m_propCheckpoints.RenderUI(material, quadblockIndexes, m_quadblocks);
 					m_propCheckpointPathable.RenderUI(material, quadblockIndexes, m_quadblocks);
+					m_propWater.RenderUI(material, quadblockIndexes, m_quadblocks);
 					m_propVisTreeTransparent.RenderUI(material, quadblockIndexes, m_quadblocks);
 					if (m_propTurboPads.RenderUI(material, quadblockIndexes, m_quadblocks))
 					{
@@ -1804,6 +1889,7 @@ bool Quadblock::RenderUI(size_t checkpointCount, bool& resetBsp)
 		ImGui::Text("Checkpoint Index: ");
 		ImGui::SameLine();
 		if (ImGui::InputInt("##cp", &m_checkpointIndex)) { m_checkpointIndex = Clamp(m_checkpointIndex, -1, static_cast<int>(checkpointCount)); }
+		ImGui::Checkbox("Water", &m_water);
 		ImGui::Checkbox("VisTree Transparency", &m_visTreeTransparent);
 		ImGui::Text("Trigger:");
 		if (ImGui::RadioButton("None", m_trigger == QuadblockTrigger::NONE))
@@ -1865,7 +1951,10 @@ void Texture::RenderUI(const std::vector<size_t>& quadblockIndexes, std::vector<
 		ImGui::SameLine();
 		if (ImGui::Button("..."))
 		{
-			auto selection = pfd::open_file("Texture File", ".", {"Texture Files", "*.bmp, *.jpeg, *.jpg, *.png"}).result();
+			std::filesystem::path currentPath = GetPath();
+			std::string defaultDir = currentPath.has_parent_path() ? currentPath.parent_path().string() : ".";
+			std::string defaultFile = currentPath.filename().string();
+			auto selection = pfd::open_file("Texture File", defaultDir, {"Texture Files", "*.bmp, *.jpeg, *.jpg, *.png"}).result();
 			if (!selection.empty())
 			{
 				const std::filesystem::path& newTexPath = selection.front();

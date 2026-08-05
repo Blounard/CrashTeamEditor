@@ -252,10 +252,26 @@ namespace PSX
 		uint32_t offOceanVertex; //pointer to OceanVertex
 	};
 
+
+
+	struct OceanVertexFrame
+	{
+		uint16_t u : 6;  // 0..63
+		uint16_t v : 6;  // 0..63
+		uint16_t brightness : 4;  // 0..15
+
+		bool operator==(const OceanVertexFrame& other) const
+		{
+			return u == other.u && v == other.v && brightness == other.brightness;
+		}
+	};
+
 	struct OceanVertex
 	{
-		int16_t frames[NUM_FRAME_OVERT]; // colors ?
-		bool operator==(const OceanVertex& other) const {
+		OceanVertexFrame frames[NUM_FRAME_OVERT];
+
+		bool operator==(const OceanVertex& other) const
+		{
 			return std::memcmp(frames, other.frames, sizeof(frames)) == 0;
 		}
 	};
@@ -437,6 +453,16 @@ struct std::hash<PSX::OceanVertex>
 			HashCombine(seed, key.frames[i]);
 		}
 		return seed;
+	}
+};
+template<>
+struct std::hash<PSX::OceanVertexFrame>
+{
+	inline std::size_t operator()(const PSX::OceanVertexFrame& key) const noexcept
+	{
+		uint16_t packed;
+		std::memcpy(&packed, &key, sizeof(packed));
+		return std::hash<uint16_t>{}(packed);
 	}
 };
 

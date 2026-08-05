@@ -97,6 +97,7 @@ private:
 	bool GenerateSpawn(float colSpacing, float rowSpacing);
 	bool GenerateCheckpoints();
 	bool GenerateBSP();
+	bool GenerateOceanVertices();
 
 	void OpenHotReloadWindow();
 	void RenderUI(Renderer& renderer);
@@ -121,6 +122,7 @@ private:
 	BSPTreeSettings m_bspSettings;
 	VisTreeSettings m_visTreeSettings;
 	BotPathSettings m_botPathSettings;
+	WaterAnimParams m_waterAnimSettings;
 
 	std::vector<std::tuple<std::string, std::string>> m_invalidQuadblocks;
 	std::string m_logMessage;
@@ -170,6 +172,7 @@ private:
 	MaterialProperty<bool, MaterialType::CHECKPOINT_PATHABLE> m_propCheckpointPathable;
 	MaterialProperty<bool, MaterialType::VISTREE_TRANSPARENT> m_propVisTreeTransparent;
 	MaterialProperty<int, MaterialType::DRAW_ORDER_HIGH> m_propDrawOrderHigh;
+	MaterialProperty<bool, MaterialType::WATER> m_propWater;
 
 	std::array<Model*, LevelModels::COUNT> m_models;
 

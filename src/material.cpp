@@ -13,6 +13,7 @@ template class MaterialProperty<int, MaterialType::SPEED_IMPACT>;
 template class MaterialProperty<bool, MaterialType::CHECKPOINT_PATHABLE>;
 template class MaterialProperty<bool, MaterialType::VISTREE_TRANSPARENT>;
 template class MaterialProperty<int, MaterialType::DRAW_ORDER_HIGH>;
+template class MaterialProperty<bool, MaterialType::WATER>;
 
 static std::unordered_map<Level*, std::vector<MaterialBase*>> g_materials;
 
@@ -121,6 +122,7 @@ void MaterialProperty<T, M>::Apply(const std::string& material, const std::vecto
 			else if constexpr (M == MaterialType::CHECKPOINT_PATHABLE) { quadblock.SetCheckpointPathable(preview); }
 			else if constexpr (M == MaterialType::VISTREE_TRANSPARENT) { quadblock.SetVisTreeTransparent(preview); }
 			else if constexpr (M == MaterialType::DRAW_ORDER_HIGH) { quadblock.SetDrawOrderHigh(preview); }
+			else if constexpr (M == MaterialType::WATER) { quadblock.SetWater(preview); }
 		}
 	}
 	m_backup[material] = preview;
