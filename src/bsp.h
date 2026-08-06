@@ -10,10 +10,12 @@ struct BSPTreeSettings
 	int maxQuadPerLeaf;
 	float maxAxisDistance;
 	bool separateMaterial;
+	float scoreWeight;
 	BSPTreeSettings() :
 		maxQuadPerLeaf(32),
 		maxAxisDistance(64.0f),
-		separateMaterial(false) {}
+		separateMaterial(false),
+		scoreWeight(0.5f) {}
 };
 
 enum class BSPNode
@@ -73,11 +75,11 @@ public:
 	void SetQuadblockIndexes(const std::vector<size_t>& quadblockIndexes);
 	void SetParent(BSP* parent);
 	void Clear();
-	bool NeedSplitGeometry(const BSPTreeSettings settings);
+	bool NeedSplitGeometry(const BSPTreeSettings settings, std::vector<AxisSplit>& allowedAxis);
 	bool SplitLeafGeometry(const std::vector<Quadblock>& quadblocks, const AxisSplit axis, const float midpoint);
 	bool SplitLeafMaterial(const std::vector<Quadblock>& quadblocks);
 	void MergeBranch();
-	void FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& outAxis, float& outMidpoint);
+	bool FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& outAxis, float& outMidpoint, BSPTreeSettings settings);
 	void GenerateTree(const std::vector<Quadblock>& quadblocks, const BSPTreeSettings settings);
 	void Generate(const std::vector<Quadblock>& quadblocks, const size_t maxQuadsPerLeaf, const float maxAxisLength);
 	std::vector<uint8_t> Serialize(size_t offQuads) const;
@@ -87,6 +89,10 @@ private:
 	float GetAxisMidpoint(const AxisSplit axis) const;
 	BoundingBox ComputeBoundingBox(const std::vector<Quadblock>& quadblocks, const std::vector<size_t>& quadblockIndexes) const;
 	float Split(std::vector<size_t>& left, std::vector<size_t>& right, const AxisSplit axis, const std::vector<Quadblock>& quadblocks) const;
+	float FindBestSplitCandidates(const std::vector<Quadblock>& quadblocks, AxisSplit& axis, std::vector<float>& candidates, float scoreQuadWeight, float &score);
+	float SplitScoreLeft(float scoreQuadWeight);
+	float SplitScoreRight(float scoreQuadWeight);
+	float SplitScore(float scoreQuadWeight);
 	void GenerateOffspring(std::vector<size_t>& left, std::vector<size_t>& right, const std::vector<Quadblock>& quadblocks, const size_t maxQuadsPerLeaf, const float maxAxisLength);
 	std::vector<uint8_t> SerializeBranch() const;
 	std::vector<uint8_t> SerializeLeaf(size_t offQuads) const;

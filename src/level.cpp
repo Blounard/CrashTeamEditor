@@ -252,6 +252,8 @@ bool Level::GenerateBSP()
 	std::vector<size_t> quadIndexes;
 	for (size_t i = 0; i < m_quadblocks.size(); i++) { quadIndexes.push_back(i); }
 	m_bsp.Clear();
+	ResetAllBSPID();
+	m_bsp.SetId(0);
 	m_bspVis.Clear();
 	m_bsp.SetQuadblockIndexes(quadIndexes);
 	m_bsp.GenerateTree(m_quadblocks, m_bspSettings);
