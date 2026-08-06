@@ -26,6 +26,7 @@ enum class AxisSplit
 {
 	NONE, X, Y, Z
 };
+static const char* AxisSplitNames[] = { "NONE", "X", "Y", "Z" };
 
 struct BSPFlags
 {

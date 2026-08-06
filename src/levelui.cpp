@@ -107,7 +107,7 @@ void BSP::RenderUI(const std::vector<Quadblock>& quadblocks)
 	{
 		if (IsBranch()) { ImGui::Text(("Axis:  " + GetAxis()).c_str()); }
 		ImGui::Text(("Quads: " + std::to_string(m_quadblockIndexes.size())).c_str());
-		if (ImGui::TreeNode("Quadblock List:"))
+		if (ImGui::TreeNode(("Quadblock List: (" + std::to_string(m_quadblockIndexes.size()) + ")").c_str()))
 		{
 			constexpr size_t QUADS_PER_LINE = 10;
 			for (size_t i = 0; i < m_quadblockIndexes.size(); i++)
@@ -120,6 +120,48 @@ void BSP::RenderUI(const std::vector<Quadblock>& quadblocks)
 		}
 		ImGui::Text("Bounding Box:");
 		m_bbox.RenderUI();
+		if (IsBranch())
+		{
+			if (ImGui::Button("Merge"))
+			{
+				MergeBranch();
+			}
+			ImGui::SetItemTooltip("Transform this branch into a leaf by merging all it's child leaves together");
+		}
+		else
+		{
+			static AxisSplit BSPaxisSplit = AxisSplit::NONE;
+			static float BSPmidpointSplit = 0.0f;
+			ImGui::SetNextItemWidth(200.0f);
+			if (ImGui::BeginCombo("Axis", AxisSplitNames[static_cast<int>(BSPaxisSplit)]))
+			{
+				for (int i = 0; i < 4; ++i)
+				{
+					AxisSplit currentAxis = static_cast<AxisSplit>(i);
+					bool isSelected = (BSPaxisSplit == currentAxis);
+
+					if (ImGui::Selectable(AxisSplitNames[i], isSelected))
+					{
+						BSPaxisSplit = currentAxis;
+					}
+
+					// Set initial focus to the currently selected item when opening the combo
+					if (isSelected)
+					{
+						ImGui::SetItemDefaultFocus();
+					}
+				}
+				ImGui::EndCombo();
+			}
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(200.0f);
+			ImGui::InputFloat("Midpoint", &BSPmidpointSplit);
+			ImGui::SameLine();
+			if (ImGui::Button("Split"))
+			{
+				SplitLeafGeometry(quadblocks, BSPaxisSplit, BSPmidpointSplit);
+			}
+		}
 		if (m_left) { m_left->RenderUI(quadblocks); }
 		if (m_right) { m_right->RenderUI(quadblocks); }
 		ImGui::TreePop();
