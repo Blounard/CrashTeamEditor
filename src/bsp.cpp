@@ -641,7 +641,7 @@ bool BSP::FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& out
 }
 
 
-void BSP::GenerateTree(const std::vector<Quadblock>& quadblocks, const BSPTreeSettings settings)
+void BSP::Generate(const std::vector<Quadblock>& quadblocks, const BSPTreeSettings settings)
 {
 	MergeBranch();
 	if (m_quadblockIndexes.size() < 2)
@@ -673,71 +673,11 @@ void BSP::GenerateTree(const std::vector<Quadblock>& quadblocks, const BSPTreeSe
 	}
 }
 
-void BSP::Generate(const std::vector<Quadblock>& quadblocks, const size_t maxQuadsPerLeaf, const float maxAxisLength)
-{
-	m_bbox = ComputeBoundingBox(quadblocks, m_quadblockIndexes);
 
-	bool isLeaf = !IsBranch();
-	if (isLeaf)
-	{
-		if (m_bbox.AxisLength() < maxAxisLength || m_quadblockIndexes.size() == 1) { return; }
-		m_node = BSPNode::BRANCH;
-		m_flags &= ~BSPFlags::LEAF;
-	}
-
-	if (m_quadblockIndexes.size() == 1)
-	{
-		std::vector<size_t> empty = {};
-		GenerateOffspring(m_quadblockIndexes, empty, quadblocks, maxQuadsPerLeaf, maxAxisLength);
-		return;
-	}
-
-	std::vector<size_t> x_right, x_left, y_right, y_left, z_right, z_left;
-	float x_score = Split(x_left, x_right, AxisSplit::X, quadblocks);
-	float y_score = Split(y_left, y_right, AxisSplit::Y, quadblocks);
-	float z_score = Split(z_left, z_right, AxisSplit::Z, quadblocks);
-	float bestScore = std::min(std::min(x_score, y_score), z_score);
-	if (bestScore == std::numeric_limits<float>::max())
-	{
-		if (isLeaf)
-		{
-			m_node = BSPNode::LEAF;
-			m_flags |= BSPFlags::LEAF;
-		}
-		return;
-	}
-	if (bestScore == x_score)
-	{
-		m_axis = AxisSplit::X;
-		GenerateOffspring(x_left, x_right, quadblocks, maxQuadsPerLeaf, maxAxisLength);
-	}
-	else if (bestScore == z_score)
-	{
-		m_axis = AxisSplit::Z;
-		GenerateOffspring(z_left, z_right, quadblocks, maxQuadsPerLeaf, maxAxisLength);
-	}
-	else
-	{
-		m_axis = AxisSplit::Y;
-		GenerateOffspring(y_left, y_right, quadblocks, maxQuadsPerLeaf, maxAxisLength);
-	}
-}
 
 std::vector<uint8_t> BSP::Serialize(size_t offQuads) const
 {
 	return m_node == BSPNode::BRANCH ? SerializeBranch() : SerializeLeaf(offQuads);
-}
-
-float BSP::GetAxisMidpoint(const AxisSplit axis) const
-{
-	float midpoint = 0.0f;
-	switch (axis)
-	{
-	case AxisSplit::X: return m_bbox.Midpoint().x;
-	case AxisSplit::Y: return m_bbox.Midpoint().y;
-	case AxisSplit::Z: return m_bbox.Midpoint().z;
-	}
-	return midpoint;
 }
 
 BoundingBox BSP::ComputeBoundingBox(const std::vector<Quadblock>& quadblocks, const std::vector<size_t>& quadblockIndexes) const
@@ -758,44 +698,6 @@ BoundingBox BSP::ComputeBoundingBox(const std::vector<Quadblock>& quadblocks, co
 	return bbox;
 }
 
-float BSP::Split(std::vector<size_t>& left, std::vector<size_t>& right, const AxisSplit axis, const std::vector<Quadblock>& quadblocks) const
-{
-	float midpoint = GetAxisMidpoint(axis);
-	for (size_t index : m_quadblockIndexes)
-	{
-		const Quadblock& quad = quadblocks[index];
-		switch (axis)
-		{
-		case AxisSplit::X:
-			if (quad.GetCenter().x < midpoint) { right.push_back(index); }
-			else { left.push_back(index); }
-			break;
-		case AxisSplit::Y:
-			if (quad.GetCenter().y < midpoint) { right.push_back(index); }
-			else { left.push_back(index); }
-			break;
-		case AxisSplit::Z:
-			if (quad.GetCenter().z < midpoint) { right.push_back(index); }
-			else { left.push_back(index); }
-			break;
-		}
-	}
-	if (left.empty() || right.empty()) { return std::numeric_limits<float>::max(); }
-	float perimeterLeft = ComputeBoundingBox(quadblocks, left).SemiPerimeter();
-	float perimeterRight = ComputeBoundingBox(quadblocks, right).SemiPerimeter();
-	return perimeterLeft + perimeterRight;
-}
-
-void BSP::GenerateOffspring(std::vector<size_t>& left, std::vector<size_t>& right, const std::vector<Quadblock>& quadblocks, const size_t maxQuadsPerLeaf, const float maxAxisLength)
-{
-	if (left.size() <= maxQuadsPerLeaf) { if (!left.empty()) { m_left = new BSP(BSPNode::LEAF, left, this, quadblocks); } }
-	else { m_left = new BSP(BSPNode::BRANCH, left, this, quadblocks); }
-	if (m_left) { m_left->Generate(quadblocks, maxQuadsPerLeaf, maxAxisLength); }
-
-	if (right.size() <= maxQuadsPerLeaf) { if (!right.empty()) { m_right = new BSP(BSPNode::LEAF, right, this, quadblocks); } }
-	else { m_right = new BSP(BSPNode::BRANCH, right, this, quadblocks); }
-	if (m_right) { m_right->Generate(quadblocks, maxQuadsPerLeaf, maxAxisLength); }
-}
 
 std::vector<uint8_t> BSP::SerializeBranch() const
 {

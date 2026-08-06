@@ -256,7 +256,7 @@ bool Level::GenerateBSP()
 	m_bsp.SetId(0);
 	m_bspVis.Clear();
 	m_bsp.SetQuadblockIndexes(quadIndexes);
-	m_bsp.GenerateTree(m_quadblocks, m_bspSettings);
+	m_bsp.Generate(m_quadblocks, m_bspSettings);
 	if (m_bsp.IsValid())
 	{
 		GenerateRenderBspData();
