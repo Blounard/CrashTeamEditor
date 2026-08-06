@@ -647,28 +647,22 @@ void BSP::Generate(const std::vector<Quadblock>& quadblocks, const BSPTreeSettin
 	if (m_quadblockIndexes.size() < 2)
 		return;
 
-	std::vector<BSP*> worklist = { this };
-	while (!worklist.empty())
+	AxisSplit axis; float midpoint;
+	if (FindBestSplit(quadblocks, axis, midpoint, settings))
 	{
-		BSP* node = worklist.back();
-		worklist.pop_back();
-
-		AxisSplit axis; float midpoint;
-		if (node->FindBestSplit(quadblocks, axis, midpoint, settings))
+		if (SplitLeafGeometry(quadblocks, axis, midpoint))
 		{
-			if (node->SplitLeafGeometry(quadblocks, axis, midpoint))
-			{
-				if (node->m_left) { worklist.push_back(node->m_left); }
-				if (node->m_right) { worklist.push_back(node->m_right); }
-				continue;
-			}
-			else
-				printf("BSP TREE GENERATION MISTAKE : FiNDBESTSPLIT TRUE, SPLIT LEAF FALSE ?\n");
+			m_left->Generate(quadblocks, settings);
+			m_right->Generate(quadblocks, settings);
 		}
-
+		else
+			printf("BSP TREE GENERATION MISTAKE : FiNDBESTSPLIT TRUE, SPLIT LEAF FALSE ?\n");
+	}
+	else
+	{
 		if (settings.separateMaterial)
 		{
-			node->SplitLeafMaterial(quadblocks);
+			SplitLeafMaterial(quadblocks);
 		}
 	}
 }
