@@ -508,7 +508,7 @@ void init_crashteameditor(py::module_& m)
 		.def("left_child", &BSP::GetLeftChildren, py::return_value_policy::reference_internal)
 		.def("right_child", &BSP::GetRightChildren, py::return_value_policy::reference_internal)
 		.def("parent", &BSP::GetParent, py::return_value_policy::reference_internal)
-		.def("tree", [](BSP& bsp) {
+		.def("tree", [](const BSP& bsp) {
 			py::list nodes;
 			const std::vector<const BSP*> tree = bsp.GetTree();
 			py::object owner = py::cast(&bsp);

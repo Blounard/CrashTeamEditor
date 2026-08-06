@@ -97,6 +97,7 @@ private:
 	bool GenerateSpawn(float colSpacing, float rowSpacing);
 	bool GenerateCheckpoints();
 	bool GenerateBSP();
+	bool ReOrderBSP();
 
 	void OpenHotReloadWindow();
 	void RenderUI(Renderer& renderer);

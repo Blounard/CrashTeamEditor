@@ -54,6 +54,7 @@ public:
 	void PopulateBranch(PSX::BSPBranch& branch, std::vector<BSP*>& bspArray, size_t global_id);
 	void PopulateBranchQuadIndexes();
 	size_t GetId() const;
+	void SetId(size_t id);
 	bool IsEmpty() const;
 	bool IsValid() const;
 	bool IsBranch() const;
@@ -66,6 +67,7 @@ public:
 	const BSP* GetRightChildren() const;
 	const BSP* GetParent() const;
 	const std::vector<const BSP*> GetTree() const;
+	std::vector<BSP*> GetTree();
 	std::vector<const BSP*> GetLeaves() const;
 	void SetQuadblockIndexes(const std::vector<size_t>& quadblockIndexes);
 	void SetParent(BSP* parent);
@@ -102,3 +104,4 @@ private:
 	BoundingBox m_bbox;
 	std::vector<size_t> m_quadblockIndexes;
 };
+void ResetAllBSPID();

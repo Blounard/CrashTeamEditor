@@ -28,6 +28,11 @@ size_t FindAvailableID()
 	}
 }
 
+void ResetAllBSPID()
+{
+	g_idSet.clear();
+}
+
 BSP::BSP()
 {
 	m_parent = nullptr;
@@ -158,6 +163,18 @@ size_t BSP::GetId() const
 	return m_id;
 }
 
+void BSP::SetId(size_t id)
+{
+	g_idSet.erase(m_id);
+	if (g_idSet.contains(id))
+	{
+		printf("ERROR : CAN'T ASSIGN ID %d to BSP BECAUSE IT'S ALREADY USED\n", id);
+		m_id = FindAvailableID();
+	}
+	m_id = id;
+	g_idSet.insert(id);
+}
+
 bool BSP::IsEmpty() const
 {
 	return m_quadblockIndexes.empty();
@@ -240,6 +257,21 @@ const std::vector<const BSP*> BSP::GetTree() const
 		const BSP* leftNode = currNode->m_left;
 		if (leftNode) { bspNodes.push_back(leftNode); }
 		const BSP* rightNode = currNode->m_right;
+		if (rightNode) { bspNodes.push_back(rightNode); }
+	}
+	return bspNodes;
+}
+
+std::vector<BSP*> BSP::GetTree()
+{
+	size_t i = 0;
+	std::vector<BSP*> bspNodes = { this };
+	while (i < bspNodes.size())
+	{
+		BSP* currNode = bspNodes[i++];
+		BSP* leftNode = currNode->m_left;
+		if (leftNode) { bspNodes.push_back(leftNode); }
+		BSP* rightNode = currNode->m_right;
 		if (rightNode) { bspNodes.push_back(rightNode); }
 	}
 	return bspNodes;

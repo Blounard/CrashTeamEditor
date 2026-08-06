@@ -263,6 +263,39 @@ bool Level::GenerateBSP()
 	return false;
 }
 
+bool Level::ReOrderBSP()
+{
+	ResetAllBSPID();
+	std::vector<BSP*> bspNodes = m_bsp.GetTree();
+	std::sort(bspNodes.begin(), bspNodes.end(), 
+		[](const BSP* a, const BSP* b) 
+		{
+			if (a->GetId() == b->GetId())
+				printf("ERROR : 2 BSP NODES SHARE THE SAME ID : %d\n", b->GetId());
+			return a->GetId() < b->GetId(); 
+		});
+	std::unordered_map<size_t, size_t> bspIDOverride; // Map old ID -> New ID
+	for (const BSP* bsp : bspNodes)
+	{
+		size_t oldID = bsp->GetId();
+		size_t newID = bspIDOverride.size();
+		if (oldID != newID)
+		{
+			printf("INFO : BSP ID WAS CHANGED %d -> %d\n", oldID, newID);
+		}
+		bspIDOverride[oldID] = newID;
+	}
+	for (BSP* bsp : bspNodes)
+	{
+		bsp->SetId(bspIDOverride[bsp->GetId()]);
+	}
+	for (Quadblock& quad : m_quadblocks)
+	{
+		quad.SetBSPID(bspIDOverride[quad.GetBSPID()]);
+	}
+	return true;
+}
+
 
 bool Level::GenerateVisTreeOnly(bool simpleVisTree, float distanceNearClip, float distanceFarClip)
 {
@@ -1411,7 +1444,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	std::set<size_t> validID;
 	
 	printf("BSP ARRAY SIZE : %d\n", bspArray.size());
-	std::vector<const BSP*> tree = m_bsp.GetTree();
+	std::vector<const BSP*> tree = static_cast<const BSP&>(m_bsp).GetTree();
 	printf("BSP TREE SIZE : %d\n", tree.size());
 	for (const BSP* bsp : tree) { validID.insert(bsp->GetId()); }
 	for (BSP* bsp : bspArray) { if (!validID.contains(bsp->GetId())) { printf("ID %d isn't in tree\n", bsp->GetId()); } }
@@ -1428,7 +1461,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		if (visMem.offNodes[0] != 0)
 		{
 			std::vector<const BSP*> bspLeaves = m_bsp.GetLeaves();
-			std::vector<const BSP*> bspNodes = m_bsp.GetTree();
+			std::vector<const BSP*> bspNodes = static_cast<const BSP&>(m_bsp).GetTree();
 
 			m_bspVis = BitMatrix(bspLeaves.size(), bspLeaves.size());
 
@@ -1688,8 +1721,9 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	std::ofstream file(m_hotReloadLevPath, std::ios::binary);
 
 	if (m_bsp.IsEmpty()) { GenerateBSP(); }
+	ReOrderBSP();
 
-	std::vector<const BSP*> bspNodes = m_bsp.GetTree();
+	std::vector<const BSP*> bspNodes = static_cast<const BSP&>(m_bsp).GetTree();
 	std::set<size_t> bspIds;
 	for (const BSP* bsp : bspNodes) { bspIds.insert(bsp->GetId()); }
 	size_t bspcounter = 0;
@@ -1701,7 +1735,6 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		}
 		bspcounter++;
 	}
-	// TODO code a guard that changes bsp id if mismatch
 	std::vector<const BSP*> orderedBSPNodes(bspNodes.size());
 	for (const BSP* bsp : bspNodes) { orderedBSPNodes[bsp->GetId()] = bsp; }
 
