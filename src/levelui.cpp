@@ -1091,8 +1091,6 @@ void Level::RenderUI(Renderer& renderer)
 					ImGui::SetItemTooltip("Speeds up VisTree generation by a factor of 2x to 3x with minimal loss of precision.");
 					ImGui::Checkbox("Center-Only Samples", &m_visTreeSettings.centerOnlySamples);
 					ImGui::SetItemTooltip("Only casts rays from each quad center (skips corner samples). Much faster, but may miss narrow visibility paths.");
-					ImGui::Checkbox("Ground-Only RayCast", &m_visTreeSettings.castFromGroundOnly);
-					ImGui::SetItemTooltip("Only casts rays from Ground and Kicker_2 quads. Less visibility, but can avoid unwanted raycast");
 					ImGui::TreePop();
 				}
 				ImGui::TreePop();
