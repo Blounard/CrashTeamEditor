@@ -296,7 +296,7 @@ void init_crashteameditor(py::module_& m)
 		.def_readonly_static("KICKERS_TWO", &QuadFlags::KICKERS_TWO)
 		.def_readonly_static("MASK_GRAB", &QuadFlags::MASK_GRAB)
 		.def_readonly_static("TIGER_TEMPLE_DOOR", &QuadFlags::TIGER_TEMPLE_DOOR)
-		.def_readonly_static("COLLISION_TRIGGER", &QuadFlags::COLLISION_TRIGGER)
+		.def_readonly_static("CAMERA_SEARCH", &QuadFlags::CAMERA_SEARCH)
 		.def_readonly_static("GROUND", &QuadFlags::GROUND)
 		.def_readonly_static("WALL", &QuadFlags::WALL)
 		.def_readonly_static("NO_COLLISION", &QuadFlags::NO_COLLISION)
@@ -509,30 +509,39 @@ void init_crashteameditor(py::module_& m)
 		.def("left_child", &BSP::GetLeftChildren, py::return_value_policy::reference_internal)
 		.def("right_child", &BSP::GetRightChildren, py::return_value_policy::reference_internal)
 		.def("parent", &BSP::GetParent, py::return_value_policy::reference_internal)
-		.def("tree", [](BSP& bsp) {
-			py::list nodes;
-			const std::vector<const BSP*> tree = bsp.GetTree();
-			py::object owner = py::cast(&bsp);
-			for (const BSP* node : tree)
-			{
-				nodes.append(py::cast(const_cast<BSP*>(node), py::return_value_policy::reference_internal, owner));
-			}
-			return nodes;
-		})
+		.def("tree", [](const BSP& bsp) {
+		py::list nodes;
+		const std::vector<const BSP*> tree = bsp.GetTree();
+		py::object owner = py::cast(&bsp);
+		for (const BSP* node : tree)
+		{
+			nodes.append(py::cast(const_cast<BSP*>(node), py::return_value_policy::reference_internal, owner));
+		}
+		return nodes;
+			})
 		.def("leaves", [](BSP& bsp) {
-			py::list nodes;
-			const std::vector<const BSP*> leaves = bsp.GetLeaves();
-			py::object owner = py::cast(&bsp);
-			for (const BSP* node : leaves)
-			{
-				nodes.append(py::cast(const_cast<BSP*>(node), py::return_value_policy::reference_internal, owner));
-			}
-			return nodes;
-		})
+		py::list nodes;
+		const std::vector<const BSP*> leaves = bsp.GetLeaves();
+		py::object owner = py::cast(&bsp);
+		for (const BSP* node : leaves)
+		{
+			nodes.append(py::cast(const_cast<BSP*>(node), py::return_value_policy::reference_internal, owner));
+		}
+		return nodes;
+			})
 		.def("set_quadblock_indexes", &BSP::SetQuadblockIndexes)
 		.def("split_leaf", &BSP::SplitLeafGeometry, py::arg("quadblocks"), py::arg("axis"), py::arg("midpoint"))
 		.def("clear", &BSP::Clear)
-		.def("generate", &BSP::Generate, py::arg("quadblocks"), py::arg("max_quads_per_leaf"), py::arg("max_axis_length"));
+		.def("generate", [](BSP& bsp, const std::vector<Quadblock>& quadblocks, int maxQuadPerLeaf, float maxAxisDistance, bool separateMaterial, float scoreWeight)
+			{
+				BSPTreeSettings settings;
+				settings.maxQuadPerLeaf = maxQuadPerLeaf;
+				settings.maxAxisDistance = maxAxisDistance;
+				settings.separateMaterial = separateMaterial;
+				settings.scoreWeight = scoreWeight;
+				bsp.Generate(quadblocks, settings);
+			}
+	, py::arg("quadblocks"), py::arg("max_quads_per_leaf"), py::arg("max_axis_length"), py::arg("separate_material"), py::arg("score_weight") );
 
 
 	py::class_<BitMatrix>(m, "VisTree")

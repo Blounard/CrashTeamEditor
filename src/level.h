@@ -97,11 +97,10 @@ private:
 	bool GenerateSpawn(float colSpacing, float rowSpacing);
 	bool GenerateCheckpoints();
 	bool GenerateBSP();
+	bool ReOrderBSP();
 	bool GenerateOceanVertices();
-
 	void OpenHotReloadWindow();
 	void RenderUI(Renderer& renderer);
-
 	void InitModels(Renderer& renderer);
 	void UpdateAnimationRenderData();
 	void UpdateFilterRenderData(const Quadblock& qb);

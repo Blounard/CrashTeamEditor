@@ -10,10 +10,12 @@ struct BSPTreeSettings
 	int maxQuadPerLeaf;
 	float maxAxisDistance;
 	bool separateMaterial;
+	float scoreWeight;
 	BSPTreeSettings() :
 		maxQuadPerLeaf(32),
 		maxAxisDistance(64.0f),
-		separateMaterial(false) {}
+		separateMaterial(false),
+		scoreWeight(0.5f) {}
 };
 
 enum class BSPNode
@@ -26,6 +28,7 @@ enum class AxisSplit
 {
 	NONE, X, Y, Z
 };
+static const char* AxisSplitNames[] = { "NONE", "X", "Y", "Z" };
 
 struct BSPFlags
 {
@@ -60,6 +63,7 @@ public:
 	void PopulateBranch(PSX::BSPBranch& branch, std::vector<BSP*>& bspArray, size_t global_id);
 	void PopulateBranchQuadIndexes();
 	size_t GetId() const;
+	void SetId(size_t id);
 	bool IsEmpty() const;
 	bool IsValid() const;
 	bool IsBranch() const;
@@ -72,30 +76,32 @@ public:
 	const BSP* GetRightChildren() const;
 	const BSP* GetParent() const;
 	const std::vector<const BSP*> GetTree() const;
+	std::vector<BSP*> GetTree();
 	std::vector<const BSP*> GetLeaves() const;
 	void SetQuadblockIndexes(const std::vector<size_t>& quadblockIndexes);
 	void SetParent(BSP* parent);
 	void Clear();
-	bool NeedSplitGeometry(const BSPTreeSettings settings);
+	bool NeedSplitGeometry(const BSPTreeSettings settings, std::vector<AxisSplit>& allowedAxis);
 	bool SplitLeafGeometry(const std::vector<Quadblock>& quadblocks, const AxisSplit axis, const float midpoint);
 	bool SplitLeafMaterial(const std::vector<Quadblock>& quadblocks);
 	bool SplitLeafWater(const std::vector<Quadblock>& quadblocks);
 	void MergeBranch();
-	void FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& outAxis, float& outMidpoint);
-	void GenerateTree(const std::vector<Quadblock>& quadblocks, const BSPTreeSettings settings);
-	void Generate(const std::vector<Quadblock>& quadblocks, const size_t maxQuadsPerLeaf, const float maxAxisLength);
+	bool FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& outAxis, float& outMidpoint, BSPTreeSettings settings);
+	void Generate(const std::vector<Quadblock>& quadblocks, const BSPTreeSettings settings);
 	std::vector<uint8_t> Serialize(size_t offQuads, const std::vector<Quadblock>& quadblocks) const;
 	void RenderUI(const std::vector<Quadblock>& quadblocks);
 
 private:
-	float GetAxisMidpoint(const AxisSplit axis) const;
 	BoundingBox ComputeBoundingBox(const std::vector<Quadblock>& quadblocks, const std::vector<size_t>& quadblockIndexes) const;
-	float Split(std::vector<size_t>& left, std::vector<size_t>& right, const AxisSplit axis, const std::vector<Quadblock>& quadblocks) const;
-	void GenerateOffspring(std::vector<size_t>& left, std::vector<size_t>& right, const std::vector<Quadblock>& quadblocks, const size_t maxQuadsPerLeaf, const float maxAxisLength);
 	bool IsInvisible(const std::vector<Quadblock>& quadblocks);
 	bool HasWater(const std::vector<Quadblock>& quadblocks) const;
+	float FindBestSplitCandidates(const std::vector<Quadblock>& quadblocks, AxisSplit& axis, std::vector<float>& candidates, float scoreQuadWeight, float &score);
+	float SplitScoreLeft(float scoreQuadWeight);
+	float SplitScoreRight(float scoreQuadWeight);
+	float SplitScore(float scoreQuadWeight);
 	std::vector<uint8_t> SerializeBranch(const std::vector<Quadblock>& quadblocks) const;
 	std::vector<uint8_t> SerializeLeaf(size_t offQuads, const std::vector<Quadblock>& quadblocks) const;
+
 
 private:
 	size_t m_id;
@@ -109,3 +115,4 @@ private:
 	BoundingBox m_bbox;
 	std::vector<size_t> m_quadblockIndexes;
 };
+void ResetAllBSPID();

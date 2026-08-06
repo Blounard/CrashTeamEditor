@@ -28,6 +28,11 @@ size_t FindAvailableID()
 	}
 }
 
+void ResetAllBSPID()
+{
+	g_idSet.clear();
+}
+
 BSP::BSP()
 {
 	m_parent = nullptr;
@@ -157,6 +162,18 @@ size_t BSP::GetId() const
 	return m_id;
 }
 
+void BSP::SetId(size_t id)
+{
+	g_idSet.erase(m_id);
+	if (g_idSet.contains(id))
+	{
+		printf("ERROR : CAN'T ASSIGN ID %d to BSP BECAUSE IT'S ALREADY USED\n", id);
+		m_id = FindAvailableID();
+	}
+	m_id = id;
+	g_idSet.insert(id);
+}
+
 bool BSP::IsEmpty() const
 {
 	return m_quadblockIndexes.empty();
@@ -239,6 +256,21 @@ const std::vector<const BSP*> BSP::GetTree() const
 		const BSP* leftNode = currNode->m_left;
 		if (leftNode) { bspNodes.push_back(leftNode); }
 		const BSP* rightNode = currNode->m_right;
+		if (rightNode) { bspNodes.push_back(rightNode); }
+	}
+	return bspNodes;
+}
+
+std::vector<BSP*> BSP::GetTree()
+{
+	size_t i = 0;
+	std::vector<BSP*> bspNodes = { this };
+	while (i < bspNodes.size())
+	{
+		BSP* currNode = bspNodes[i++];
+		BSP* leftNode = currNode->m_left;
+		if (leftNode) { bspNodes.push_back(leftNode); }
+		BSP* rightNode = currNode->m_right;
 		if (rightNode) { bspNodes.push_back(rightNode); }
 	}
 	return bspNodes;
@@ -437,167 +469,241 @@ void BSP::MergeBranch()
 }
 
 
-bool BSP::NeedSplitGeometry(const BSPTreeSettings settings)
+bool BSP::NeedSplitGeometry(const BSPTreeSettings settings, std::vector<AxisSplit>& allowedAxis)
 {
 	if (m_quadblockIndexes.size() <= 1) { return false; }
-	if ((int)m_quadblockIndexes.size() > settings.maxQuadPerLeaf) { return true; }
-	if (m_bbox.max.x - m_bbox.min.x > settings.maxAxisDistance) { return true; }
-	if (m_bbox.max.y - m_bbox.min.y > settings.maxAxisDistance) { return true; }
-	if (m_bbox.max.z - m_bbox.min.z > settings.maxAxisDistance) { return true; }
-	return false;
+	if ((int)m_quadblockIndexes.size() > settings.maxQuadPerLeaf) 
+	{ 
+		allowedAxis.push_back(AxisSplit::X);
+		allowedAxis.push_back(AxisSplit::Y);
+		allowedAxis.push_back(AxisSplit::Z);
+		return true; 
+	}
+	if (m_bbox.max.x - m_bbox.min.x > settings.maxAxisDistance) { allowedAxis.push_back(AxisSplit::X); }
+	if (m_bbox.max.y - m_bbox.min.y > settings.maxAxisDistance) { allowedAxis.push_back(AxisSplit::Y); }
+	if (m_bbox.max.z - m_bbox.min.z > settings.maxAxisDistance) { allowedAxis.push_back(AxisSplit::Z); }
+	return !allowedAxis.empty();
 }
 
-void BSP::FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& outAxis, float& outMidpoint)
+float BSP::SplitScoreLeft(float scoreQuadWeight)
+{  
+	if (!IsBranch() || !m_left)
+		return 0.0f;
+
+	float quadCount = static_cast<float>(m_quadblockIndexes.size());
+	float quadCountLeft = static_cast<float>(m_left->GetQuadblockIndexes().size());
+	float quadScoreLeft = std::log2(quadCount / quadCountLeft);
+
+	float bboxLength = m_bbox.AxisLength().Length();
+	float bboxLengthLeft = m_left->GetBoundingBox().AxisLength().Length();
+	bboxLengthLeft = std::max(bboxLengthLeft, EPSILON);
+	float bboxScoreLeft = std::log2(bboxLength / bboxLengthLeft);
+
+	return scoreQuadWeight * quadScoreLeft + (1 - scoreQuadWeight) * bboxScoreLeft;
+}
+
+float BSP::SplitScoreRight(float scoreQuadWeight)
 {
-	float maxSize = std::numeric_limits<float>::min();
+	if (!IsBranch() || !m_right)
+		return 0.0f;
 
-	for (AxisSplit axis : { AxisSplit::X, AxisSplit::Y, AxisSplit::Z })
-	{
-		switch (axis)
-		{
-		case AxisSplit::X:
-			if (m_bbox.max.x - m_bbox.min.x > maxSize)
-			{
-				maxSize = m_bbox.max.x - m_bbox.min.x;
-				outAxis = AxisSplit::X;
-			}
-			break;
-		case AxisSplit::Y:
-			if (m_bbox.max.y - m_bbox.min.y > maxSize)
-			{
-				maxSize = m_bbox.max.y - m_bbox.min.y;
-				outAxis = AxisSplit::Y;
-			}
-			break;
-		case AxisSplit::Z:
-			if (m_bbox.max.z - m_bbox.min.z > maxSize)
-			{
-				maxSize = m_bbox.max.z - m_bbox.min.z;
-				outAxis = AxisSplit::Z;
-			}
-			break;
-		default: break;
-		}
-	}
-	std::vector<float> centers;
-	for (size_t idx : m_quadblockIndexes)
-	{
-		const Vec3& c = quadblocks[idx].GetCenter();
-		switch (outAxis)
-		{
-		case AxisSplit::X: centers.push_back(c.x); break;
-		case AxisSplit::Y: centers.push_back(c.y); break;
-		case AxisSplit::Z: centers.push_back(c.z); break;
-		default: break;
-		}
-	}
-	std::vector<float> sorted = centers;
-	std::sort(sorted.begin(), sorted.end());
-	outMidpoint = sorted[sorted.size() / 2];
+	float quadCount = static_cast<float>(m_quadblockIndexes.size());
+	float quadCountRight = static_cast<float>(m_right->GetQuadblockIndexes().size());
+	float quadScoreRight = std::log2(quadCount / quadCountRight);
+
+	float bboxLength = m_bbox.AxisLength().Length();
+	float bboxLengthRight = m_right->GetBoundingBox().AxisLength().Length();
+	bboxLengthRight = std::max(bboxLengthRight, EPSILON);
+	float bboxScoreRight = std::log2(bboxLength / bboxLengthRight);
+
+	return scoreQuadWeight * quadScoreRight + (1 - scoreQuadWeight) * bboxScoreRight;
 }
 
 
-void BSP::GenerateTree(const std::vector<Quadblock>& quadblocks, const BSPTreeSettings settings)
+float BSP::SplitScore(float scoreQuadWeight)
+{
+	// Rate how good is a split. Score of 0 is the worst possible split. Score of 1 is a great balanced split.
+	if (!IsBranch() || !m_left || !m_right)
+		return 0.0f;
+	return std::min(SplitScoreLeft(scoreQuadWeight), SplitScoreRight(scoreQuadWeight));
+}
+
+float BSP::FindBestSplitCandidates(const std::vector<Quadblock>& quadblocks, AxisSplit& axis, std::vector<float>& candidates, float scoreQuadWeight, float& score)
+{	// Reccursive helper for FindBestSplit, dichotomic search instead of linear. candidates must be sorted ascending, non empty
+	// Return the float midpoint value. Modify score. If no split are found, score is -1, and midpoint irrelevant.
+
+	if (candidates.empty())
+	{
+		score = -1.0f;
+		return 0.0f;
+	}
+	if (candidates.size() == 1)
+	{
+		float candidate = candidates[0];
+		if (SplitLeafGeometry(quadblocks, axis, candidate))
+		{
+			score = SplitScore(scoreQuadWeight);
+			MergeBranch();
+		}
+		else
+			score = -1.0f;
+		return candidate;
+	}
+		
+	size_t middleId = candidates.size() / 2;
+	float candidate = candidates[middleId];
+	if (SplitLeafGeometry(quadblocks, axis, candidate))
+	{
+		float leftScore = SplitScoreLeft(scoreQuadWeight);
+		float rightScore = SplitScoreRight(scoreQuadWeight);
+		MergeBranch();
+		float minScore = std::min(leftScore, rightScore);
+
+		float recursiveScore = -1.0f;
+		float recursiveMidpoint = 0.0f;
+		if (leftScore < rightScore)
+		{
+			std::vector<float> rightCandidates(candidates.begin() + middleId + 1, candidates.end());
+			recursiveMidpoint = FindBestSplitCandidates(quadblocks, axis, rightCandidates, scoreQuadWeight, recursiveScore);
+		}
+		else
+		{
+			std::vector<float> leftCandidates(candidates.begin(), candidates.begin() + middleId);
+			recursiveMidpoint = FindBestSplitCandidates(quadblocks, axis, leftCandidates, scoreQuadWeight, recursiveScore);
+		}
+		if (minScore >= recursiveScore)
+		{
+			score = minScore;
+			return candidate;
+		}
+		else
+		{
+			score = recursiveScore;
+			return recursiveMidpoint;
+		}
+	}
+	std::vector<float> leftCandidates(candidates.begin(), candidates.begin() + middleId);
+	std::vector<float> rightCandidates(candidates.begin() + middleId + 1, candidates.end());
+	float leftBestScore, rightBestScore;
+	float leftBestMidpoint = FindBestSplitCandidates(quadblocks, axis, leftCandidates, scoreQuadWeight, leftBestScore);
+	float rightBestMidpoint = FindBestSplitCandidates(quadblocks, axis, rightCandidates, scoreQuadWeight, rightBestScore);
+	if (leftBestScore >= rightBestScore)
+	{
+		score = leftBestScore;
+		return leftBestMidpoint;
+	}
+	score = rightBestScore;
+	return rightBestMidpoint;
+}
+
+bool BSP::FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& outAxis, float& outMidpoint, BSPTreeSettings settings)
+{	// Must return false when the node doesn't need split.
+	
+	float bestScore = std::numeric_limits<float>::lowest();
+	float bestMidpoint = 0.0f;
+	AxisSplit bestAxis = AxisSplit::NONE;
+
+	bool hasTooMuchQuads = (int)m_quadblockIndexes.size() > settings.maxQuadPerLeaf;
+	std::vector<AxisSplit> allowedAxis;
+	if (m_bbox.max.x - m_bbox.min.x > settings.maxAxisDistance) { allowedAxis.push_back(AxisSplit::X); }
+	if (m_bbox.max.y - m_bbox.min.y > settings.maxAxisDistance) { allowedAxis.push_back(AxisSplit::Y); }
+	if (m_bbox.max.z - m_bbox.min.z > settings.maxAxisDistance) { allowedAxis.push_back(AxisSplit::Z); }
+
+	float scoreQuadWeight = settings.scoreWeight;
+	if (allowedAxis.empty() && hasTooMuchQuads) // Need geometry split because too much quad, but BBox constraint already matched
+	{
+		allowedAxis.push_back(AxisSplit::X);
+		allowedAxis.push_back(AxisSplit::Y);
+		allowedAxis.push_back(AxisSplit::Z);
+		scoreQuadWeight = 0.9f; // 0.9f is better than 1.0f because 1.0f will generate atleast 3 score ties.
+	}
+	if (allowedAxis.empty() && !hasTooMuchQuads)
+	{
+		return false;
+	}
+	if (!allowedAxis.empty() && !hasTooMuchQuads) // Need spatial split, but quad constraint already matched
+	{
+		scoreQuadWeight = 0.0f;
+	}
+
+	for (AxisSplit axis : allowedAxis)
+	{
+		std::vector<float> centers;
+		for (size_t idx : m_quadblockIndexes)
+		{
+			const Vec3& c = quadblocks[idx].GetCenter();
+			switch (axis)
+			{
+			case AxisSplit::X: centers.push_back(c.x); break;
+			case AxisSplit::Y: centers.push_back(c.y); break;
+			case AxisSplit::Z: centers.push_back(c.z); break;
+			default: break;
+			}
+		}
+		std::sort(centers.begin(), centers.end());
+		std::vector<float> candidates;
+		for (size_t i = 0; i < m_quadblockIndexes.size() - 1; i++)
+		{
+			candidates.push_back((centers[i] + centers[i + 1]) / 2);
+		}
+			
+		float score = 0.0f;
+		float midPoint = FindBestSplitCandidates(quadblocks, axis, candidates, scoreQuadWeight, score);
+		if (score > bestScore && score >= 0.0f)
+		{
+			bestAxis = axis;
+			bestScore = score;
+			bestMidpoint = midPoint;
+		}
+	}
+
+	if (bestAxis != AxisSplit::NONE)
+	{
+		outMidpoint = bestMidpoint;
+		outAxis = bestAxis;
+		return true;
+	}
+	else
+	{
+		// Can happen when a quad is bigger than maxAxisLength, or when all center's of a leaf or in the same spot (overlapping quads)
+		printf("BSP WARNING : Needed a split for Leaf %d (%d quads) but couldn't make a valid one\n", m_id, m_quadblockIndexes.size());
+		return false;
+	}
+}
+
+
+void BSP::Generate(const std::vector<Quadblock>& quadblocks, const BSPTreeSettings settings)
 {
 	MergeBranch();
 	if (m_quadblockIndexes.size() < 2)
 		return;
 
-	std::vector<BSP*> worklist = { this };
-	while (!worklist.empty())
+	AxisSplit axis; float midpoint;
+	if (FindBestSplit(quadblocks, axis, midpoint, settings))
 	{
-		BSP* node = worklist.back();
-		worklist.pop_back();
-
-		if (node->NeedSplitGeometry(settings))
-		{ 
-			AxisSplit axis; float midpoint;
-			node->FindBestSplit(quadblocks, axis, midpoint);
-			if (node->SplitLeafGeometry(quadblocks, axis, midpoint))
-			{
-				if (node->m_left) { worklist.push_back(node->m_left); }
-				if (node->m_right) { worklist.push_back(node->m_right); }
-				continue;
-			}
-			// By this point, the node needs a split, but couldn't be achieved : 
-			// Only happen when all quad's midpoint have the same coordinate alongside the split axis.
-			// For now we simply let this in the same leaf.
-			printf("WARNING : BSP Tree Generation produced a leaf that need splitting but can't be split\n");
-		}
-
-		if (settings.separateMaterial)
+		if (SplitLeafGeometry(quadblocks, axis, midpoint))
 		{
-			node->SplitLeafMaterial(quadblocks);
+			m_left->Generate(quadblocks, settings);
+			m_right->Generate(quadblocks, settings);
 		}
-		node->SplitLeafWater(quadblocks);
-	}
-}
-
-void BSP::Generate(const std::vector<Quadblock>& quadblocks, const size_t maxQuadsPerLeaf, const float maxAxisLength)
-{
-	m_bbox = ComputeBoundingBox(quadblocks, m_quadblockIndexes);
-
-	bool isLeaf = !IsBranch();
-	if (isLeaf)
-	{
-		if (m_bbox.AxisLength() < maxAxisLength || m_quadblockIndexes.size() == 1) { return; }
-		m_node = BSPNode::BRANCH;
-		m_flags &= ~BSPFlags::LEAF;
-	}
-
-	if (m_quadblockIndexes.size() == 1)
-	{
-		std::vector<size_t> empty = {};
-		GenerateOffspring(m_quadblockIndexes, empty, quadblocks, maxQuadsPerLeaf, maxAxisLength);
-		return;
-	}
-
-	std::vector<size_t> x_right, x_left, y_right, y_left, z_right, z_left;
-	float x_score = Split(x_left, x_right, AxisSplit::X, quadblocks);
-	float y_score = Split(y_left, y_right, AxisSplit::Y, quadblocks);
-	float z_score = Split(z_left, z_right, AxisSplit::Z, quadblocks);
-	float bestScore = std::min(std::min(x_score, y_score), z_score);
-	if (bestScore == std::numeric_limits<float>::max())
-	{
-		if (isLeaf)
-		{
-			m_node = BSPNode::LEAF;
-			m_flags |= BSPFlags::LEAF;
-		}
-		return;
-	}
-	if (bestScore == x_score)
-	{
-		m_axis = AxisSplit::X;
-		GenerateOffspring(x_left, x_right, quadblocks, maxQuadsPerLeaf, maxAxisLength);
-	}
-	else if (bestScore == z_score)
-	{
-		m_axis = AxisSplit::Z;
-		GenerateOffspring(z_left, z_right, quadblocks, maxQuadsPerLeaf, maxAxisLength);
+		else
+			printf("BSP TREE GENERATION MISTAKE : FiNDBESTSPLIT TRUE, SPLIT LEAF FALSE ?\n");
 	}
 	else
 	{
-		m_axis = AxisSplit::Y;
-		GenerateOffspring(y_left, y_right, quadblocks, maxQuadsPerLeaf, maxAxisLength);
+		if (settings.separateMaterial)
+		{
+			SplitLeafMaterial(quadblocks);
+		}
+		SplitLeafWater(quadblocks);
 	}
 }
+
 
 std::vector<uint8_t> BSP::Serialize(size_t offQuads, const std::vector<Quadblock>& quadblocks) const
+
 {
 	return m_node == BSPNode::BRANCH ? SerializeBranch(quadblocks) : SerializeLeaf(offQuads, quadblocks);
-}
-
-float BSP::GetAxisMidpoint(const AxisSplit axis) const
-{
-	float midpoint = 0.0f;
-	switch (axis)
-	{
-	case AxisSplit::X: return m_bbox.Midpoint().x;
-	case AxisSplit::Y: return m_bbox.Midpoint().y;
-	case AxisSplit::Z: return m_bbox.Midpoint().z;
-	}
-	return midpoint;
 }
 
 BoundingBox BSP::ComputeBoundingBox(const std::vector<Quadblock>& quadblocks, const std::vector<size_t>& quadblockIndexes) const
@@ -618,44 +724,6 @@ BoundingBox BSP::ComputeBoundingBox(const std::vector<Quadblock>& quadblocks, co
 	return bbox;
 }
 
-float BSP::Split(std::vector<size_t>& left, std::vector<size_t>& right, const AxisSplit axis, const std::vector<Quadblock>& quadblocks) const
-{
-	float midpoint = GetAxisMidpoint(axis);
-	for (size_t index : m_quadblockIndexes)
-	{
-		const Quadblock& quad = quadblocks[index];
-		switch (axis)
-		{
-		case AxisSplit::X:
-			if (quad.GetCenter().x < midpoint) { right.push_back(index); }
-			else { left.push_back(index); }
-			break;
-		case AxisSplit::Y:
-			if (quad.GetCenter().y < midpoint) { right.push_back(index); }
-			else { left.push_back(index); }
-			break;
-		case AxisSplit::Z:
-			if (quad.GetCenter().z < midpoint) { right.push_back(index); }
-			else { left.push_back(index); }
-			break;
-		}
-	}
-	if (left.empty() || right.empty()) { return std::numeric_limits<float>::max(); }
-	float perimeterLeft = ComputeBoundingBox(quadblocks, left).SemiPerimeter();
-	float perimeterRight = ComputeBoundingBox(quadblocks, right).SemiPerimeter();
-	return perimeterLeft + perimeterRight;
-}
-
-void BSP::GenerateOffspring(std::vector<size_t>& left, std::vector<size_t>& right, const std::vector<Quadblock>& quadblocks, const size_t maxQuadsPerLeaf, const float maxAxisLength)
-{
-	if (left.size() <= maxQuadsPerLeaf) { if (!left.empty()) { m_left = new BSP(BSPNode::LEAF, left, this, quadblocks); } }
-	else { m_left = new BSP(BSPNode::BRANCH, left, this, quadblocks); }
-	if (m_left) { m_left->Generate(quadblocks, maxQuadsPerLeaf, maxAxisLength); }
-
-	if (right.size() <= maxQuadsPerLeaf) { if (!right.empty()) { m_right = new BSP(BSPNode::LEAF, right, this, quadblocks); } }
-	else { m_right = new BSP(BSPNode::BRANCH, right, this, quadblocks); }
-	if (m_right) { m_right->Generate(quadblocks, maxQuadsPerLeaf, maxAxisLength); }
-}
 
 
 bool BSP::IsInvisible(const std::vector<Quadblock>& quadblocks)

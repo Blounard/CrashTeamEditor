@@ -88,6 +88,62 @@ static bool UIFlagCheckbox(T& var, const T flag, const std::string& title)
 	return false;
 }
 
+
+// AI Widget : Slider bar to control a float in between 0 and 1
+// value: weight in [0,1] assigned to rightLabel; (1 - value) is assigned to leftLabel.
+bool BalanceSlider(const char* id, float* value, const char* leftLabel, const char* rightLabel, float width = 200.0f)
+{
+	ImGui::PushID(id);
+	bool changed = false;
+	float height = ImGui::GetFrameHeight();
+
+	ImGui::AlignTextToFramePadding();
+	ImGui::Text("%s %.0f%%", leftLabel, (1.0f - *value) * 100.0f);
+	ImGui::SameLine();
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	ImVec2 min = ImGui::GetCursorScreenPos();
+	ImVec2 max = ImVec2(min.x + width, min.y + height);
+
+	ImGui::InvisibleButton("slider", ImVec2(width, height));
+	bool active = ImGui::IsItemActive();
+	bool hovered = ImGui::IsItemHovered();
+
+	if (active && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+	{
+		float t = (ImGui::GetIO().MousePos.x - min.x) / width;
+		*value = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
+		changed = true;
+	}
+
+	// Groove
+	float grooveY = min.y + height * 0.5f;
+	drawList->AddLine(ImVec2(min.x, grooveY), ImVec2(max.x, grooveY),
+		ImGui::GetColorU32(ImGuiCol_FrameBg), 3.0f);
+
+	// Handle (Qt-style rectangular grab)
+	float handleWidth = 12.0f;
+	float handleX = min.x + (*value) * width;
+	handleX = std::max(min.x + handleWidth * 0.5f, std::min(max.x - handleWidth * 0.5f, handleX));
+	ImVec2 handleMin(handleX - handleWidth * 0.5f, min.y);
+	ImVec2 handleMax(handleX + handleWidth * 0.5f, min.y + height);
+	drawList->AddRectFilled(handleMin, handleMax,
+		ImGui::GetColorU32(active ? ImGuiCol_SliderGrabActive : ImGuiCol_SliderGrab), 2.0f);
+	drawList->AddRect(handleMin, handleMax, ImGui::GetColorU32(ImGuiCol_Border), 2.0f);
+
+	if (hovered || active)
+		ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+
+	ImGui::SameLine();
+	ImGui::AlignTextToFramePadding();
+	ImGui::Text("%.0f%% %s", (*value) * 100.0f, rightLabel);
+
+	ImGui::PopID();
+	return changed;
+}
+
+
+
 void BoundingBox::RenderUI() const
 {
 	ImGui::Text("Max:"); ImGui::SameLine();
@@ -107,7 +163,7 @@ void BSP::RenderUI(const std::vector<Quadblock>& quadblocks)
 	{
 		if (IsBranch()) { ImGui::Text(("Axis:  " + GetAxis()).c_str()); }
 		ImGui::Text(("Quads: " + std::to_string(m_quadblockIndexes.size())).c_str());
-		if (ImGui::TreeNode("Quadblock List:"))
+		if (ImGui::TreeNode(("Quadblock List: (" + std::to_string(m_quadblockIndexes.size()) + ")").c_str()))
 		{
 			constexpr size_t QUADS_PER_LINE = 10;
 			for (size_t i = 0; i < m_quadblockIndexes.size(); i++)
@@ -120,6 +176,48 @@ void BSP::RenderUI(const std::vector<Quadblock>& quadblocks)
 		}
 		ImGui::Text("Bounding Box:");
 		m_bbox.RenderUI();
+		if (IsBranch())
+		{
+			if (ImGui::Button("Merge"))
+			{
+				MergeBranch();
+			}
+			ImGui::SetItemTooltip("Transform this branch into a leaf by merging all it's child leaves together");
+		}
+		else
+		{
+			static AxisSplit BSPaxisSplit = AxisSplit::NONE;
+			static float BSPmidpointSplit = 0.0f;
+			ImGui::SetNextItemWidth(200.0f);
+			if (ImGui::BeginCombo("Axis", AxisSplitNames[static_cast<int>(BSPaxisSplit)]))
+			{
+				for (int i = 0; i < 4; ++i)
+				{
+					AxisSplit currentAxis = static_cast<AxisSplit>(i);
+					bool isSelected = (BSPaxisSplit == currentAxis);
+
+					if (ImGui::Selectable(AxisSplitNames[i], isSelected))
+					{
+						BSPaxisSplit = currentAxis;
+					}
+
+					// Set initial focus to the currently selected item when opening the combo
+					if (isSelected)
+					{
+						ImGui::SetItemDefaultFocus();
+					}
+				}
+				ImGui::EndCombo();
+			}
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(200.0f);
+			ImGui::InputFloat("Midpoint", &BSPmidpointSplit);
+			ImGui::SameLine();
+			if (ImGui::Button("Split"))
+			{
+				SplitLeafGeometry(quadblocks, BSPaxisSplit, BSPmidpointSplit);
+			}
+		}
 		if (m_left) { m_left->RenderUI(quadblocks); }
 		if (m_right) { m_right->RenderUI(quadblocks); }
 		ImGui::TreePop();
@@ -1070,7 +1168,10 @@ void Level::RenderUI(Renderer& renderer)
 					if (ImGui::InputFloat("Max Leaf Axis Length", &m_bspSettings.maxAxisDistance)) { m_bspSettings.maxAxisDistance = std::max(m_bspSettings.maxAxisDistance, 0.0f); }
 					ImGui::SetItemTooltip("Lower values improve rendering performance, but increases file size and slows down vis tree generation.");
 					ImGui::Checkbox("Separate Material", &m_bspSettings.separateMaterial);
-
+					ImGui::Spacing();
+					ImGui::TextUnformatted("Split Score Balance");
+					ImGui::SetItemTooltip("How FindBestSplit weighs reducing quad count vs. shrinking leaf bbox size when picking a split.");
+					BalanceSlider("scoreweightbalance", &m_bspSettings.scoreWeight, "BBox Size", "Quad Count");
 					ImGui::TreePop();
 				}
 				if (ImGui::TreeNodeEx("Vis Tree Settings", ImGuiTreeNodeFlags_DefaultOpen))
@@ -1085,8 +1186,6 @@ void Level::RenderUI(Renderer& renderer)
 					ImGui::SetItemTooltip("Speeds up VisTree generation by a factor of 2x to 3x with minimal loss of precision.");
 					ImGui::Checkbox("Center-Only Samples", &m_visTreeSettings.centerOnlySamples);
 					ImGui::SetItemTooltip("Only casts rays from each quad center (skips corner samples). Much faster, but may miss narrow visibility paths.");
-					ImGui::Checkbox("Ground-Only RayCast", &m_visTreeSettings.castFromGroundOnly);
-					ImGui::SetItemTooltip("Only casts rays from Ground and Kicker_2 quads. Less visibility, but can avoid unwanted raycast");
 					ImGui::TreePop();
 				}
 				ImGui::TreePop();
