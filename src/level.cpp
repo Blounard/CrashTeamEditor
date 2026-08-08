@@ -254,10 +254,11 @@ bool Level::GenerateBSP()
 	std::vector<size_t> quadIndexes;
 	for (size_t i = 0; i < m_quadblocks.size(); i++) { quadIndexes.push_back(i); }
 	m_bsp.Clear();
+	m_bspVis.Clear();
 	ResetAllBSPID();
 	m_bsp.SetId(0);
-	m_bspVis.Clear();
-	m_bsp.SetQuadblockIndexes(quadIndexes);
+	m_bsp.SetQuadblockIndexes(quadIndexes, m_quadblocks);
+	m_bsp.ComputeBoundingBox(m_quadblocks);
 	m_bsp.Generate(m_quadblocks, m_bspSettings);
 	if (m_bsp.IsValid())
 	{

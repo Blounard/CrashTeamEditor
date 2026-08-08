@@ -78,7 +78,8 @@ public:
 	const std::vector<const BSP*> GetTree() const;
 	std::vector<BSP*> GetTree();
 	std::vector<const BSP*> GetLeaves() const;
-	void SetQuadblockIndexes(const std::vector<size_t>& quadblockIndexes);
+	void SetQuadblockIndexes(const std::vector<size_t>& quadblockIndexes, std::vector<Quadblock>& quadblocks);
+	void ComputeBoundingBox(const std::vector<Quadblock>& quadblocks);
 	void SetParent(BSP* parent);
 	void Clear();
 	bool NeedSplitGeometry(const BSPTreeSettings settings, std::vector<AxisSplit>& allowedAxis);
@@ -92,7 +93,6 @@ public:
 	void RenderUI(const std::vector<Quadblock>& quadblocks);
 
 private:
-	BoundingBox ComputeBoundingBox(const std::vector<Quadblock>& quadblocks, const std::vector<size_t>& quadblockIndexes) const;
 	bool IsInvisible(const std::vector<Quadblock>& quadblocks);
 	bool HasWater(const std::vector<Quadblock>& quadblocks) const;
 	float FindBestSplitCandidates(const std::vector<Quadblock>& quadblocks, AxisSplit& axis, std::vector<float>& candidates, float scoreQuadWeight, float &score);
