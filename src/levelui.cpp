@@ -836,35 +836,22 @@ void Level::RenderUI(Renderer& renderer)
 			if (ImGui::TreeNode("Water"))
 			{
 				if (ImGui::TreeNode("Settings##Water"))
-				{
-				//	// --- Tiling & Flow ---
-				//	if (ImGui::InputFloat("Texels Per Unit", &m_waterAnimSettings.texelsPerUnit))
-				//	{
-				//		m_waterAnimSettings.texelsPerUnit = std::max(m_waterAnimSettings.texelsPerUnit, 0.1f);
-				//	}
-				//	ImGui::SetItemTooltip("Tiling density: texels of the 64x64 map per world unit.");
+				{	
+					ImGui::SeparatorText("Base UV");
+					ImGui::DragFloat("World Tex size", &m_waterAnimSettings.sizeTex, 0.5f, 0.0f, 100.0f, "%.1f");
+					ImGui::SetItemTooltip("Size of the full texture in world units");
 
-				//	// Contiguous float members (X and Z) can be edited together using InputFloat2
-				//	ImGui::InputFloat2("Flow Direction (X, Z)", &m_waterAnimSettings.flowDirX);
-				//	ImGui::SetItemTooltip("Flow direction in XZ space.");
+					ImGui::SeparatorText("Scrolling UV");
+					ImGui::InputInt("U Cycle count##scroll", &m_waterAnimSettings.ScrollULoops);
+					ImGui::InputInt("V Cycle count##scroll", &m_waterAnimSettings.ScrollVLoops);
 
-				//	ImGui::InputInt2("Flow Loops (U, V)", &m_waterAnimSettings.flowLoopsU);
-				//	ImGui::SetItemTooltip("Integer tile-widths crossed over the 28-frame loop (seamless).");
+					ImGui::SeparatorText("Waving UV");
+					ImGui::DragFloat("Wave Length##uv", &m_waterAnimSettings.waveLength, 0.1f, 0.0f, 1000.0f, "%.1f");
+					ImGui::InputInt("U Cycle count##wave", &m_waterAnimSettings.waveCyclesTimeU);
+					ImGui::InputInt("V Cycle count##wave", &m_waterAnimSettings.waveCyclesTimeV);
+					ImGui::DragFloat("Wave Amplitude", &m_waterAnimSettings.waveAmplitude, 0.1f, 0.0f, 64.0f, "%.1f pixels");
 
-				//	ImGui::Separator();
-
-				//	// --- Ripple / Wave Distortion ---
-				//	ImGui::InputFloat2("Ripple Amplitude (U, V)", &m_waterAnimSettings.rippleAmpU);
-				//	ImGui::SetItemTooltip("Texel amplitude of the wave distortion.");
-
-				//	ImGui::InputFloat("Ripple Frequency", &m_waterAnimSettings.rippleFreq);
-				//	ImGui::SetItemTooltip("Spatial frequency (1 / world units).");
-
-				//	ImGui::InputInt("Ripple Cycles Time", &m_waterAnimSettings.rippleCyclesTime);
-				//	ImGui::SetItemTooltip("Integer temporal cycles over the loop (seamless).");
-
-				//	ImGui::Separator();
-
+					ImGui::SeparatorText("Brightness");
 					// --- Brightness & Shimmer ---
 					if (ImGui::DragFloat("Base Brightness", &m_waterAnimSettings.baseBrightness, 0.1f, 0.0f, 15.0f, "%.1f"))
 					{
@@ -878,8 +865,8 @@ void Level::RenderUI(Renderer& renderer)
 					}
 					ImGui::SetItemTooltip("Base lighting brightness (range 0 to 15).");
 
-					ImGui::DragFloat("Wave Length", &m_waterAnimSettings.brightWaveLength, 0.1f, 0.0f, 100.0f, "%.1f");
-					ImGui::DragFloat("Wave Angle", &m_waterAnimSettings.brightWaveDirectionDeg, 1.0f, 0.0f, 360.0f, "%.1f");
+					ImGui::DragFloat("Wave Length##bright", &m_waterAnimSettings.brightWaveLength, 0.1f, 0.0f, 100.0f, "%.1f");
+					ImGui::DragFloat("Wave Angle##bright", &m_waterAnimSettings.brightWaveDirectionDeg, 1.0f, 0.0f, 360.0f, "%.1f");
 						
 					ImGui::InputInt("Brightness Cycles Time", &m_waterAnimSettings.brightWaveCycle);
 					ImGui::SetItemTooltip("Temporal cycles over loop (different from ripple cycles so waves and shimmer don't lock-step).");

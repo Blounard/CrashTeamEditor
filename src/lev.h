@@ -53,15 +53,21 @@ static const std::vector<std::string> CTR_CHARACTERS = {
 
 struct WaterAnimParams
 {
-    float texelsPerUnit = 8.0f;   // tiling density: texels of the 64x64 map per world unit
-    float flowDirX = 1.0f, flowDirZ = 0.3f; // flow direction in XZ
-    int   flowLoopsU = 0;          // integer tile-widths crossed over the 28-frame loop (seamless)
-    int   flowLoopsV = 0;
+	// For BaseUV (static tex part)
+    float sizeTex = 20.0f;   // Size Of the full texture in world unit	
 
-    float rippleAmpU = 20.0f, rippleAmpV = 20.0f; // texel amplitude of the wave distortion
-    float rippleFreq = 0.15f;      // spatial frequency (1 / world units)
-    int   rippleCyclesTime = 2;    // integer temporal cycles over the loop (seamless)
+	// For ScrollUV (UV scrolling like a conveyer belt)
+    int   ScrollULoops = 1;          // "Speed" of the scroll. Must be int to cycle through 28 frames
+    int   ScrollVLoops = 1;
 
+	// For WaveUV  (Small perturbation)
+	float waveLength = 20.0f;  // world units 
+	int waveCyclesTimeU = 3; 
+	int waveCyclesTimeV = 3;
+	float waveAmplitude = 32.0f; // Size of the UV perturbation (in pixels)
+
+
+	// For brightness :  B(pos,f) = A * cos(k.pos - wf + phi)
 	float baseBrightness = 4.0f;
 	float brightAmp = 2.5f;
 
@@ -70,6 +76,4 @@ struct WaterAnimParams
 	int	  brightWaveCycle = 1;   // world units per OVert frame (not per second — see note below)
 	float brightWaveDirectionDeg = 0.0f; // propagation direction: 0 = +X, 90 = +Z
 	float brightPhaseDeg = 0.0f;
-
-    float seed = 0.0f;             // vary between separate, unconnected water bodies
 };
