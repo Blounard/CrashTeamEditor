@@ -53,27 +53,22 @@ static const std::vector<std::string> CTR_CHARACTERS = {
 
 struct WaterAnimParams
 {
+	float waveLength = 20.0f;  // world units 
+
 	// For BaseUV (static tex part)
-    float sizeTex = 20.0f;   // Size Of the full texture in world unit	
+	float sizeTex = 20.0f;   // Size Of the full texture in world unit	
 
 	// For ScrollUV (UV scrolling like a conveyer belt)
-    int   ScrollULoops = 1;          // "Speed" of the scroll. Must be int to cycle through 28 frames
-    int   ScrollVLoops = 1;
+	int   ScrollULoops = 1; // Speed
+	int   ScrollVLoops = 1;
 
 	// For WaveUV  (Small perturbation)
-	float waveLength = 20.0f;  // world units 
-	int waveCyclesTimeU = 3; 
+	int waveCyclesTimeU = 3; // Speed
 	int waveCyclesTimeV = 3;
-	float waveAmplitude = 32.0f; // Size of the UV perturbation (in pixels)
+	float waveAmplitude = 16.0f; // Size of the UV perturbation (in pixels)
 
-
-	// For brightness :  B(pos,f) = A * cos(k.pos - wf + phi)
-	float baseBrightness = 4.0f;
-	float brightAmp = 2.5f;
-
-	// 2D traveling wave, user-facing parameterization
-	float brightWaveLength = 16.0f;  // world units between crests
-	int	  brightWaveCycle = 1;   // world units per OVert frame (not per second — see note below)
-	float brightWaveDirectionDeg = 0.0f; // propagation direction: 0 = +X, 90 = +Z
-	float brightPhaseDeg = 0.0f;
+	// For brightness :   
+	float baseBrightness = 4.0f; // Base
+	float brightAmp = 2.5f; // Amplitude
+	int	  brightWaveCycle = 1;   //Speed
 };

@@ -853,21 +853,14 @@ void Level::RenderUI(Renderer& renderer)
 
 					ImGui::SeparatorText("Brightness");
 					// --- Brightness & Shimmer ---
-					if (ImGui::DragFloat("Base Brightness", &m_waterAnimSettings.baseBrightness, 0.1f, 0.0f, 15.0f, "%.1f"))
-					{
-						m_waterAnimSettings.baseBrightness = Clamp(m_waterAnimSettings.baseBrightness, 0.0f, 15.0f);
-					}
+					ImGui::DragFloat("Base Brightness", &m_waterAnimSettings.baseBrightness, 0.1f, 0.0f, 15.0f, "%.1f");
 					ImGui::SetItemTooltip("Base brightness (range 0 to 15).");
 
 					if (ImGui::DragFloat("Brightness amplitude", &m_waterAnimSettings.brightAmp, 0.1f, 0.0f, 15.0f, "%.1f"))
 					{
 						m_waterAnimSettings.brightAmp = Clamp(m_waterAnimSettings.brightAmp, 0.0f, 15.0f);
 					}
-					ImGui::SetItemTooltip("Base lighting brightness (range 0 to 15).");
-
-					ImGui::DragFloat("Wave Length##bright", &m_waterAnimSettings.brightWaveLength, 0.1f, 0.0f, 100.0f, "%.1f");
-					ImGui::DragFloat("Wave Angle##bright", &m_waterAnimSettings.brightWaveDirectionDeg, 1.0f, 0.0f, 360.0f, "%.1f");
-						
+					ImGui::SetItemTooltip("Base lighting brightness (range 0 to 15).");						
 					ImGui::InputInt("Brightness Cycles Time", &m_waterAnimSettings.brightWaveCycle);
 					ImGui::SetItemTooltip("Temporal cycles over loop (different from ripple cycles so waves and shimmer don't lock-step).");
 

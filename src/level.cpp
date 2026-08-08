@@ -727,17 +727,12 @@ bool Level::GenerateOceanVertices()
 {
 	constexpr float PI = 3.14159265358979323846f;
 	WaterAnimParams& p = m_waterAnimSettings;
-	// --- Brightness wave: unchanged from before ---
-	const float brightDirRad = p.brightWaveDirectionDeg * PI / 180.0f;
-	const float brightDirX = std::cos(brightDirRad);
-	const float brightDirZ = std::sin(brightDirRad);
-	const float brightWaveLengthSafe = std::max(p.brightWaveLength, 0.0001f);
-	const float brightK = 2.0f * PI / brightWaveLengthSafe;
+
 	const int brightCyclesTime = p.brightWaveCycle;
-	const float brightPhaseRad = p.brightPhaseDeg * PI / 180.0f;
-	// --- Standing wave for UV ---
-	const float waveLengthSafe = std::max(p.waveLength, 0.0001f);
-	const float waveK = 2.0f * PI / waveLengthSafe;
+	const float baseBright = p.baseBrightness;
+	const float waveLength = std::max(p.waveLength, 1.0f);
+	const float waveK = 2.0f * PI / waveLength;
+
 	for (Quadblock& quad : m_quadblocks)
 	{
 		if (!quad.GetWater())
@@ -745,32 +740,27 @@ bool Level::GenerateOceanVertices()
 		const std::vector<Vertex>& vertices = quad.GetVertices();
 		for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++)
 		{
-			Vec3 worldPos = vertices[i].m_pos;
-			const float s = worldPos.x;
-			const float t = worldPos.z;
-			const float baseU = s * p.sizeTex;
-			const float baseV = t * p.sizeTex;
-			const float brightSpatialPhase = brightK * (brightDirX * s + brightDirZ * t);
-			// Standing-wave spatial envelope: fixed per vertex, doesn't depend on frame
-			const float wSpatial1 = waveK * s;
-			const float wSpatial2 = waveK * t;
-			const float envelope = (std::cos(wSpatial1) + std::cos(wSpatial2)) / 2;
+			Vec3 vPos = vertices[i].m_pos;
+			const float baseU = vPos.x * p.sizeTex;
+			const float baseV = vPos.z * p.sizeTex;
+			const float spaceWave = (std::cos(waveK * vPos.x) + std::cos(waveK * vPos.z)) / 2;
+
 			PSX::OceanVertex ov{};
 			for (int f = 0; f < NUM_FRAME_OVERT; f++)
 			{
 				const float frac = static_cast<float>(f) / NUM_FRAME_OVERT;
+
 				const float scrollU = p.ScrollULoops * 64.0f * frac;
 				const float scrollV = p.ScrollVLoops * 64.0f * frac;
-				const float wTemporalU = 2.0f * PI * p.waveCyclesTimeU * frac;
-				const float wTemporalV = 2.0f * PI * p.waveCyclesTimeV * frac;
-				const float waveU = p.waveAmplitude / 2 * envelope * std::sin(wTemporalU);
-				const float waveV = p.waveAmplitude / 2 * envelope * std::sin(wTemporalV);
+				const float waveU = p.waveAmplitude  * spaceWave * std::sin(2.0f * PI * p.waveCyclesTimeU * frac);
+				const float waveV = p.waveAmplitude  * spaceWave * std::sin(2.0f * PI * p.waveCyclesTimeV * frac);
 				const int u = static_cast<int>(std::round(baseU + scrollU + waveU));
 				const int v = static_cast<int>(std::round(baseV + scrollV + waveV));
-				const float brightTemporalPhase = 2.0f * PI * brightCyclesTime * frac;
-				const float brightness = p.baseBrightness +
-					p.brightAmp * std::sin(brightSpatialPhase + brightTemporalPhase + brightPhaseRad);
-				const int b = static_cast<int>(std::round(brightness));
+
+				const float brightTemporalPhase = 2.0f * PI * brightCyclesTime * frac;	
+				const float waveBright = p.brightAmp * std::sin(brightTemporalPhase) * spaceWave;
+				const int b = static_cast<int>(std::round(baseBright + waveBright));
+
 				PSX::OceanVertexFrame frame{};
 				frame.u = static_cast<uint16_t>(((u % 64) + 64) % 64);
 				frame.v = static_cast<uint16_t>(((v % 64) + 64) % 64);
