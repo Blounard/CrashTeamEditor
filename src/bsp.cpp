@@ -437,10 +437,7 @@ bool BSP::SplitLeafWater(const std::vector<Quadblock>& quadblocks)
 	m_axis = AxisSplit::NONE;
 
 	m_left = new BSP(BSPNode::LEAF, left_quad_indexes, this, quadblocks);
-	m_left->m_bbox = ComputeBoundingBox(quadblocks, left_quad_indexes);
-
 	m_right = new BSP(BSPNode::LEAF, right_quad_indexes, this, quadblocks);
-	m_right->m_bbox = ComputeBoundingBox(quadblocks, right_quad_indexes);
 
 	return true;
 }
