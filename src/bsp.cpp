@@ -68,6 +68,7 @@ BSP::BSP(BSPNode type, const std::vector<size_t>& quadblockIndexes, BSP* parent,
 	{
 		for (size_t index : m_quadblockIndexes) { quadblocks[index].SetBSPID(m_id); }
 	}
+	ComputeBoundingBox(quadblocks);
 }
 
 BSP::~BSP()
@@ -289,9 +290,13 @@ std::vector<const BSP*> BSP::GetLeaves() const
 	return ret;
 }
 
-void BSP::SetQuadblockIndexes(const std::vector<size_t>& quadblockIndexes)
+void BSP::SetQuadblockIndexes(const std::vector<size_t>& quadblockIndexes, std::vector<Quadblock>& quadblocks)
 {
 	m_quadblockIndexes = quadblockIndexes;
+	if (!IsBranch())
+	{
+		for (size_t index : m_quadblockIndexes) { quadblocks[index].SetBSPID(m_id); }
+	}
 }
 
 void BSP::SetParent(BSP* parent)
@@ -350,11 +355,8 @@ bool BSP::SplitLeafGeometry(const std::vector<Quadblock>& quadblocks, const Axis
 	m_flags &= ~BSPFlags::LEAF;
 	m_axis = axis;
 
-	m_left = new BSP(BSPNode::LEAF, left_quad_indexes, this, quadblocks);
-	m_left->m_bbox = ComputeBoundingBox(quadblocks, left_quad_indexes);
-	
+	m_left = new BSP(BSPNode::LEAF, left_quad_indexes, this, quadblocks);	
 	m_right = new BSP(BSPNode::LEAF, right_quad_indexes, this, quadblocks);
-	m_right->m_bbox = ComputeBoundingBox(quadblocks, right_quad_indexes);
 
 	//printf("Split : %d -> %d + %d\n", m_quadblockIndexes.size(), left_quad_indexes.size(), right_quad_indexes.size());
 	//float parent;
@@ -404,10 +406,7 @@ bool BSP::SplitLeafMaterial(const std::vector<Quadblock>& quadblocks)
 	m_axis = AxisSplit::NONE;
 
 	m_left = new BSP(BSPNode::LEAF, left_quad_indexes, this, quadblocks);
-	m_left->m_bbox = ComputeBoundingBox(quadblocks, left_quad_indexes);
-
 	m_right = new BSP(BSPNode::LEAF, right_quad_indexes, this, quadblocks);
-	m_right->m_bbox = ComputeBoundingBox(quadblocks, right_quad_indexes);
 
 	m_right->SplitLeafMaterial(quadblocks);
 	m_left->SplitLeafMaterial(quadblocks);
@@ -674,13 +673,13 @@ std::vector<uint8_t> BSP::Serialize(size_t offQuads) const
 	return m_node == BSPNode::BRANCH ? SerializeBranch() : SerializeLeaf(offQuads);
 }
 
-BoundingBox BSP::ComputeBoundingBox(const std::vector<Quadblock>& quadblocks, const std::vector<size_t>& quadblockIndexes) const
+void BSP::ComputeBoundingBox(const std::vector<Quadblock>& quadblocks)
 {
-	if (quadblockIndexes.empty()) { return {}; }
+	if (m_quadblockIndexes.empty()) { return ; }
 
 	Vec3 min = Vec3(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
 	Vec3 max = Vec3(-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max(), -std::numeric_limits<float>::max());
-	for (size_t index : quadblockIndexes)
+	for (size_t index : m_quadblockIndexes)
 	{
 		const Quadblock& quad = quadblocks[index];
 		const BoundingBox& quadBbox = quad.GetBoundingBox();
@@ -688,8 +687,7 @@ BoundingBox BSP::ComputeBoundingBox(const std::vector<Quadblock>& quadblocks, co
 		min.y = std::min(min.y, quadBbox.min.y); max.y = std::max(max.y, quadBbox.max.y);
 		min.z = std::min(min.z, quadBbox.min.z); max.z = std::max(max.z, quadBbox.max.z);
 	}
-	BoundingBox bbox = {min, max};
-	return bbox;
+	m_bbox = {min, max};
 }
 
 
