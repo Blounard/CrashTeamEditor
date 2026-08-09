@@ -445,22 +445,6 @@ void BSP::MergeBranch()
 }
 
 
-bool BSP::NeedSplitGeometry(const BSPTreeSettings settings, std::vector<AxisSplit>& allowedAxis)
-{
-	if (m_quadblockIndexes.size() <= 1) { return false; }
-	if ((int)m_quadblockIndexes.size() > settings.maxQuadPerLeaf) 
-	{ 
-		allowedAxis.push_back(AxisSplit::X);
-		allowedAxis.push_back(AxisSplit::Y);
-		allowedAxis.push_back(AxisSplit::Z);
-		return true; 
-	}
-	if (m_bbox.max.x - m_bbox.min.x > settings.maxAxisDistance) { allowedAxis.push_back(AxisSplit::X); }
-	if (m_bbox.max.y - m_bbox.min.y > settings.maxAxisDistance) { allowedAxis.push_back(AxisSplit::Y); }
-	if (m_bbox.max.z - m_bbox.min.z > settings.maxAxisDistance) { allowedAxis.push_back(AxisSplit::Z); }
-	return !allowedAxis.empty();
-}
-
 float BSP::SplitScoreLeft(float scoreQuadWeight)
 {  
 	if (!IsBranch() || !m_left)

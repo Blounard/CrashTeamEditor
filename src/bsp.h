@@ -76,7 +76,6 @@ public:
 	void ComputeBoundingBox(const std::vector<Quadblock>& quadblocks);
 	void SetParent(BSP* parent);
 	void Clear();
-	bool NeedSplitGeometry(const BSPTreeSettings settings, std::vector<AxisSplit>& allowedAxis);
 	bool SplitLeafGeometry(const std::vector<Quadblock>& quadblocks, const AxisSplit axis, const float midpoint);
 	bool SplitLeafMaterial(const std::vector<Quadblock>& quadblocks);
 	void MergeBranch();
