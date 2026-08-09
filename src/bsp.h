@@ -11,10 +11,12 @@ struct BSPTreeSettings
 	float maxAxisDistance;
 	bool separateMaterial;
 	float scoreWeight;
+	int k;
 	BSPTreeSettings() :
 		maxQuadPerLeaf(32),
 		maxAxisDistance(64.0f),
 		separateMaterial(false),
+		k(0),
 		scoreWeight(0.5f) {}
 };
 
@@ -85,10 +87,10 @@ public:
 	void RenderUI(const std::vector<Quadblock>& quadblocks);
 
 private:
-	float FindBestSplitCandidates(const std::vector<Quadblock>& quadblocks, AxisSplit& axis, std::vector<float>& candidates, float scoreQuadWeight, float &score);
-	float SplitScoreLeft(float scoreQuadWeight);
-	float SplitScoreRight(float scoreQuadWeight);
-	float SplitScore(float scoreQuadWeight);
+	float FindBestSplitCandidates(const std::vector<Quadblock>& quadblocks, AxisSplit axis, const std::vector<float>& candidates, int k, float& outCost);
+	float SplitCostLeft(int k);
+	float SplitCostRight(int k);
+	float SplitCost(int k);
 	std::vector<uint8_t> SerializeBranch() const;
 	std::vector<uint8_t> SerializeLeaf(size_t offQuads) const;
 

@@ -1073,10 +1073,7 @@ void Level::RenderUI(Renderer& renderer)
 					if (ImGui::InputFloat("Max Leaf Axis Length", &m_bspSettings.maxAxisDistance)) { m_bspSettings.maxAxisDistance = std::max(m_bspSettings.maxAxisDistance, 0.0f); }
 					ImGui::SetItemTooltip("Lower values improve rendering performance, but increases file size and slows down vis tree generation.");
 					ImGui::Checkbox("Separate Material", &m_bspSettings.separateMaterial);
-					ImGui::Spacing();
-					ImGui::TextUnformatted("Split Score Balance");
-					ImGui::SetItemTooltip("How FindBestSplit weighs reducing quad count vs. shrinking leaf bbox size when picking a split.");
-					BalanceSlider("scoreweightbalance", &m_bspSettings.scoreWeight, "BBox Size", "Quad Count");
+					if (ImGui::InputInt("K", &m_bspSettings.k)) { m_bspSettings.k = std::max(m_bspSettings.k, 0); }
 					ImGui::TreePop();
 				}
 				if (ImGui::TreeNodeEx("Vis Tree Settings", ImGuiTreeNodeFlags_DefaultOpen))
