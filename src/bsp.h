@@ -98,6 +98,7 @@ private:
 	size_t m_idFlag;
 	BSPNode m_node;
 	AxisSplit m_axis;
+	float m_splitPoint;
 	uint16_t m_flags;
 	BSP* m_left;
 	size_t m_leftFlag;

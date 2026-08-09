@@ -42,6 +42,7 @@ BSP::BSP()
 	m_rightFlag = 0;
 	m_node = BSPNode::BRANCH;
 	m_axis = AxisSplit::NONE;
+	m_splitPoint = 0.0f;
 	m_flags = BSPFlags::NONE;
 	m_left = nullptr;
 	m_right = nullptr;
@@ -59,6 +60,7 @@ BSP::BSP(BSPNode type, const std::vector<size_t>& quadblockIndexes, BSP* parent,
 	m_rightFlag = 0;
 	m_node = type;
 	m_axis = AxisSplit::NONE;
+	m_splitPoint = 0.0f;
 	m_flags = isLeaf ? BSPFlags::LEAF : BSPFlags::NONE;
 	m_left = nullptr;
 	m_right = nullptr;
@@ -86,6 +88,7 @@ void BSP::PopulateBranch(PSX::BSPBranch& branch, std::vector<BSP*>& bspArray, si
 	else if (branch.axis.y != 0) { m_axis = AxisSplit::Y; }
 	else if (branch.axis.z != 0) { m_axis = AxisSplit::Z; }
 	else { m_axis = AxisSplit::NONE; }
+	m_splitPoint = ConvertFP(branch.splitPoint, FP_ONE_SPLITPOINT);
 	m_flags = branch.flag;
 	if (branch.leftChild != BSPID::EMPTY)
 	{
@@ -120,6 +123,7 @@ void BSP::PopulateLeaf(PSX::BSPLeaf& leaf, std::vector<BSP*>& bspArray, const st
 	m_id = leaf.id;
 	m_node = BSPNode::LEAF;
 	m_axis = AxisSplit::NONE;
+	m_splitPoint = 0.0f;
 	m_flags = leaf.flag;
 	m_left = nullptr; 
 	m_right = nullptr; 
@@ -318,6 +322,7 @@ void BSP::Clear()
 	m_right = nullptr;
 	m_left = nullptr;
 	m_axis = AxisSplit::NONE;
+	m_splitPoint = 0.0f;
 	m_flags = BSPFlags::NONE;
 	m_quadblockIndexes.clear();
 	//g_id = 1;
@@ -354,6 +359,7 @@ bool BSP::SplitLeafGeometry(const std::vector<Quadblock>& quadblocks, const Axis
 	m_node = BSPNode::BRANCH;
 	m_flags &= ~BSPFlags::LEAF;
 	m_axis = axis;
+	m_splitPoint = midpoint;
 
 	m_left = new BSP(BSPNode::LEAF, left_quad_indexes, this, quadblocks);	
 	m_right = new BSP(BSPNode::LEAF, right_quad_indexes, this, quadblocks);
@@ -404,6 +410,7 @@ bool BSP::SplitLeafMaterial(const std::vector<Quadblock>& quadblocks)
 	m_node = BSPNode::BRANCH;
 	m_flags &= ~BSPFlags::LEAF;
 	m_axis = AxisSplit::NONE;
+	m_splitPoint = 0.0f;
 
 	m_left = new BSP(BSPNode::LEAF, left_quad_indexes, this, quadblocks);
 	m_right = new BSP(BSPNode::LEAF, right_quad_indexes, this, quadblocks);
@@ -432,6 +439,7 @@ void BSP::MergeBranch()
 	m_left = nullptr;
 	m_right = nullptr;
 	m_axis = AxisSplit::NONE;
+	m_splitPoint = 0.0f;
 	m_node = BSPNode::LEAF;
 	m_flags |= BSPFlags::LEAF;
 }
@@ -706,6 +714,8 @@ std::vector<uint8_t> BSP::SerializeBranch() const
 	case AxisSplit::Y: branch.axis.y = 0x1000; break;
 	case AxisSplit::Z: branch.axis.z = 0x1000; break;
 	}
+	branch.splitPoint = ConvertFloat(m_splitPoint, FP_ONE_SPLITPOINT);
+
 	if (m_left)
 	{
 		branch.leftChild = static_cast<uint16_t>(m_left->m_id) + static_cast<uint16_t>(m_leftFlag);
@@ -718,13 +728,7 @@ std::vector<uint8_t> BSP::SerializeBranch() const
 		if (!m_right->IsBranch() && m_rightFlag == 0) { branch.rightChild |= BSPID::LEAF; }
 	}
 	else { branch.rightChild = BSPID::EMPTY; }
-	branch.unk1 = 0x00;
-	switch (m_axis)
-	{
-	case AxisSplit::X: branch.unk1 = ConvertFloat((m_bbox.min.x + m_bbox.max.x) / 4, FP_ONE_GEO); break;
-	case AxisSplit::Y: branch.unk1 = ConvertFloat((m_bbox.min.y + m_bbox.max.y) / 4, FP_ONE_GEO); break;
-	case AxisSplit::Z: branch.unk1 = ConvertFloat((m_bbox.min.z + m_bbox.max.z) / 4, FP_ONE_GEO); break;
-	}
+	
 	branch.unk2 = 0;
 	branch.unk3 = 0;
 	std::memcpy(buffer.data(), &branch, sizeof(branch));
