@@ -726,8 +726,8 @@ bool Level::GenerateCheckpoints()
 bool Level::GenerateOceanVertices()
 {
 	constexpr float PI = 3.14159265358979323846f;
-	WaterAnimParams& p = m_waterAnimSettings;
-
+	WaterAnimSettings& p = m_waterAnimSettings;
+	
 	const int brightCyclesTime = p.brightWaveCycle;
 	const float baseBright = p.baseBrightness;
 	const float waveLength = std::max(p.waveLength, 1.0f);

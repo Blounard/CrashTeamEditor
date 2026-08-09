@@ -121,7 +121,7 @@ private:
 	BSPTreeSettings m_bspSettings;
 	VisTreeSettings m_visTreeSettings;
 	BotPathSettings m_botPathSettings;
-	WaterAnimParams m_waterAnimSettings;
+	WaterAnimSettings m_waterAnimSettings;
 
 	std::vector<std::tuple<std::string, std::string>> m_invalidQuadblocks;
 	std::string m_logMessage;

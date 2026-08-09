@@ -51,7 +51,7 @@ static const std::vector<std::string> CTR_CHARACTERS = {
 	"Fake Crash", "Nitrous Oxide"
 };
 
-struct WaterAnimParams
+struct WaterAnimSettings
 {
 	float waveLength = 20.0f;  // world units 
 
