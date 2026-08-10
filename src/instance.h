@@ -9,6 +9,7 @@
 #include <string>
 #include <cstdint>
 #include <vector>
+#include <set>
 #include <nlohmann/json.hpp>
 
 
@@ -288,6 +289,45 @@ enum class ModelId : int32_t
 	STATIC_INTROSPARKS = 0xE0,
 	STATIC_GNORMALZ = 0xE1,
 	NUM_TYPES = 0xE2
+};
+
+static const std::pair<const char*, ModelId> ModelIdLabels[] = {
+				{"No Function",          ModelId::NOFUNC},
+				{"Animate If Hit",       ModelId::ANIMATE_IF_HIT},
+				{"Wumpa Fruit",          ModelId::WUMPA_FRUIT},
+				{"Explosive Crate",      ModelId::EXPLOSIVE_CRATE},
+				{"Wumpa Crate",          ModelId::FRUIT_CRATE},
+				{"Random Crate",         ModelId::RANDOM_CRATE},
+				{"Time Crate 1",         ModelId::TIME_CRATE_1},
+				{"Time Crate 2",         ModelId::TIME_CRATE_2},
+				{"Time Crate 3",         ModelId::TIME_CRATE_3},
+				{"Poison",               ModelId::POISON},
+				{"Flame Jet",            ModelId::FLAME_JET},
+				{"Piranha Plant",        ModelId::PIRANHA_PLANT},
+				{"Gate",                 ModelId::GATE},
+				{"Start Line",           ModelId::START_LINE},
+				{"Temp Snowball",        ModelId::TEMP_SNOWBALL},
+				{"Finish Line",          ModelId::FINISH_LINE},
+				{"Armadillo",            ModelId::ARMADILLO},
+				{"Blade",                ModelId::BLADE},
+				{"Seal",                 ModelId::DYNAMIC_SEAL},
+				{"Orca",                 ModelId::DYNAMIC_ORCA},
+				{"Barrel",               ModelId::DYNAMIC_BARREL},
+				{"Von Labass",           ModelId::DYNAMIC_VONLABASS},
+				{"Skunk",                ModelId::DYNAMIC_SKUNK},
+				{"Turtle",               ModelId::DYNAMIC_TURTLE},
+				{"Spider",               ModelId::DYNAMIC_SPIDER},
+				{"Spider Shadow",        ModelId::DYNAMIC_SPIDERSHADOW},
+				{"Fireball",             ModelId::DYNAMIC_FIREBALL},
+				{"Castle Sign",          ModelId::STATIC_CASTLE_SIGN},
+				{"Banner",               ModelId::STATIC_BANNER},
+				{"Warp Pad",             ModelId::STATIC_WARPPAD},
+				{"Teeth",                ModelId::STATIC_TEETH},
+				{"Start Text",           ModelId::STATIC_STARTTEXT},
+				{"Save Object",          ModelId::STATIC_SAVEOBJ},
+				{"C Letter",             ModelId::STATIC_CTR},
+				{"T Letter",             ModelId::STATIC_CTR},
+				{"R Letter",             ModelId::STATIC_CTR}
 };
 
 constexpr char     kAnimMagic[4] = { 'A', 'N', 'I', 'M' };

@@ -1198,8 +1198,6 @@ void Level::ManageTurbopad(Quadblock& quadblock)
 }
 
 
-// Build a .ctrmodel binary from raw LEV data and save it to outputPath
-// Returns true on success
 bool Level::LoadLEV(const std::filesystem::path& levFile)
 {
 	std::ifstream file(levFile, std::ios::binary);
@@ -3018,28 +3016,9 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	currOffset += m_oxideGhost.size();
 
 
-	// GOTCHA: a level with no SPAWN data silently freezes every hazard.
-	//
-	// Symptom: an armadillo (or plant/orca/flamejet) renders correctly, its birth
-	// handler runs, its thread is created and ticks every frame -- and it never moves.
-	//
-	// Cause: hazard birth handlers seed their per-instance timer from this array,
-	// indexed by the last digit of the instance name, with no null check:
-	//   timeAtEdge = metaArray[inst->name[strlen(inst->name) - 1] - '0'];
-	// but that line only runs when count > 0. Retail does NOT zero timeAtEdge
-	// beforehand (the saphi-ctr-native decomp shows an initializer that retail lacks
-	// -- do not trust it here), so when count == 0 the field keeps whatever garbage
-	// the thread's pool block last held. The tick then does
-	//   if (timeAtEdge != 0) { timeAtEdge--; return; }
-	// and returns early forever. Observed: timeAtEdge == 0x933C, decrementing once a
-	// frame, i.e. ~21 minutes of paralysis.
-	//
-	// Vanilla never hits this: all 79 levels that can contain a hazard have a valid
-	// SPAWN entry and count 4 or 6. The only vanilla levels with count == 0 are the
-	// 28 battle arenas, which contain no hazards and so never reach the code.
-	//
-	// So always emit the array. Zero-filled means "no stagger delay", which is what a
-	// lone hazard wants; non-zero values stagger multiple hazards onto separate cycles.
+
+	// INSTANCE THAT NEED IT : flamejet (i assume the fire totem), orca, armadillo and plant
+
 	constexpr size_t SPAWN_META_ENTRY_COUNT = 20; // covers plant's metaArray[digit * 2 + 1] for digits 0-9
 	const std::vector<int16_t> spawnMeta(SPAWN_META_ENTRY_COUNT, 0);
 	const size_t offSpawnMeta = currOffset;

@@ -357,47 +357,10 @@ bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, co
 		{
 			ModelId prevModelID = m_modelID;
 
-			static const std::pair<const char*, ModelId> modelIdInfos[] = {
-				{"No Function",          ModelId::NOFUNC},
-				{"Animate If Hit",       ModelId::ANIMATE_IF_HIT},
-				{"Wumpa Fruit",          ModelId::WUMPA_FRUIT},
-				{"Explosive Crate",      ModelId::EXPLOSIVE_CRATE},
-				{"Wumpa Crate",          ModelId::FRUIT_CRATE},
-				{"Random Crate",         ModelId::RANDOM_CRATE},
-				{"Time Crate 1",         ModelId::TIME_CRATE_1},
-				{"Time Crate 2",         ModelId::TIME_CRATE_2},
-				{"Time Crate 3",         ModelId::TIME_CRATE_3},
-				{"Poison",               ModelId::POISON},
-				{"Flame Jet",            ModelId::FLAME_JET},
-				{"Piranha Plant",        ModelId::PIRANHA_PLANT},
-				{"Gate",                 ModelId::GATE},
-				{"Start Line",           ModelId::START_LINE},
-				{"Temp Snowball",        ModelId::TEMP_SNOWBALL},
-				{"Finish Line",          ModelId::FINISH_LINE},
-				{"Armadillo",            ModelId::ARMADILLO},
-				{"Blade",                ModelId::BLADE},
-				{"Seal",                 ModelId::DYNAMIC_SEAL},
-				{"Orca",                 ModelId::DYNAMIC_ORCA},
-				{"Barrel",               ModelId::DYNAMIC_BARREL},
-				{"Von Labass",           ModelId::DYNAMIC_VONLABASS},
-				{"Skunk",                ModelId::DYNAMIC_SKUNK},
-				{"Turtle",               ModelId::DYNAMIC_TURTLE},
-				{"Spider",               ModelId::DYNAMIC_SPIDER},
-				{"Spider Shadow",        ModelId::DYNAMIC_SPIDERSHADOW},
-				{"Fireball",             ModelId::DYNAMIC_FIREBALL},
-				{"Castle Sign",          ModelId::STATIC_CASTLE_SIGN},
-				{"Banner",               ModelId::STATIC_BANNER},
-				{"Warp Pad",             ModelId::STATIC_WARPPAD},
-				{"Teeth",                ModelId::STATIC_TEETH},
-				{"Start Text",           ModelId::STATIC_STARTTEXT},
-				{"Save Object",          ModelId::STATIC_SAVEOBJ},
-				{"C Letter",             ModelId::STATIC_CTR},
-				{"T Letter",             ModelId::STATIC_CTR},
-				{"R Letter",             ModelId::STATIC_CTR}
-			};
+			
 
 			const char* preview = "Unknown";
-			for (const auto& [name, id] : modelIdInfos)
+			for (const auto& [name, id] : ModelIdLabels)
 			{
 				if (id == m_modelID)
 				{
@@ -407,7 +370,7 @@ bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, co
 			}
 			if (ImGui::BeginCombo("Type", preview))
 			{
-				for (const auto& [name, id] : modelIdInfos)
+				for (const auto& [name, id] : ModelIdLabels)
 				{
 					bool isSelected = (id == m_modelID);
 					if (ImGui::Selectable(name, isSelected))
@@ -608,6 +571,39 @@ bool InstanceModel::RenderUI(std::unordered_map<std::string, Texture>& materialT
 	if (ImGui::TreeNode(m_name.c_str()))
 	{
 		ImGui::InputScalar("Model ID", ImGuiDataType_S16, &m_id);
+
+
+
+		{
+			ModelId selfID = static_cast<ModelId>(m_id);
+			ModelId prevModelID = selfID;
+
+			const char* preview = "Unknown";
+			for (const auto& [name, id] : ModelIdLabels)
+			{
+				if (id == selfID)
+				{
+					preview = name;
+					break;
+				}
+			}
+			if (ImGui::BeginCombo("Type", preview))
+			{
+				for (const auto& [name, id] : ModelIdLabels)
+				{
+					bool isSelected = (id == selfID);
+					if (ImGui::Selectable(name, isSelected))
+					{
+						selfID = id;
+					}
+					if (isSelected)
+						ImGui::SetItemDefaultFocus();
+				}
+				ImGui::EndCombo();
+			}
+			ImGui::SetItemTooltip("Determines the instance's in-game behavior (Model ID).");
+		}
+
 		//ImGui::Text("List of LOD");
 		ImGui::SeparatorText("List of LOD");
 		std::vector<size_t> headerToDel;
@@ -1103,6 +1099,91 @@ void Level::RenderUI(Renderer& renderer)
 				if (ImGui::InputInt("##jysc", &m_jumpYSpeedCap)) 
 					m_jumpYSpeedCap = Clamp(m_jumpYSpeedCap, 0, 80);
 				ImGui::SetItemTooltip("Set the maximum vertical speed you can have from jumping\n");
+				ImGui::TreePop();
+			}
+
+			if (ImGui::TreeNode("Moving Instances Path"))
+			{
+				ImGui::SeparatorText("Path positions only");
+				for (size_t i = 0; i < m_spawntypes.size(); i++)
+				{
+					ImGui::PushID(i);
+					
+					if (ImGui::TreeNode(("Path " + std::to_string(i) + "##st2pos").c_str()))
+					{
+						if (ImGui::Button("Load##st2pos"))
+						{
+							auto selection = pfd::open_file("Select Path OBJ", m_parentPath.string() ,
+								{ "OBJ Files", "*.obj", "All Files", "*" }).result();
+
+							if (!selection.empty())
+							{
+								std::vector<Vec3> vec = LoadPath(selection[0]);
+								m_spawntypes[i].clear();
+								m_spawntypes[i] = std::move(vec);
+							}		
+						}
+						ImGui::SameLine();
+						if (ImGui::Button("Delete##st2pos"))
+						{
+							m_spawntypes.erase(m_spawntypes.begin() + i);
+						}
+						ImGui::SeparatorText("");
+
+						for (size_t j = 0; j < m_spawntypes[i].size(); j++)
+						{
+							ImGui::PushID(j);
+							ImGui::Text(("Pos " + std::to_string(j) + " : ").c_str()); ImGui::SameLine();
+							ImGui::InputFloat3("##pos", m_spawntypes[i][j].Data());
+							ImGui::Separator();
+							ImGui::PopID();
+						}
+						ImGui::TreePop();
+					}
+					
+					ImGui::PopID();
+				}
+				if (ImGui::Button("Add Path##st2pos"))
+				{
+					m_spawntypes.push_back({});
+				}
+				ImGui::SeparatorText("Path positions+rotations");
+				for (size_t i = 0; i < m_spawntypesPosRot.size(); i++)
+				{
+					ImGui::PushID(i);
+					
+					if (ImGui::TreeNode(("Path " + std::to_string(i) + "##st2posRot").c_str()))
+					{
+						if (ImGui::Button("Load##st2posrot"))
+						{
+							;
+						}
+						ImGui::SameLine();
+						if (ImGui::Button("Delete##st2posrot"))
+						{
+							m_spawntypesPosRot.erase(m_spawntypesPosRot.begin() + i);
+						}
+						ImGui::SeparatorText("");
+
+						for (size_t j = 0; j < m_spawntypesPosRot[i].size(); j++)
+						{
+							ImGui::PushID(j);
+							ImGui::Text(("Pos " + std::to_string(j) + " : ").c_str()); ImGui::SameLine();
+							ImGui::InputFloat3("##pos", m_spawntypesPosRot[i][j].pos.Data());
+							ImGui::Text(("Rot " + std::to_string(j) + " : ").c_str()); ImGui::SameLine();
+							ImGui::InputFloat3("##rot", m_spawntypesPosRot[i][j].rot.Data());
+							ImGui::Separator();
+							ImGui::PopID();
+						}
+						ImGui::TreePop();
+					}
+				
+					ImGui::PopID();
+				}
+				if (ImGui::Button("Add Path##st2posrot"))
+				{
+					m_spawntypesPosRot.push_back({});
+				}
 				ImGui::TreePop();
 			}
 

@@ -2030,9 +2030,6 @@ Instance::Instance(PSX::InstDef inst)
 	m_scale = ConvertPSXVec3(inst.scale, FP_ONE);
 	m_pos = ConvertPSXVec3(inst.pos, FP_ONE_GEO);
 	m_rot = ConvertPSXAngle(inst.rot);
-	//m_rot.x = -m_rot.x;
-	//m_rot.y += 180.0f;
-	//m_rot.z = -m_rot.z;
 	m_modelID = static_cast<ModelId>(inst.modelID);
 	m_color = ConvertColor(inst.colorRGBA);
 	m_flags = inst.flags;
