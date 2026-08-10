@@ -1893,7 +1893,7 @@ InstanceModel::InstanceModel(const std::filesystem::path& jsonPath, std::unorder
 
 	nlohmann::json json = nlohmann::json::parse(jsonFile);
 	m_name = json.value("name", std::string());
-	m_id = json.value("id", static_cast<int16_t>(0));
+	m_id = static_cast<ModelId>(json.value("id", static_cast<int16_t>(0)));
 	m_valid = true;
 
 	std::filesystem::path modelDir = jsonPath.parent_path();
@@ -1911,7 +1911,7 @@ InstanceModel::InstanceModel(const std::filesystem::path& jsonPath, std::unorder
 InstanceModel::InstanceModel(PSX::Model model, std::string modelName)
 {
 	m_name = modelName;
-	m_id = model.id;
+	m_id = static_cast<ModelId>(model.id);
 	m_valid = true;
 	m_headers.clear();
 }
@@ -1939,7 +1939,7 @@ void InstanceModel::Export(const std::filesystem::path& exportDir, std::unordere
 
 	nlohmann::json json;
 	json["name"] = m_name;
-	json["id"] = m_id;
+	json["id"] = static_cast<int16_t>(m_id);
 	json["numHeaders"] = m_headers.size();
 
 	nlohmann::json headersArray = nlohmann::json::array();
@@ -1978,7 +1978,7 @@ std::vector<uint8_t> InstanceModel::Serialize(uint32_t modelOffset, std::unorder
 	std::memset(model.name, 0, sizeof(model.name));
 	std::memcpy(model.name, m_name.data(), std::min(m_name.size(), sizeof(model.name)));
 	//std::strncpy(model.name, m_name.c_str(), sizeof(model.name) - 1);
-	model.id = m_id;
+	model.id = static_cast<int16_t>(m_id);
 	model.numHeaders = static_cast<uint16_t>(m_headers.size());
 	model.offHeaders = 0; // patched below
 
@@ -2015,7 +2015,7 @@ Instance::Instance(std::string model)
 	m_scale = Vec3(1.0f, 1.0f, 1.0f);
 	m_pos = Vec3(0.0f, 0.0f, 0.0f);
 	m_rot = Vec3(0.0f, 0.0f, 0.0f);
-	m_modelID = ModelId::NONE;
+	m_modelID = ModelId::NOFUNC;
 	m_color = Color(0.0f, 0.0f, 0.0f);
 	m_modelName = model;
 	m_flags = 0xB;
@@ -2030,7 +2030,7 @@ Instance::Instance(PSX::InstDef inst)
 	m_scale = ConvertPSXVec3(inst.scale, FP_ONE);
 	m_pos = ConvertPSXVec3(inst.pos, FP_ONE_GEO);
 	m_rot = ConvertPSXAngle(inst.rot);
-	m_modelID = static_cast<ModelId>(inst.modelID);
+	m_modelID = static_cast<ModelId>(static_cast<int16_t>(inst.modelID));
 	m_color = ConvertColor(inst.colorRGBA);
 	m_flags = inst.flags;
 	m_unk24 = inst.unk24;

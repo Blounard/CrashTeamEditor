@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <vector>
 #include <set>
+#include <map>
 #include <nlohmann/json.hpp>
 
 
@@ -59,7 +60,7 @@ enum class InstanceFlag : uint32_t
 	INVISIBLE_DURING_PAUSE = 0x20000000
 };
 
-enum class ModelId : int32_t
+enum class ModelId : int16_t
 {
 	NONE = -1,
 	NOFUNC = 0x00,
@@ -291,45 +292,45 @@ enum class ModelId : int32_t
 	NUM_TYPES = 0xE2
 };
 
-static const std::pair<const char*, ModelId> ModelIdLabels[] = {
-				{"No Function",          ModelId::NOFUNC},
-				{"Animate If Hit",       ModelId::ANIMATE_IF_HIT},
-				{"Wumpa Fruit",          ModelId::WUMPA_FRUIT},
-				{"Explosive Crate",      ModelId::EXPLOSIVE_CRATE},
-				{"Wumpa Crate",          ModelId::FRUIT_CRATE},
-				{"Random Crate",         ModelId::RANDOM_CRATE},
-				{"Time Crate 1",         ModelId::TIME_CRATE_1},
-				{"Time Crate 2",         ModelId::TIME_CRATE_2},
-				{"Time Crate 3",         ModelId::TIME_CRATE_3},
-				{"Poison",               ModelId::POISON},
-				{"Flame Jet",            ModelId::FLAME_JET},
-				{"Piranha Plant",        ModelId::PIRANHA_PLANT},
-				{"Gate",                 ModelId::GATE},
-				{"Start Line",           ModelId::START_LINE},
-				{"Temp Snowball",        ModelId::TEMP_SNOWBALL},
-				{"Finish Line",          ModelId::FINISH_LINE},
-				{"Armadillo",            ModelId::ARMADILLO},
-				{"Blade",                ModelId::BLADE},
-				{"Seal",                 ModelId::DYNAMIC_SEAL},
-				{"Orca",                 ModelId::DYNAMIC_ORCA},
-				{"Barrel",               ModelId::DYNAMIC_BARREL},
-				{"Von Labass",           ModelId::DYNAMIC_VONLABASS},
-				{"Skunk",                ModelId::DYNAMIC_SKUNK},
-				{"Turtle",               ModelId::DYNAMIC_TURTLE},
-				{"Spider",               ModelId::DYNAMIC_SPIDER},
-				{"Spider Shadow",        ModelId::DYNAMIC_SPIDERSHADOW},
-				{"Fireball",             ModelId::DYNAMIC_FIREBALL},
-				{"Castle Sign",          ModelId::STATIC_CASTLE_SIGN},
-				{"Banner",               ModelId::STATIC_BANNER},
-				{"Warp Pad",             ModelId::STATIC_WARPPAD},
-				{"Teeth",                ModelId::STATIC_TEETH},
-				{"Start Text",           ModelId::STATIC_STARTTEXT},
-				{"Save Object",          ModelId::STATIC_SAVEOBJ},
-				{"C Letter",             ModelId::STATIC_CTR},
-				{"T Letter",             ModelId::STATIC_CTR},
-				{"R Letter",             ModelId::STATIC_CTR}
-};
 
+static const std::map<ModelId, const char*> ModelIdLabels = {
+	{ModelId::NOFUNC,             "No Function"},
+	{ModelId::ANIMATE_IF_HIT,     "Animate If Hit"},
+	{ModelId::WUMPA_FRUIT,        "Wumpa Fruit"},
+	{ModelId::EXPLOSIVE_CRATE,    "Explosive Crate"},
+	{ModelId::FRUIT_CRATE,        "Wumpa Crate"},
+	{ModelId::RANDOM_CRATE,       "Random Crate"},
+	{ModelId::TIME_CRATE_1,       "Time Crate 1"},
+	{ModelId::TIME_CRATE_2,       "Time Crate 2"},
+	{ModelId::TIME_CRATE_3,       "Time Crate 3"},
+	{ModelId::POISON,             "Poison"},
+	{ModelId::FLAME_JET,          "Flame Jet"},
+	{ModelId::PIRANHA_PLANT,      "Piranha Plant"},
+	{ModelId::GATE,               "Gate"},
+	{ModelId::START_LINE,         "Start Line"},
+	{ModelId::TEMP_SNOWBALL,      "Temp Snowball"},
+	{ModelId::FINISH_LINE,        "Finish Line"},
+	{ModelId::ARMADILLO,          "Armadillo"},
+	{ModelId::BLADE,              "Blade"},
+	{ModelId::DYNAMIC_SEAL,       "Seal"},
+	{ModelId::DYNAMIC_ORCA,       "Orca"},
+	{ModelId::DYNAMIC_BARREL,     "Barrel"},
+	{ModelId::DYNAMIC_VONLABASS,  "Von Labass"},
+	{ModelId::DYNAMIC_SKUNK,      "Skunk"},
+	{ModelId::DYNAMIC_TURTLE,     "Turtle"},
+	{ModelId::DYNAMIC_SPIDER,     "Spider"},
+	{ModelId::DYNAMIC_SPIDERSHADOW, "Spider Shadow"},
+	{ModelId::DYNAMIC_FIREBALL,   "Fireball"},
+	{ModelId::STATIC_CASTLE_SIGN, "Castle Sign"},
+	{ModelId::STATIC_BANNER,      "Banner"},
+	{ModelId::STATIC_WARPPAD,     "Warp Pad"},
+	{ModelId::STATIC_TEETH,       "Teeth"},
+	{ModelId::STATIC_STARTTEXT,   "Start Text"},
+	{ModelId::STATIC_SAVEOBJ,     "Save Object"},
+	{ModelId::STATIC_C,           "C Letter"},
+	{ModelId::STATIC_T,           "T Letter"},
+	{ModelId::STATIC_R,           "R Letter"},
+};
 constexpr char     kAnimMagic[4] = { 'A', 'N', 'I', 'M' };
 constexpr uint32_t kAnimVersion = 1;
 
@@ -415,7 +416,7 @@ public:
 	std::vector<InstanceModelHeader> m_headers;
 private:
 	std::string m_name;
-	int16_t m_id;
+	ModelId m_id;
 	std::vector<Primitive> m_parsedGeometry;
 	bool m_parsed = false;
 	bool m_valid = true;

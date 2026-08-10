@@ -90,6 +90,40 @@ static bool UIFlagCheckbox(T& var, const T flag, const std::string& title)
 	return false;
 }
 
+
+static bool ModelIdWidget(const char* label, ModelId* id)
+{
+	int16_t raw = static_cast<int16_t>(*id);
+	ImGui::SetNextItemWidth(180.0f);
+	bool changed = ImGui::InputScalar(label, ImGuiDataType_S16, &raw);
+	if (changed)
+		*id = static_cast<ModelId>(raw);
+
+	ImGui::SameLine();
+
+	auto it = ModelIdLabels.find(*id);
+	const char* currentLabel = (it != ModelIdLabels.end()) ? it->second : "Unknown";
+
+	ImGui::SetNextItemWidth(180.0f);
+	if (ImGui::BeginCombo("##ModelIdCombo", currentLabel))
+	{
+		for (const auto& [entryId, entryLabel] : ModelIdLabels)
+		{
+			bool isSelected = (entryId == *id);
+			if (ImGui::Selectable(entryLabel, isSelected))
+			{
+				*id = entryId;
+				changed = true;
+			}
+			if (isSelected)
+				ImGui::SetItemDefaultFocus();
+		}
+		ImGui::EndCombo();
+	}
+
+	return changed;
+}
+
 void BoundingBox::RenderUI() const
 {
 	ImGui::Text("Max:"); ImGui::SameLine();
@@ -359,30 +393,7 @@ bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, co
 
 			
 
-			const char* preview = "Unknown";
-			for (const auto& [name, id] : ModelIdLabels)
-			{
-				if (id == m_modelID)
-				{
-					preview = name;
-					break;
-				}
-			}
-			if (ImGui::BeginCombo("Type", preview))
-			{
-				for (const auto& [name, id] : ModelIdLabels)
-				{
-					bool isSelected = (id == m_modelID);
-					if (ImGui::Selectable(name, isSelected))
-					{
-						m_modelID = id;
-					}
-					if (isSelected)
-						ImGui::SetItemDefaultFocus();
-				}
-				ImGui::EndCombo();
-			}
-			ImGui::SetItemTooltip("Determines the instance's in-game behavior (Model ID).");
+			ModelIdWidget("Model ID", &m_modelID);
 
 			// Auto-set hitbox when model ID changes to a crate or wumpa fruit
 			if (m_modelID != prevModelID)
@@ -570,39 +581,7 @@ bool InstanceModel::RenderUI(std::unordered_map<std::string, Texture>& materialT
 	bool toDel = false;
 	if (ImGui::TreeNode(m_name.c_str()))
 	{
-		ImGui::InputScalar("Model ID", ImGuiDataType_S16, &m_id);
-
-
-
-		{
-			ModelId selfID = static_cast<ModelId>(m_id);
-			ModelId prevModelID = selfID;
-
-			const char* preview = "Unknown";
-			for (const auto& [name, id] : ModelIdLabels)
-			{
-				if (id == selfID)
-				{
-					preview = name;
-					break;
-				}
-			}
-			if (ImGui::BeginCombo("Type", preview))
-			{
-				for (const auto& [name, id] : ModelIdLabels)
-				{
-					bool isSelected = (id == selfID);
-					if (ImGui::Selectable(name, isSelected))
-					{
-						selfID = id;
-					}
-					if (isSelected)
-						ImGui::SetItemDefaultFocus();
-				}
-				ImGui::EndCombo();
-			}
-			ImGui::SetItemTooltip("Determines the instance's in-game behavior (Model ID).");
-		}
+		ModelIdWidget("Model ID", &m_id);
 
 		//ImGui::Text("List of LOD");
 		ImGui::SeparatorText("List of LOD");
