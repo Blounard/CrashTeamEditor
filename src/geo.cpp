@@ -30,6 +30,12 @@ float BoundingBox::SemiPerimeter() const
 	return dist.x + dist.y + dist.z;
 }
 
+float BoundingBox::NormL(int power) const
+{
+	Vec3 dist = max - min;
+	return std::pow(std::pow(dist.x, power) + std::pow(dist.y, power) + std::pow(dist.z, power), 1.0f/static_cast<float>(power));
+}
+
 Vec3 BoundingBox::AxisLength() const
 {
 	return max - min;
@@ -38,6 +44,15 @@ Vec3 BoundingBox::AxisLength() const
 Vec3 BoundingBox::Midpoint() const
 {
 	return (max + min) / 2;
+}
+
+BoundingBox BoundingBox::Union(const BoundingBox other) const 
+{
+	BoundingBox box{};
+	box.min.x = std::min(min.x, other.min.x); box.max.x = std::max(max.x, other.max.x);
+	box.min.y = std::min(min.y, other.min.y); box.max.y = std::max(max.y, other.max.y);
+	box.min.z = std::min(min.z, other.min.z); box.max.z = std::max(max.z, other.max.z);
+	return box;
 }
 
 std::vector<Primitive> BoundingBox::ToGeometry() const

@@ -531,16 +531,15 @@ void init_crashteameditor(py::module_& m)
 		.def("set_quadblock_indexes", &BSP::SetQuadblockIndexes)
 		.def("split_leaf", &BSP::SplitLeafGeometry, py::arg("quadblocks"), py::arg("axis"), py::arg("midpoint"))
 		.def("clear", &BSP::Clear)
-		.def("generate", [](BSP& bsp, const std::vector<Quadblock>& quadblocks, int maxQuadPerLeaf, float maxAxisDistance, bool separateMaterial, float scoreWeight)
+		.def("generate", [](BSP& bsp, const std::vector<Quadblock>& quadblocks, int maxQuadPerLeaf, float maxAxisDistance, bool separateMaterial)
 			{
 				BSPTreeSettings settings;
 				settings.maxQuadPerLeaf = maxQuadPerLeaf;
 				settings.maxAxisDistance = maxAxisDistance;
 				settings.separateMaterial = separateMaterial;
-				settings.scoreWeight = scoreWeight;
 				bsp.Generate(quadblocks, settings);
 			}
-	, py::arg("quadblocks"), py::arg("max_quads_per_leaf"), py::arg("max_axis_length"), py::arg("separate_material"), py::arg("score_weight") );
+	, py::arg("quadblocks"), py::arg("max_quads_per_leaf"), py::arg("max_axis_length"), py::arg("separate_material") );
 
 
 	py::class_<BitMatrix>(m, "VisTree")

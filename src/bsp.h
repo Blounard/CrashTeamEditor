@@ -10,14 +10,16 @@ struct BSPTreeSettings
 	int maxQuadPerLeaf;
 	float maxAxisDistance;
 	bool separateMaterial;
-	float scoreWeight;
-	int k;
+	int k; // power of quadcount
+	int l; // norm of bbox diag
+	int c; // norm of the cost (cost = costLeft^c + costRight^c)
 	BSPTreeSettings() :
 		maxQuadPerLeaf(32),
 		maxAxisDistance(64.0f),
 		separateMaterial(false),
 		k(0),
-		scoreWeight(0.5f) {}
+		l(1),
+		c(1) {}
 };
 
 enum class BSPNode
@@ -31,6 +33,16 @@ enum class AxisSplit
 	NONE, X, Y, Z
 };
 static const char* AxisSplitNames[] = { "NONE", "X", "Y", "Z" };
+inline float ProjectionAxis(const Vec3& vec, const AxisSplit& axis)
+{
+	switch (axis)
+	{
+	case AxisSplit::X: return vec.x;
+	case AxisSplit::Y: return vec.y;
+	case AxisSplit::Z: return vec.z;
+	default:           return 0.0f;
+	}
+}
 
 struct BSPFlags
 {
@@ -87,10 +99,7 @@ public:
 	void RenderUI(const std::vector<Quadblock>& quadblocks);
 
 private:
-	float FindBestSplitCandidates(const std::vector<Quadblock>& quadblocks, AxisSplit axis, const std::vector<float>& candidates, int k, float& outCost);
-	float SplitCostLeft(int k);
-	float SplitCostRight(int k);
-	float SplitCost(int k);
+	float FindBestSplitCandidates(const std::vector<Quadblock>& quadblocks, AxisSplit axis, const std::vector<float>& candidates, BSPTreeSettings settings, float& outCost);
 	std::vector<uint8_t> SerializeBranch() const;
 	std::vector<uint8_t> SerializeLeaf(size_t offQuads) const;
 

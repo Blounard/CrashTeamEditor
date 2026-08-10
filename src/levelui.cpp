@@ -89,59 +89,6 @@ static bool UIFlagCheckbox(T& var, const T flag, const std::string& title)
 }
 
 
-// AI Widget : Slider bar to control a float in between 0 and 1
-// value: weight in [0,1] assigned to rightLabel; (1 - value) is assigned to leftLabel.
-bool BalanceSlider(const char* id, float* value, const char* leftLabel, const char* rightLabel, float width = 200.0f)
-{
-	ImGui::PushID(id);
-	bool changed = false;
-	float height = ImGui::GetFrameHeight();
-
-	ImGui::AlignTextToFramePadding();
-	ImGui::Text("%s %.0f%%", leftLabel, (1.0f - *value) * 100.0f);
-	ImGui::SameLine();
-
-	ImDrawList* drawList = ImGui::GetWindowDrawList();
-	ImVec2 min = ImGui::GetCursorScreenPos();
-	ImVec2 max = ImVec2(min.x + width, min.y + height);
-
-	ImGui::InvisibleButton("slider", ImVec2(width, height));
-	bool active = ImGui::IsItemActive();
-	bool hovered = ImGui::IsItemHovered();
-
-	if (active && ImGui::IsMouseDown(ImGuiMouseButton_Left))
-	{
-		float t = (ImGui::GetIO().MousePos.x - min.x) / width;
-		*value = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
-		changed = true;
-	}
-
-	// Groove
-	float grooveY = min.y + height * 0.5f;
-	drawList->AddLine(ImVec2(min.x, grooveY), ImVec2(max.x, grooveY),
-		ImGui::GetColorU32(ImGuiCol_FrameBg), 3.0f);
-
-	// Handle (Qt-style rectangular grab)
-	float handleWidth = 12.0f;
-	float handleX = min.x + (*value) * width;
-	handleX = std::max(min.x + handleWidth * 0.5f, std::min(max.x - handleWidth * 0.5f, handleX));
-	ImVec2 handleMin(handleX - handleWidth * 0.5f, min.y);
-	ImVec2 handleMax(handleX + handleWidth * 0.5f, min.y + height);
-	drawList->AddRectFilled(handleMin, handleMax,
-		ImGui::GetColorU32(active ? ImGuiCol_SliderGrabActive : ImGuiCol_SliderGrab), 2.0f);
-	drawList->AddRect(handleMin, handleMax, ImGui::GetColorU32(ImGuiCol_Border), 2.0f);
-
-	if (hovered || active)
-		ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
-
-	ImGui::SameLine();
-	ImGui::AlignTextToFramePadding();
-	ImGui::Text("%.0f%% %s", (*value) * 100.0f, rightLabel);
-
-	ImGui::PopID();
-	return changed;
-}
-
 
 
 void BoundingBox::RenderUI() const
@@ -1072,8 +1019,10 @@ void Level::RenderUI(Renderer& renderer)
 					ImGui::SetItemTooltip("Lower values improve rendering performance, but increases file size and slows down vis tree generation.");
 					if (ImGui::InputFloat("Max Leaf Axis Length", &m_bspSettings.maxAxisDistance)) { m_bspSettings.maxAxisDistance = std::max(m_bspSettings.maxAxisDistance, 0.0f); }
 					ImGui::SetItemTooltip("Lower values improve rendering performance, but increases file size and slows down vis tree generation.");
+					if (ImGui::InputInt("QuadCount Power", &m_bspSettings.k)) { m_bspSettings.k = std::max(m_bspSettings.k, 0); }
+					if (ImGui::InputInt("BBox L-Norm value", &m_bspSettings.l)) { m_bspSettings.l = std::max(m_bspSettings.l, 1); }
+					if (ImGui::InputInt("Cost combination L-Norm value", &m_bspSettings.c)) { m_bspSettings.c = std::max(m_bspSettings.c, 1); }
 					ImGui::Checkbox("Separate Material", &m_bspSettings.separateMaterial);
-					if (ImGui::InputInt("K", &m_bspSettings.k)) { m_bspSettings.k = std::max(m_bspSettings.k, 0); }
 					ImGui::TreePop();
 				}
 				if (ImGui::TreeNodeEx("Vis Tree Settings", ImGuiTreeNodeFlags_DefaultOpen))
