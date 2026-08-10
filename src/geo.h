@@ -120,6 +120,7 @@ struct BoundingBox
 	float Area() const;
 	float SemiPerimeter() const;
 	float NormL(int power) const;
+	float MaxAxisLength() const;
 	Vec3 AxisLength() const;
 	Vec3 Midpoint() const;
 	BoundingBox Union(const BoundingBox other) const;

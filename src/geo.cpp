@@ -36,6 +36,12 @@ float BoundingBox::NormL(int power) const
 	return std::pow(std::pow(dist.x, power) + std::pow(dist.y, power) + std::pow(dist.z, power), 1.0f/static_cast<float>(power));
 }
 
+float BoundingBox::MaxAxisLength() const
+{
+	Vec3 dist = max - min;
+	return std::max(std::max(dist.x, dist.y), dist.z);
+}
+
 Vec3 BoundingBox::AxisLength() const
 {
 	return max - min;

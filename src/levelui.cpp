@@ -89,6 +89,51 @@ static bool UIFlagCheckbox(T& var, const T flag, const std::string& title)
 }
 
 
+bool BalanceSlider(const char* id, float* value, float minVal = 0.0f, float maxVal = 1.0f, float width = 200.0f)
+{
+	ImGui::PushID(id);
+	bool changed = false;
+	float height = ImGui::GetFrameHeight();
+
+	ImDrawList* drawList = ImGui::GetWindowDrawList();
+	ImVec2 min = ImGui::GetCursorScreenPos();
+	ImVec2 max = ImVec2(min.x + width, min.y + height);
+
+	ImGui::InvisibleButton("slider", ImVec2(width, height));
+	bool active = ImGui::IsItemActive();
+	bool hovered = ImGui::IsItemHovered();
+
+	if (active && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+	{
+		float t = (ImGui::GetIO().MousePos.x - min.x) / width;
+		*value = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
+		changed = true;
+	}
+
+	// Groove
+	float grooveY = min.y + height * 0.5f;
+	drawList->AddLine(ImVec2(min.x, grooveY), ImVec2(max.x, grooveY),
+		ImGui::GetColorU32(ImGuiCol_FrameBg), 3.0f);
+
+	// Handle (Qt-style rectangular grab)
+	float handleWidth = 12.0f;
+	float handleX = min.x + (*value) * width;
+	handleX = std::max(min.x + handleWidth * 0.5f, std::min(max.x - handleWidth * 0.5f, handleX));
+	ImVec2 handleMin(handleX - handleWidth * 0.5f, min.y);
+	ImVec2 handleMax(handleX + handleWidth * 0.5f, min.y + height);
+	drawList->AddRectFilled(handleMin, handleMax,
+		ImGui::GetColorU32(active ? ImGuiCol_SliderGrabActive : ImGuiCol_SliderGrab), 2.0f);
+	drawList->AddRect(handleMin, handleMax, ImGui::GetColorU32(ImGuiCol_Border), 2.0f);
+
+	if (hovered || active)
+		ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
+
+	ImGui::PopID();
+	return changed;
+}
+
+
+
 
 
 void BoundingBox::RenderUI() const
@@ -1019,9 +1064,29 @@ void Level::RenderUI(Renderer& renderer)
 					ImGui::SetItemTooltip("Lower values improve rendering performance, but increases file size and slows down vis tree generation.");
 					if (ImGui::InputFloat("Max Leaf Axis Length", &m_bspSettings.maxAxisDistance)) { m_bspSettings.maxAxisDistance = std::max(m_bspSettings.maxAxisDistance, 0.0f); }
 					ImGui::SetItemTooltip("Lower values improve rendering performance, but increases file size and slows down vis tree generation.");
-					if (ImGui::InputInt("QuadCount Power", &m_bspSettings.k)) { m_bspSettings.k = std::max(m_bspSettings.k, 0); }
-					if (ImGui::InputInt("BBox L-Norm value", &m_bspSettings.l)) { m_bspSettings.l = std::max(m_bspSettings.l, 1); }
-					if (ImGui::InputInt("Cost combination L-Norm value", &m_bspSettings.c)) { m_bspSettings.c = std::max(m_bspSettings.c, 1); }
+					if (ImGui::InputInt("QuadCount Power", &m_bspSettings.k)) { m_bspSettings.k = Clamp(m_bspSettings.k, 0, 5); }
+					ImGui::SetItemTooltip("Higher values gives more importance to QuadCount Balance against Geometry Balance.");
+					if (ImGui::InputInt("BBox L-Norm value", &m_bspSettings.l)) 
+					{ 
+						m_bspSettings.l = std::max(m_bspSettings.l, 1);
+						if (m_bspSettings.l > 5 && m_bspSettings.l != 98)
+							m_bspSettings.l = 99;
+						if (m_bspSettings.l == 98)
+							m_bspSettings.l = 5;
+					}
+					ImGui::SetItemTooltip("Norm used for measuring the size of the BBox.\nHigher values weight the worse axis more than the other axes.");
+					if (ImGui::InputInt("Cost L-Norm value", &m_bspSettings.c)) 
+					{
+						m_bspSettings.c = std::max(m_bspSettings.c, 1);
+						if (m_bspSettings.c > 5 && m_bspSettings.c != 98)
+							m_bspSettings.c = 99;
+						if (m_bspSettings.c == 98)
+							m_bspSettings.c = 5;
+					}
+					ImGui::SetItemTooltip("Norm used for calculating the cost of a split.\nHigher values weight the worse case more than the average case.");
+					ImGui::SliderFloat("##SplitPoint Area", &m_bspSettings.splitRange, 0.0f, 1.0f); ImGui::SameLine();
+					ImGui::SetItemTooltip("Range of value used to split a Leaf into a Branch.\n100%% means the whole BBox is used, while 0%% means only the midpoint is used.");
+					ImGui::Text("SplitPoint Range %zu%%", static_cast<int>(m_bspSettings.splitRange*100.0f));
 					ImGui::Checkbox("Separate Material", &m_bspSettings.separateMaterial);
 					ImGui::TreePop();
 				}

@@ -447,12 +447,12 @@ float BSP::FindBestSplitCandidates(const std::vector<Quadblock>& quadblocks, Axi
 	if (candidates.empty() || m_quadblockIndexes.empty())
 		return bestMidpoint;
 
-	// Sort this node's quads by center along axis.
 	std::vector<size_t> sortedIndexes = m_quadblockIndexes;
 	std::sort(sortedIndexes.begin(), sortedIndexes.end(), [&](size_t a, size_t b)
 		{
 			return ProjectionAxis(quadblocks[a].GetCenter(), axis) < ProjectionAxis(quadblocks[b].GetCenter(), axis);
 		});
+
 	std::vector<float> sortedCenters(sortedIndexes.size());
 	for (size_t i = 0; i < sortedIndexes.size(); i++)
 		sortedCenters[i] = ProjectionAxis(quadblocks[sortedIndexes[i]].GetCenter(), axis);
@@ -484,11 +484,29 @@ float BSP::FindBestSplitCandidates(const std::vector<Quadblock>& quadblocks, Axi
 		if (i == 0 || i == n)
 			continue;
 
-		float leftCost = std::pow(n - i, settings.k) * suffixBBox[i].NormL(settings.l);
-		float rightCost = std::pow(i, settings.k) * prefixBBox[i].NormL(settings.l);
-		double leftCostD = std::pow(static_cast<double>(leftCost), static_cast<double>(settings.c));
-		double rightCostD = std::pow(static_cast<double>(rightCost), static_cast<double>(settings.c));
-		float cost = static_cast<float>(leftCostD + rightCostD);
+		float leftCost;
+		float rightCost;
+		if (settings.l > 5)
+		{
+			leftCost = std::pow(n - i, settings.k) * suffixBBox[i].MaxAxisLength();
+			rightCost = std::pow(i, settings.k) * prefixBBox[i].MaxAxisLength();
+		}
+		else
+		{
+			leftCost = std::pow(n - i, settings.k) * suffixBBox[i].NormL(settings.l);
+			rightCost = std::pow(i, settings.k) * prefixBBox[i].NormL(settings.l);
+		}
+
+		float cost;
+		if (settings.c > 5)
+			cost = std::max(leftCost, rightCost);
+		else
+		{
+			double leftCostD = std::pow(static_cast<double>(leftCost), static_cast<double>(settings.c));
+			double rightCostD = std::pow(static_cast<double>(rightCost), static_cast<double>(settings.c));
+			cost = static_cast<float>(leftCostD + rightCostD);
+		}
+		
 		if (outCost < 0.0f || cost < outCost)
 		{
 			outCost = cost;
@@ -518,6 +536,9 @@ bool BSP::FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& out
 		allowedAxis = { AxisSplit::X, AxisSplit::Y, AxisSplit::Z };
 	}
 
+	float p1 = (1.0f - settings.splitRange) * 0.5f;
+	float p2 = 1.0f - p1;
+
 	for (AxisSplit axis : allowedAxis)
 	{
 		std::vector<float> centers;
@@ -528,12 +549,12 @@ bool BSP::FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& out
 		std::sort(centers.begin(), centers.end());
 
 		std::vector<float> candidates;
-		//candidates.push_back(ProjectionAxis(m_bbox.Midpoint(), axis));
+		candidates.push_back(ProjectionAxis(m_bbox.Midpoint(), axis));
 		for (size_t i = 0; i < m_quadblockIndexes.size() - 1; i++)
 		{
 			float splitPoint = (centers[i] + centers[i + 1]) / 2;
-			float smallBound = ProjectionAxis((m_bbox.min * 0.75f) + (m_bbox.max * 0.25f), axis);
-			float upBound = ProjectionAxis((m_bbox.min * 0.25f) + (m_bbox.max * 0.75f), axis);
+			float smallBound = ProjectionAxis((m_bbox.min * p2) + (m_bbox.max * p1), axis);
+			float upBound = ProjectionAxis((m_bbox.min * p1) + (m_bbox.max * p2), axis);
 			if (splitPoint > smallBound && splitPoint < upBound)
 				candidates.push_back(splitPoint);
 		}		
@@ -564,7 +585,7 @@ bool BSP::FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& out
 
 void BSP::Generate(const std::vector<Quadblock>& quadblocks, const BSPTreeSettings settings)
 {
-	printf("Generate Start for node %d, with %d quads\n", m_id, m_quadblockIndexes.size());
+	//printf("Generate Start for node %d, with %d quads\n", m_id, m_quadblockIndexes.size());
 	MergeBranch();
 	if (m_quadblockIndexes.size() < 2)
 		return;
