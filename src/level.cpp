@@ -94,6 +94,8 @@ void Level::Clear(bool clearErrors)
 	m_jumpYSpeedCap = 0;
 	m_instances.clear();
 	m_instanceModels.clear();
+	m_spawntypes.clear();
+	m_spawntypesPosRot.clear();
 	m_vramData.clear();
 	std::error_code ec;
 	std::filesystem::remove_all(std::filesystem::temp_directory_path() / "CTE_tex_cache", ec);
@@ -1322,7 +1324,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	Read(file, header);
 
 
-	m_spawntypes.clear();
 	printf("NumSpwanType2 : %d at offset 0x%x\n", header.numSpawnType_2, header.offSpawnType_2);
 	if (header.offSpawnType_2 != 0)
 	{	
@@ -1349,7 +1350,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		}
 	}
 
-	m_spawntypesPosRot.clear();
 	printf("NumSpwanType2 PosRot: %d at offset 0x%x\n", header.numSpawnType_2_posRot, header.offSpawnType_2_posRot);
 	if (header.offSpawnType_2_posRot != 0)
 	{
@@ -3114,6 +3114,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		currOffset += visibleNodeAll.size() * sizeof(uint32_t);
 
 		visibleQuads.push_back({ visibleQuadsAll, currOffset });
+		uniqueVisQuads.push_back(visibleQuadsAll);
 		currOffset += visibleQuadsAll.size() * sizeof(uint32_t);
 	}
 	printf("visibleNodesOffsetMapSize %d\n", visNodesOffsetMap.size());
