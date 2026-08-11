@@ -143,7 +143,7 @@ void BSP::RenderUI(const std::vector<Quadblock>& quadblocks)
 	{
 		if (IsBranch()) { ImGui::Text(("Axis:  " + GetAxis()).c_str()); }
 		ImGui::Text(("Quads: " + std::to_string(m_quadblockIndexes.size())).c_str());
-		if (ImGui::TreeNode("Quadblock List:"))
+		if (ImGui::TreeNode(("Quadblock List: (" + std::to_string(m_quadblockIndexes.size()) + ")").c_str()))
 		{
 			constexpr size_t QUADS_PER_LINE = 10;
 			for (size_t i = 0; i < m_quadblockIndexes.size(); i++)
@@ -156,6 +156,48 @@ void BSP::RenderUI(const std::vector<Quadblock>& quadblocks)
 		}
 		ImGui::Text("Bounding Box:");
 		m_bbox.RenderUI();
+		if (IsBranch())
+		{
+			if (ImGui::Button("Merge"))
+			{
+				MergeBranch();
+			}
+			ImGui::SetItemTooltip("Transform this branch into a leaf by merging all it's child leaves together");
+		}
+		else
+		{
+			static AxisSplit BSPaxisSplit = AxisSplit::NONE;
+			static float BSPmidpointSplit = 0.0f;
+			ImGui::SetNextItemWidth(200.0f);
+			if (ImGui::BeginCombo("Axis", AxisSplitNames[static_cast<int>(BSPaxisSplit)]))
+			{
+				for (int i = 0; i < 4; ++i)
+				{
+					AxisSplit currentAxis = static_cast<AxisSplit>(i);
+					bool isSelected = (BSPaxisSplit == currentAxis);
+
+					if (ImGui::Selectable(AxisSplitNames[i], isSelected))
+					{
+						BSPaxisSplit = currentAxis;
+					}
+
+					// Set initial focus to the currently selected item when opening the combo
+					if (isSelected)
+					{
+						ImGui::SetItemDefaultFocus();
+					}
+				}
+				ImGui::EndCombo();
+			}
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(200.0f);
+			ImGui::InputFloat("Midpoint", &BSPmidpointSplit);
+			ImGui::SameLine();
+			if (ImGui::Button("Split"))
+			{
+				SplitLeafGeometry(quadblocks, BSPaxisSplit, BSPmidpointSplit);
+			}
+		}
 		if (m_left) { m_left->RenderUI(quadblocks); }
 		if (m_right) { m_right->RenderUI(quadblocks); }
 		ImGui::TreePop();
@@ -808,6 +850,19 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 			return true;
 		}
 	}
+	else if constexpr (M == MaterialType::WATER)
+	{
+		T& preview = GetPreview(material);
+		ImGui::Checkbox("Water", &preview);
+		ImGui::SameLine();
+
+		static ButtonUI waterApplyButton = ButtonUI();
+		if (waterApplyButton.Show(("Apply##water" + material).c_str(), "Water successfully updated.", UnsavedChanges(material)))
+		{
+			Apply(material, quadblockIndexes, quadblocks);
+			return true;
+		}
+		}
 	return false;
 }
 
@@ -1017,7 +1072,8 @@ void Level::RenderUI(Renderer& renderer)
 			{
 				UIFlagCheckbox(m_configFlags, LevConfigFlags::ENABLE_SKYBOX_GRADIENT, "Enable Skybox Gradient");
 				UIFlagCheckbox(m_configFlags, LevConfigFlags::MASK_GRAB_UNDERWATER, "Mask Grab Underwater");
-				UIFlagCheckbox(m_configFlags, LevConfigFlags::ANIMATE_WATER_VERTEX, "Animate Water Vertex");
+				UIFlagCheckbox(m_configFlags, LevConfigFlags::ANIMATE_WATER_VERTEX, "Animated VColors");
+				ImGui::SetItemTooltip("This flag decide if you can use Water, or Animated VColors (Roo Tubes effect). They are mutually exclusive");
 				ImGui::TreePop();
 			}
 			if (ImGui::TreeNode("Sky Gradient"))
@@ -1199,6 +1255,56 @@ void Level::RenderUI(Renderer& renderer)
 				}
 				ImGui::TreePop();
 			}
+
+			if (ImGui::TreeNode("Water"))
+			{
+				if (ImGui::TreeNode("Settings##Water"))
+				{	
+					ImGui::SeparatorText("Base UV");
+					ImGui::DragFloat("World Tex size", &m_waterAnimSettings.sizeTex, 0.5f, 0.0f, 100.0f, "%.1f");
+					ImGui::SetItemTooltip("Size of the full texture in world units");
+
+					ImGui::SeparatorText("Scrolling UV");
+					ImGui::InputInt("U Cycle count##scroll", &m_waterAnimSettings.ScrollULoops);
+					ImGui::InputInt("V Cycle count##scroll", &m_waterAnimSettings.ScrollVLoops);
+
+					ImGui::SeparatorText("Waving UV");
+					ImGui::DragFloat("Wave Length##uv", &m_waterAnimSettings.waveLength, 0.1f, 0.0f, 1000.0f, "%.1f");
+					ImGui::InputInt("U Cycle count##wave", &m_waterAnimSettings.waveCyclesTimeU);
+					ImGui::InputInt("V Cycle count##wave", &m_waterAnimSettings.waveCyclesTimeV);
+					ImGui::DragFloat("Wave Amplitude", &m_waterAnimSettings.waveAmplitude, 0.1f, 0.0f, 64.0f, "%.1f pixels");
+
+					ImGui::SeparatorText("Brightness");
+					// --- Brightness & Shimmer ---
+					ImGui::DragFloat("Base Brightness", &m_waterAnimSettings.baseBrightness, 0.1f, 0.0f, 15.0f, "%.1f");
+					ImGui::SetItemTooltip("Base brightness (range 0 to 15).");
+
+					if (ImGui::DragFloat("Brightness amplitude", &m_waterAnimSettings.brightAmp, 0.1f, 0.0f, 15.0f, "%.1f"))
+					{
+						m_waterAnimSettings.brightAmp = Clamp(m_waterAnimSettings.brightAmp, 0.0f, 15.0f);
+					}
+					ImGui::SetItemTooltip("Base lighting brightness (range 0 to 15).");						
+					ImGui::InputInt("Brightness Cycles Time", &m_waterAnimSettings.brightWaveCycle);
+					ImGui::SetItemTooltip("Temporal cycles over loop (different from ripple cycles so waves and shimmer don't lock-step).");
+
+				//	ImGui::Separator();
+
+				//	// --- Variation ---
+				//	ImGui::InputFloat("Seed", &m_waterAnimSettings.seed);
+				//	ImGui::SetItemTooltip("Vary between separate, unconnected water bodies.");
+
+					ImGui::TreePop();
+				}
+				m_materialToTexture[m_envMapMatName].RenderUI({}, m_quadblocks, [&]() { this->UpdateAnimationRenderData(); });
+				static std::string buttonMessage;
+				static ButtonUI generateWaterButton = ButtonUI();
+				if (generateWaterButton.Show("Generate Water Animations", buttonMessage, false))
+				{
+					if (GenerateOceanVertices()) { buttonMessage = "Successfully generated the ocean animations."; }
+					else { buttonMessage = "Failed to create water (this shouldn't be possible)."; }
+				}
+				ImGui::TreePop();
+			}
 		}
 		ImGui::End();
 	}
@@ -1234,6 +1340,7 @@ void Level::RenderUI(Renderer& renderer)
 					
 					m_propCheckpoints.RenderUI(material, quadblockIndexes, m_quadblocks);
 					m_propCheckpointPathable.RenderUI(material, quadblockIndexes, m_quadblocks);
+					m_propWater.RenderUI(material, quadblockIndexes, m_quadblocks);
 					m_propVisTreeTransparent.RenderUI(material, quadblockIndexes, m_quadblocks);
 					if (m_propTurboPads.RenderUI(material, quadblockIndexes, m_quadblocks))
 					{
@@ -1459,11 +1566,11 @@ void Level::RenderUI(Renderer& renderer)
 			{
 				if (ImGui::TreeNodeEx("BSP Settings", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					if (ImGui::InputInt("Max Quad Per Leaf", &m_maxQuadPerLeaf)) { m_maxQuadPerLeaf = std::max(m_maxQuadPerLeaf, 1); }
+					if (ImGui::InputInt("Max Quad Per Leaf", &m_bspSettings.maxQuadPerLeaf)) { m_bspSettings.maxQuadPerLeaf = std::max(m_bspSettings.maxQuadPerLeaf, 1); }
 					ImGui::SetItemTooltip("Lower values improve rendering performance, but increases file size and slows down vis tree generation.");
-					if (ImGui::InputFloat("Max Leaf Axis Length", &m_maxLeafAxisLength)) { m_maxLeafAxisLength = std::max(m_maxLeafAxisLength, 0.0f); }
+					if (ImGui::InputFloat("Max Leaf Axis Length", &m_bspSettings.maxAxisDistance)) { m_bspSettings.maxAxisDistance = std::max(m_bspSettings.maxAxisDistance, 0.0f); }
 					ImGui::SetItemTooltip("Lower values improve rendering performance, but increases file size and slows down vis tree generation.");
-
+					ImGui::Checkbox("Separate Material", &m_bspSettings.separateMaterial);
 					ImGui::TreePop();
 				}
 				if (ImGui::TreeNodeEx("Vis Tree Settings", ImGuiTreeNodeFlags_DefaultOpen))
@@ -1478,8 +1585,6 @@ void Level::RenderUI(Renderer& renderer)
 					ImGui::SetItemTooltip("Speeds up VisTree generation by a factor of 2x to 3x with minimal loss of precision.");
 					ImGui::Checkbox("Center-Only Samples", &m_visTreeSettings.centerOnlySamples);
 					ImGui::SetItemTooltip("Only casts rays from each quad center (skips corner samples). Much faster, but may miss narrow visibility paths.");
-					ImGui::Checkbox("Ground-Only RayCast", &m_visTreeSettings.castFromGroundOnly);
-					ImGui::SetItemTooltip("Only casts rays from Ground and Kicker_2 quads. Less visibility, but can avoid unwanted raycast");
 					ImGui::TreePop();
 				}
 				ImGui::TreePop();
@@ -2627,6 +2732,7 @@ bool Quadblock::RenderUI(size_t checkpointCount, bool& resetBsp)
 		ImGui::Text("Checkpoint Index: ");
 		ImGui::SameLine();
 		if (ImGui::InputInt("##cp", &m_checkpointIndex)) { m_checkpointIndex = Clamp(m_checkpointIndex, -1, static_cast<int>(checkpointCount)); }
+		ImGui::Checkbox("Water", &m_water);
 		ImGui::Checkbox("VisTree Transparency", &m_visTreeTransparent);
 		ImGui::Text("Trigger:");
 		if (ImGui::RadioButton("None", m_trigger == QuadblockTrigger::NONE))
@@ -2688,7 +2794,10 @@ void Texture::RenderUI(const std::vector<size_t>& quadblockIndexes, std::vector<
 		ImGui::SameLine();
 		if (ImGui::Button("..."))
 		{
-			auto selection = pfd::open_file("Texture File", ".", {"Texture Files", "*.bmp, *.jpeg, *.jpg, *.png"}).result();
+			std::filesystem::path currentPath = GetPath();
+			std::string defaultDir = currentPath.has_parent_path() ? currentPath.parent_path().string() : ".";
+			std::string defaultFile = currentPath.filename().string();
+			auto selection = pfd::open_file("Texture File", defaultDir, {"Texture Files", "*.bmp, *.jpeg, *.jpg, *.png"}).result();
 			if (!selection.empty())
 			{
 				const std::filesystem::path& newTexPath = selection.front();

@@ -367,6 +367,7 @@ bool Texture::CreateTexture()
 	{ 
 		m_blendMode = PSX::BlendMode::ADDITIVE_TRANSLUCENT;
 	}
+
 	Texture::BPP bpp = GetBPP();
 	if (GetVRAMWidth() > TEXPAGE_WIDTH || GetHeight() > TEXPAGE_HEIGHT)
 	{

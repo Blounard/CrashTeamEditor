@@ -105,11 +105,11 @@ private:
 	std::string GenerateUniqueInstanceName(const std::string& name) const;
 	bool GenerateCheckpoints();
 	bool GenerateBSP();
-
+	bool ReOrderBSP();
+	bool GenerateOceanVertices();
 	void OpenHotReloadWindow();
 	void OpenModelExtractorWindow();
 	void RenderUI(Renderer& renderer);
-
 	void InitModels(Renderer& renderer);
 	void UpdateAnimationRenderData();
 	void UpdateFilterRenderData(const Quadblock& qb);
@@ -130,10 +130,10 @@ private:
 	bool m_showModelExtractorWindow;
 	bool m_showExtractorLogWindow;
 	bool m_loaded;
-	int m_maxQuadPerLeaf;
-	float m_maxLeafAxisLength;
+	BSPTreeSettings m_bspSettings;
 	VisTreeSettings m_visTreeSettings;
 	BotPathSettings m_botPathSettings;
+	WaterAnimSettings m_waterAnimSettings;
 
 	std::vector<std::tuple<std::string, std::string>> m_invalidQuadblocks;
 	std::string m_logMessage;
@@ -167,11 +167,15 @@ private:
 	std::vector<uint8_t> m_vrm;
 	Skybox m_skybox;
 	BotPath m_botPaths[3];
+	std::string m_envMapMatName;
 
 	bool m_hasRawTexture;
 	std::unordered_map<uint32_t, PSX::TextureGroup> m_rawTextureGroup;
 	std::unordered_map<uint32_t, PSX::AnimTex> m_rawAnimTex;
 	std::unordered_map<uint32_t, std::vector<uint32_t>> m_rawAnimTexFrames;
+	PSX::TextureLayout m_rawWaterLayout;
+	//std::vector<PSX::Vertex> m_rawWaterVertices;
+	//std::vector<PSX::OceanVertex> m_rawWaterColors;
 	std::map<std::string, std::vector<size_t>> m_materialToQuadblocks;
 	std::unordered_map<std::string, Texture> m_materialToTexture;
 	MaterialProperty<std::string, MaterialType::TERRAIN> m_propTerrain;
@@ -183,6 +187,7 @@ private:
 	MaterialProperty<bool, MaterialType::CHECKPOINT_PATHABLE> m_propCheckpointPathable;
 	MaterialProperty<bool, MaterialType::VISTREE_TRANSPARENT> m_propVisTreeTransparent;
 	MaterialProperty<int, MaterialType::DRAW_ORDER_HIGH> m_propDrawOrderHigh;
+	MaterialProperty<bool, MaterialType::WATER> m_propWater;
 
 	std::array<Model*, LevelModels::COUNT> m_models;
 

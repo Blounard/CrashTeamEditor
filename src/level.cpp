@@ -89,8 +89,7 @@ void Level::Clear(bool clearErrors)
 	m_rendererSelectedQuadblockIndexes.clear();
 	//m_genVisTree = false;
 	m_bspVis.Clear();
-	m_maxQuadPerLeaf = 31;
-	m_maxLeafAxisLength = 64.0f;
+	m_bspSettings = BSPTreeSettings();
 	m_visTreeSettings = VisTreeSettings();
 	m_pythonConsole.clear();
 	m_saveScript = false;
@@ -118,6 +117,7 @@ void Level::Clear(bool clearErrors)
 	{
 		if (model) { model->Clear(model != m_models[LevelModels::LEVEL]); }
 	}
+	m_envMapMatName.clear();
 }
 
 
@@ -426,8 +426,12 @@ bool Level::GenerateBSP()
 	std::vector<size_t> quadIndexes;
 	for (size_t i = 0; i < m_quadblocks.size(); i++) { quadIndexes.push_back(i); }
 	m_bsp.Clear();
-	m_bsp.SetQuadblockIndexes(quadIndexes);
-	m_bsp.Generate(m_quadblocks, m_maxQuadPerLeaf, m_maxLeafAxisLength);
+	m_bspVis.Clear();
+	ResetAllBSPID();
+	m_bsp.SetId(0);
+	m_bsp.SetQuadblockIndexes(quadIndexes, m_quadblocks);
+	m_bsp.ComputeBoundingBox(m_quadblocks);
+	m_bsp.Generate(m_quadblocks, m_bspSettings);
 	if (m_bsp.IsValid())
 	{
 		GenerateRenderBspData();
@@ -435,6 +439,39 @@ bool Level::GenerateBSP()
 	}
 	m_bsp.Clear();
 	return false;
+}
+
+bool Level::ReOrderBSP()
+{
+	ResetAllBSPID();
+	std::vector<BSP*> bspNodes = m_bsp.GetTree();
+	std::sort(bspNodes.begin(), bspNodes.end(), 
+		[](const BSP* a, const BSP* b) 
+		{
+			if (a->GetId() == b->GetId())
+				printf("ERROR : 2 BSP NODES SHARE THE SAME ID : %d\n", b->GetId());
+			return a->GetId() < b->GetId(); 
+		});
+	std::unordered_map<size_t, size_t> bspIDOverride; // Map old ID -> New ID
+	for (const BSP* bsp : bspNodes)
+	{
+		size_t oldID = bsp->GetId();
+		size_t newID = bspIDOverride.size();
+		if (oldID != newID)
+		{
+			printf("INFO : BSP ID WAS CHANGED %d -> %d\n", oldID, newID);
+		}
+		bspIDOverride[oldID] = newID;
+	}
+	for (BSP* bsp : bspNodes)
+	{
+		bsp->SetId(bspIDOverride[bsp->GetId()]);
+	}
+	for (Quadblock& quad : m_quadblocks)
+	{
+		quad.SetBSPID(bspIDOverride[quad.GetBSPID()]);
+	}
+	return true;
 }
 
 
@@ -858,6 +895,56 @@ bool Level::GenerateCheckpoints()
 }
 
 
+bool Level::GenerateOceanVertices()
+{
+	constexpr float PI = 3.14159265358979323846f;
+	WaterAnimSettings& p = m_waterAnimSettings;
+	
+	const int brightCyclesTime = p.brightWaveCycle;
+	const float baseBright = p.baseBrightness;
+	const float waveLength = std::max(p.waveLength, 1.0f);
+	const float waveK = 2.0f * PI / waveLength;
+
+	for (Quadblock& quad : m_quadblocks)
+	{
+		if (!quad.GetWater())
+			continue;
+		const std::vector<Vertex>& vertices = quad.GetVertices();
+		for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++)
+		{
+			Vec3 vPos = vertices[i].m_pos;
+			const float baseU = vPos.x * p.sizeTex;
+			const float baseV = vPos.z * p.sizeTex;
+			const float spaceWave = (std::cos(waveK * vPos.x) + std::cos(waveK * vPos.z)) / 2;
+
+			PSX::OceanVertex ov{};
+			for (int f = 0; f < NUM_FRAME_OVERT; f++)
+			{
+				const float frac = static_cast<float>(f) / NUM_FRAME_OVERT;
+
+				const float scrollU = p.ScrollULoops * 64.0f * frac;
+				const float scrollV = p.ScrollVLoops * 64.0f * frac;
+				const float waveU = p.waveAmplitude  * spaceWave * std::sin(2.0f * PI * p.waveCyclesTimeU * frac);
+				const float waveV = p.waveAmplitude  * spaceWave * std::sin(2.0f * PI * p.waveCyclesTimeV * frac);
+				const int u = static_cast<int>(std::round(baseU + scrollU + waveU));
+				const int v = static_cast<int>(std::round(baseV + scrollV + waveV));
+
+				const float brightTemporalPhase = 2.0f * PI * brightCyclesTime * frac;	
+				const float waveBright = p.brightAmp * std::sin(brightTemporalPhase) * spaceWave;
+				const int b = static_cast<int>(std::round(baseBright + waveBright));
+
+				PSX::OceanVertexFrame frame{};
+				frame.u = static_cast<uint16_t>(((u % 64) + 64) % 64);
+				frame.v = static_cast<uint16_t>(((v % 64) + 64) % 64);
+				frame.brightness = static_cast<uint16_t>(Clamp(b, 0, 15));
+				ov.frames[f] = frame;
+			}
+			quad.SetOceanVertex(ov, i);
+		}
+	}
+	return true;
+}
+
 enum class PresetHeader : unsigned
 {
 	SPAWN, LEVEL, PATH, MATERIAL, TURBO_PAD, ANIM_TEXTURES, SCRIPT
@@ -977,6 +1064,11 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 						m_propDrawOrderHigh.SetPreview(material, json[material + "_drawOrderHigh"]);
 						m_propDrawOrderHigh.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
 					}
+					if (json.contains(material + "_water"))
+					{
+						m_propWater.SetPreview(material, json[material + "_water"]);
+						m_propWater.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+					}
 				}
 			}
 		}
@@ -1084,6 +1176,7 @@ bool Level::SavePreset(const std::filesystem::path& path)
 			materialJson[key + "_trigger"] = m_propTurboPads.GetBackup(key);
 			materialJson[key + "_speedImpact"] = m_propSpeedImpact.GetBackup(key);
 			materialJson[key + "_drawOrderHigh"] = m_propDrawOrderHigh.GetBackup(key);
+			materialJson[key + "_water"] = m_propWater.GetBackup(key);
 		}
 		materialJson["materials"] = materials;
 		SaveJSON(dirPath / "material.json", materialJson);
@@ -1372,6 +1465,11 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	m_rawAnimTex.clear(); // Map : Absolute Offset -> PSX::AnimTex
 	m_rawTextureGroup.clear(); // Map : Absolute Offset ->  PSX::TextureGroup
 	m_rawAnimTexFrames.clear(); // Map : Absolute Offset -> List of Absolute Offset for PSX::TextureGroup
+	if (header.offEnvironmentMap != 0)
+	{
+		file.seekg(offLev + std::streampos(header.offEnvironmentMap));
+		Read(file, m_rawWaterLayout);
+	}
 
 	std::filesystem::path tempDir = levFile.parent_path() / (levFile.stem().string() + "_textures");
 	std::filesystem::create_directories(tempDir);
@@ -1379,6 +1477,17 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	bool hasAnimData = header.offAnimTex > 0;
 	size_t offAnimStart = header.offAnimTex;
 
+
+	//Extract Environment map and minimap (todo)
+	LayoutKey waterkey(m_rawWaterLayout);
+	if (!materialCache.contains(waterkey))
+	{
+		std::string matName = "envMap_" + std::to_string(texCounter++);
+		materialCache[waterkey] = matName;
+	}
+	m_envMapMatName = materialCache[waterkey];
+	RawUV waterRawUV(m_rawWaterLayout);
+	textureToPixelBounds[waterkey].Update(waterRawUV);
 	
 	// 1st pass : Parse Quadblock, find TextureGroups, and caclulate UV bounds
 	// Take care of all texture group for static quad and animated quads
@@ -1585,7 +1694,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 						file.seekg(offLev + std::streampos(model.offHeaders + j * sizeof(PSX::ModelHeader)));
 						PSX::ModelHeader modelHeader{};
 						Read(file, modelHeader);
-
 						bool isAnimated = modelHeader.offAnimations != 0;
 
 						if ((modelHeader.numAnimations != 0) != isAnimated ||        // internally inconsistent -- our format model would be wrong
@@ -1693,7 +1801,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							Read(file, baseFrame);
 						}
 
-						Vec3 frameOrigin = ConvertPSXVec3(baseFrame.pos, 256.0f);
+						Vec3 frameOrigin = ConvertPSXVec3(baseFrame.pos, 256);
 
 						std::vector<Point> headerVertices;
 						for (int vi = 0; vi < numVerts; vi++)
@@ -1804,7 +1912,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 						// Decodes one frame's raw per-vertex positions from its own file offset.
 						auto DecodeFrameVertices = [&](size_t frameFileOffset, const PSX::ModelFrame& frame) -> std::vector<Vec3>
 							{
-								Vec3 origin = ConvertPSXVec3(frame.pos, 256.0f);
+								Vec3 origin = ConvertPSXVec3(frame.pos, 256);
 								std::vector<Vec3> raw(numVerts);
 								for (int vi = 0; vi < numVerts; vi++)
 								{
@@ -1910,6 +2018,9 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		model.Export(modelCacheDir, m_materialToTexture);
 	}
 	
+
+	std::map<uint32_t, std::vector<std::tuple<size_t, size_t>>> vertToQuad; // Map vertex absolute offset -> List of (quad, vert id) containing the vert.
+
 	// 4th pass : create quadblocks with material, UVs and texture	
 	file.seekg(offLev + std::streampos(meshInfo.offQuadblocks));
 	for (uint32_t i = 0; i < meshInfo.numQuadblocks; i++)
@@ -1967,6 +2078,10 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		{
 			qb.SetMaterial("default");
 			m_materialToQuadblocks["default"].push_back(i);
+		}
+		for (size_t j = 0; j < NUM_VERTICES_QUADBLOCK; j++)
+		{
+			vertToQuad[static_cast<uint32_t>(meshInfo.offVertices + psxQuad.index[j] * sizeof(PSX::Vertex))].push_back(std::make_tuple(i, j));
 		}
 	}
 
@@ -2073,7 +2188,43 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		}
 	}
 
+
+
+	if (header.offWaterVertices != 0)
+	{
+		file.seekg(offLev + std::streampos(header.offWaterVertices));
+		for (uint32_t i = 0; i < header.numWaterVertices; i++)
+		{
+			PSX::WaterVertex wv;
+			Read(file, wv);
+			std::streampos currentPos = file.tellg();
+
+			if (wv.offVertex == 0 || wv.offOceanVertex == 0)
+			{
+				printf("ERROR : WaterVertex with nullptr at vertex number %d\n", i);
+				continue;
+			}
+			file.seekg(offLev + std::streampos(wv.offVertex));
+			PSX::Vertex v;
+			Read(file, v);
+			
+			file.seekg(offLev + std::streampos(wv.offOceanVertex));
+			PSX::OceanVertex ov;
+			Read(file, ov);
+
+			for (std::tuple<size_t, size_t>& tuple : vertToQuad[wv.offVertex])
+			{
+				size_t quadID = std::get<0>(tuple);
+				size_t vertID = std::get<1>(tuple);
+				m_quadblocks[quadID].SetOceanVertex(ov, vertID);
+			}
+			file.seekg(currentPos);
+		}
+	}
+	
+
 	m_bsp.Clear();
+	//Must reset the BSP global IDs
 	file.seekg(offLev + std::streampos(meshInfo.offBSPNodes));
 	std::vector<BSP*> bspArray;
 	for (uint32_t i = 0; i < meshInfo.numBSPNodes; i++)
@@ -2114,7 +2265,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	std::set<size_t> validID;
 	
 	printf("BSP ARRAY SIZE : %d\n", bspArray.size());
-	std::vector<const BSP*> tree = m_bsp.GetTree();
+	std::vector<const BSP*> tree = static_cast<const BSP&>(m_bsp).GetTree();
 	printf("BSP TREE SIZE : %d\n", tree.size());
 	for (const BSP* bsp : tree) { validID.insert(bsp->GetId()); }
 	for (BSP* bsp : bspArray) { if (!validID.contains(bsp->GetId())) { printf("ID %d isn't in tree\n", bsp->GetId()); } }
@@ -2131,7 +2282,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		if (visMem.offNodes[0] != 0)
 		{
 			std::vector<const BSP*> bspLeaves = m_bsp.GetLeaves();
-			std::vector<const BSP*> bspNodes = m_bsp.GetTree();
+			std::vector<const BSP*> bspNodes = static_cast<const BSP&>(m_bsp).GetTree();
 
 			m_bspVis = BitMatrix(bspLeaves.size(), bspLeaves.size());
 
@@ -2474,8 +2625,20 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	std::ofstream file(m_hotReloadLevPath, std::ios::binary);
 
 	if (m_bsp.IsEmpty()) { GenerateBSP(); }
+	ReOrderBSP();
 
-	std::vector<const BSP*> bspNodes = m_bsp.GetTree();
+	std::vector<const BSP*> bspNodes = static_cast<const BSP&>(m_bsp).GetTree();
+	std::set<size_t> bspIds;
+	for (const BSP* bsp : bspNodes) { bspIds.insert(bsp->GetId()); }
+	size_t bspcounter = 0;
+	for (size_t bspid : bspIds)
+	{
+		if (bspcounter != bspid)
+		{
+			printf("BSP ID MISMATCH AT ID %d\n", bspcounter);
+		}
+		bspcounter++;
+	}
 	std::vector<const BSP*> orderedBSPNodes(bspNodes.size());
 	for (const BSP* bsp : bspNodes) { orderedBSPNodes[bsp->GetId()] = bsp; }
 
@@ -2785,17 +2948,35 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 
 	currOffset += (sizeof(PSX::TextureGroup) * texGroups.size()) + animData.size();
 
+
+	PSX::TextureLayout envMapLayout{}; // must be 64x64, uvs don't matter
+	if (useRawTextures)
+		envMapLayout = m_rawWaterLayout;
+	else
+	{
+		Texture& tex = m_materialToTexture[m_envMapMatName];
+		if (!tex.IsEmpty())
+		{
+			envMapLayout = tex.Serialize(QuadUV{});
+		}
+	}
+	const size_t offEnvMapLayout = currOffset;
+	currOffset += sizeof(PSX::TextureLayout);
+
 	const size_t offQuadblocks = currOffset;
 	//printf(nameof(offQuadblocks) " = %zx\n", offQuadblocks);
 	std::vector<std::vector<uint8_t>> serializedBSPs;
 	std::vector<std::vector<uint8_t>> serializedQuads;
 	std::vector<const Quadblock*> orderedQuads;
 	std::unordered_map<Vertex, size_t> vertexMap;
+	std::unordered_map<PSX::OceanVertex, size_t> oVertexMap;
 	std::vector<Vertex> orderedVertices;
+	std::vector<PSX::OceanVertex> orderedOVert;
+	std::set<std::tuple<size_t, size_t>> waterVerticesIndexes; // list of tuple (Vertex id, OVert id)
 	size_t bspSize = 0;
 	for (const BSP* bsp : orderedBSPNodes)
 	{
-		serializedBSPs.push_back(bsp->Serialize(currOffset));
+		serializedBSPs.push_back(bsp->Serialize(currOffset, m_quadblocks));
 		bspSize += serializedBSPs.back().size();
 		if (bsp->IsBranch()) { continue; }
 		const std::vector<size_t>& quadIndexes = bsp->GetQuadblockIndexes();
@@ -2804,8 +2985,9 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 			const Quadblock& quadblock = m_quadblocks[index];
 			std::vector<Vertex> quadVertices = quadblock.GetVertices();
 			std::vector<size_t> verticesIndexes;
-			for (const Vertex& vertex : quadVertices)
+			for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK ;i++)
 			{
+				const Vertex& vertex = quadVertices[i];
 				if (!vertexMap.contains(vertex))
 				{
 					size_t vertexIndex = orderedVertices.size();
@@ -2813,6 +2995,17 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 					vertexMap[vertex] = vertexIndex;
 				}
 				verticesIndexes.push_back(vertexMap[vertex]);
+				if (quadblock.GetWater())
+				{
+					PSX::OceanVertex oVert = quadblock.GetOceanVertex(i);
+					if (!oVertexMap.contains(oVert))
+					{
+						size_t vertexIndex = orderedOVert.size();
+						orderedOVert.push_back(oVert);
+						oVertexMap[oVert] = vertexIndex;
+					}
+					waterVerticesIndexes.insert(std::make_tuple(vertexMap[vertex], oVertexMap[oVert]));
+				}
 			}
 			size_t quadIndex = serializedQuads.size();
 			serializedQuads.push_back(quadblock.Serialize(quadIndex, offTexture, verticesIndexes));
@@ -2829,9 +3022,11 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	std::vector<std::vector<uint32_t>> uniqueVisQuads;
 	std::map<std::vector<uint32_t>, size_t> visQuadsOffsetMap;
 	std::vector<std::tuple<std::vector<uint32_t>, size_t>> visibleInstances;
+	std::vector<std::tuple<std::vector<uint32_t>, size_t>> visibleExtra;
 	size_t visNodeSize = static_cast<size_t>(std::ceil(static_cast<float>(bspNodes.size()) / static_cast<float>(BITS_PER_SLOT)));
 	size_t visQuadSize = static_cast<size_t>(std::ceil(static_cast<float>(m_quadblocks.size()) / static_cast<float>(BITS_PER_SLOT)));
-
+	size_t visExtraSize = static_cast<size_t>(std::ceil(static_cast<float>(waterVerticesIndexes.size()) / static_cast<float>(BITS_PER_SLOT)));
+	std::vector<uint32_t> visibleExtraAll(visExtraSize, 0xFFFFFFFF);
 	std::vector<uint32_t> visibleNodeAll(visNodeSize, 0xFFFFFFFF);
 	for (const BSP* bsp : orderedBSPNodes)
 	{
@@ -2937,6 +3132,11 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	visibleInstances.push_back({visibleInstancesDummy, currOffset});
 	currOffset += visibleInstancesDummy.size() * sizeof(uint32_t);
 
+
+	visibleExtra.push_back({ visibleExtraAll, currOffset });
+	currOffset += visibleExtraAll.size() * sizeof(uint32_t);
+
+
 	std::unordered_map<PSX::VisibleSet, size_t> visibleSetMap;
 	std::vector<PSX::VisibleSet> visibleSets;
 	const size_t offVisibleSet = currOffset;
@@ -2959,7 +3159,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 			set.offVisibleInstances = static_cast<uint32_t>(0);
 		else
 			set.offVisibleInstances = static_cast<uint32_t>(1);
-		set.offVisibleExtra = 0;
+		set.offVisibleExtra = static_cast<uint32_t>(std::get<size_t>(visibleExtra[0]));
 
 		size_t visibleSetIndex = 0;
 		if (visibleSetMap.contains(set)) { visibleSetIndex = visibleSetMap.at(set); }
@@ -2976,6 +3176,18 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	//printf("visibleSetsSize %d\n", visibleSets.size());
 	currOffset += visibleSets.size() * sizeof(PSX::VisibleSet);
 
+	const size_t offWaterVertices = currOffset;
+	std::vector<PSX::WaterVertex> waterVertices;
+	std::vector<std::tuple<size_t, size_t >> orderedWaterVerticesIndexes;
+
+	for (auto& tuple : waterVerticesIndexes)
+	{
+		PSX::WaterVertex waterVert{};
+		waterVertices.push_back(waterVert);
+		currOffset += sizeof(waterVert);
+		orderedWaterVerticesIndexes.push_back(tuple);
+	}
+	
 	const size_t offVertices = currOffset;
 	//printf(nameof(offVertices) " = %zx\n", offVertices);
 	std::vector<std::vector<uint8_t>> serializedVertices;
@@ -2983,6 +3195,37 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	{
 		serializedVertices.push_back(vertex.Serialize());
 		currOffset += serializedVertices.back().size();
+	}
+	
+
+	for (size_t i = 0; i < waterVertices.size(); i++)
+	{
+
+		std::tuple<size_t, size_t >& tuple = orderedWaterVerticesIndexes[i];
+		size_t vertID = std::get<0>(tuple);
+		waterVertices[i].offVertex = static_cast<uint32_t>(offVertices + vertID * sizeof(PSX::Vertex));
+	}
+	
+
+	const size_t offOverts = currOffset;
+	std::vector<std::vector<uint8_t>> serializedOVertices;
+	std::vector<uint32_t> oVertOffsets(orderedOVert.size());
+
+	for (size_t i = 0; i < orderedOVert.size(); i++)
+	{
+		PSX::OceanVertex& overt = orderedOVert[i];
+		std::vector<uint8_t> buffer(sizeof(overt));
+		std::memcpy(buffer.data(), &overt, sizeof(overt));
+		oVertOffsets[i] = static_cast<uint32_t>(currOffset);
+		serializedOVertices.push_back(buffer);
+		currOffset += serializedOVertices.back().size();
+	}
+
+	for (size_t i = 0; i < waterVertices.size(); i++)
+	{
+		std::tuple<size_t, size_t>& tuple = orderedWaterVerticesIndexes[i];
+		size_t oVertID = std::get<1>(tuple);
+		waterVertices[i].offOceanVertex = oVertOffsets[oVertID];
 	}
 
 	const size_t offBSP = currOffset;
@@ -3137,10 +3380,15 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	//printf(nameof(offVisMemBSPP1) " = %zx\n", offVisMemBSPP1);
 	currOffset += visMemBSPP1.size() * sizeof(uint32_t);
 
+	std::vector<uint32_t> visMemOceanP1(visQuadSize);
+	const size_t offvisMemOceanP1 = currOffset;
+	currOffset += visMemOceanP1.size() * sizeof(uint32_t);
+
 	PSX::VisualMem visMem = {};
 	visMem.offNodes[0] = static_cast<uint32_t>(offVisMemNodesP1);
 	visMem.offQuads[0] = static_cast<uint32_t>(offVisMemQuadsP1);
 	visMem.offBSP[0] = static_cast<uint32_t>(offVisMemBSPP1);
+	visMem.offOcean[0] = static_cast<uint32_t>(offVisMemBSPP1);
 	const size_t offVisMem = currOffset;
   //printf(nameof(offVisMem) " = %zx\n", offVisMem);
 	currOffset += sizeof(visMem);
@@ -3185,6 +3433,9 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	header.numSpawnType_2 = static_cast<uint32_t>(serializedSpawnTypeHeader.size());
 	header.offSpawnType_2_posRot = static_cast<uint32_t>(offSpawnTypePosRot);
 	header.numSpawnType_2_posRot = static_cast<uint32_t>(serializedSpawnTypePosRotHeader.size());
+	header.offWaterVertices = static_cast<uint32_t>(offWaterVertices);
+	header.numWaterVertices = static_cast<uint32_t>(waterVertices.size());
+	header.offEnvironmentMap = static_cast<uint32_t>(offEnvMapLayout);
 	
 	// Set skybox pointer in header if enabled
 	if (m_skybox.IsReady())
@@ -3366,12 +3617,15 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		CALCULATE_OFFSET(PSX::LevHeader, offVisMem, offHeader),
 		CALCULATE_OFFSET(PSX::LevHeader, offAnimTex, offHeader),
 		CALCULATE_OFFSET(PSX::LevHeader, offLevNavTable, offHeader),
+		CALCULATE_OFFSET(PSX::LevHeader, offWaterVertices, offHeader),
+		CALCULATE_OFFSET(PSX::LevHeader, offEnvironmentMap, offHeader),
 		CALCULATE_OFFSET(PSX::MeshInfo, offQuadblocks, offMeshInfo),
 		CALCULATE_OFFSET(PSX::MeshInfo, offVertices, offMeshInfo),
 		CALCULATE_OFFSET(PSX::MeshInfo, offBSPNodes, offMeshInfo),
 		CALCULATE_OFFSET(PSX::VisualMem, offNodes[0], offVisMem),
 		CALCULATE_OFFSET(PSX::VisualMem, offQuads[0], offVisMem),
 		CALCULATE_OFFSET(PSX::VisualMem, offBSP[0], offVisMem),
+		CALCULATE_OFFSET(PSX::VisualMem, offOcean[0], offVisMem),
 	};
 
 	// Add InstDef.offModel pointers
@@ -3467,6 +3721,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		pointerMap.push_back(CALCULATE_OFFSET(PSX::VisibleSet, offVisibleBSPNodes, offCurrVisibleSet));
 		pointerMap.push_back(CALCULATE_OFFSET(PSX::VisibleSet, offVisibleQuadblocks, offCurrVisibleSet));
 		pointerMap.push_back(CALCULATE_OFFSET(PSX::VisibleSet, offVisibleInstances, offCurrVisibleSet));
+		pointerMap.push_back(CALCULATE_OFFSET(PSX::VisibleSet, offVisibleExtra, offCurrVisibleSet));
 		offCurrVisibleSet += sizeof(PSX::VisibleSet);
 	}
 
@@ -3503,8 +3758,16 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		if (m_botPaths[i].IsValid())
 			pointerMap.push_back(CALCULATE_OFFSET(PSX::levAINavTable, offAIPathArray[i], offNavTable));
 	}
+
+	for (size_t i = 0; i < waterVertices.size(); i++)
+	{
+		pointerMap.push_back(CALCULATE_OFFSET(PSX::WaterVertex, offVertex, offWaterVertices + i * sizeof(PSX::WaterVertex)));
+		pointerMap.push_back(CALCULATE_OFFSET(PSX::WaterVertex, offOceanVertex, offWaterVertices + i * sizeof(PSX::WaterVertex)));
+	}
   
   #undef CALCULATE_OFFSET
+
+
 
 	const size_t pointerMapBytes = pointerMap.size() * sizeof(uint32_t);
 
@@ -3513,6 +3776,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	Write(file, &meshInfo, sizeof(meshInfo));
 	Write(file, texGroups.data(), texGroups.size() * sizeof(PSX::TextureGroup));
 	if (!animData.empty()) { Write(file, animData.data(), animData.size()); }
+	Write(file, &envMapLayout, sizeof(envMapLayout));
 	for (const std::vector<uint8_t>& serializedQuad : serializedQuads) { Write(file, serializedQuad.data(), serializedQuad.size()); }
 	for (const auto& visNode : uniqueVisNodes) { Write(file, visNode.data(), visNode.size() * sizeof(uint32_t)); }
 	for (const auto& visQuad : uniqueVisQuads) { Write(file, visQuad.data(), visQuad.size() * sizeof(uint32_t)); }
@@ -3521,8 +3785,15 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		const std::vector<uint32_t>& visibleInst = std::get<0>(tuple);
 		Write(file, visibleInst.data(), visibleInst.size() * sizeof(uint32_t));
 	}
+	for (const auto& tuple : visibleExtra)
+	{
+		const std::vector<uint32_t>& v = std::get<0>(tuple);
+		Write(file, v.data(), v.size() * sizeof(uint32_t));
+	}
 	Write(file, visibleSets.data(), visibleSets.size() * sizeof(PSX::VisibleSet));
+	for (const PSX::WaterVertex& waterVert : waterVertices) { Write(file, &waterVert, sizeof(waterVert)); }
 	for (const std::vector<uint8_t>& serializedVertex : serializedVertices) { Write(file, serializedVertex.data(), serializedVertex.size()); }
+	for (const std::vector<uint8_t>& serializedOVertex : serializedOVertices) { Write(file, serializedOVertex.data(), serializedOVertex.size()); }
 	for (const std::vector<uint8_t>& serializedBSP : serializedBSPs) { Write(file, serializedBSP.data(), serializedBSP.size()); }
 	for (const std::vector<uint8_t>& serializedCheckpoint : serializedCheckpoints) { Write(file, serializedCheckpoint.data(), serializedCheckpoint.size()); }
 	if (!m_tropyGhost.empty()) { Write(file, m_tropyGhost.data(), m_tropyGhost.size()); }
@@ -3538,6 +3809,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	Write(file, visMemNodesP1.data(), visMemNodesP1.size() * sizeof(uint32_t));
 	Write(file, visMemQuadsP1.data(), visMemQuadsP1.size() * sizeof(uint32_t));
 	Write(file, visMemBSPP1.data(), visMemBSPP1.size() * sizeof(uint32_t));
+	Write(file, visMemOceanP1.data(), visMemOceanP1.size() * sizeof(uint32_t));
 	Write(file, &visMem, sizeof(visMem));
 	if (!skyboxData.empty()) { Write(file, skyboxData.data(), skyboxData.size()); }
 
@@ -3798,6 +4070,7 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 						m_propCheckpointPathable.SetDefaultValue(material, true);
 						m_propVisTreeTransparent.SetDefaultValue(material, false);
 						m_propDrawOrderHigh.SetDefaultValue(material, static_cast<int>(0));
+						m_propWater.SetDefaultValue(material, false);
 						m_propTerrain.RegisterMaterial(this);
 						m_propQuadFlags.RegisterMaterial(this);
 						m_propDoubleSided.RegisterMaterial(this);
@@ -3807,6 +4080,7 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 						m_propCheckpointPathable.RegisterMaterial(this);
 						m_propVisTreeTransparent.RegisterMaterial(this);
 						m_propDrawOrderHigh.RegisterMaterial(this);
+						m_propWater.RegisterMaterial(this);
 					}
 				}
 				bool sameUVs = true;

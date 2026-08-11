@@ -30,17 +30,17 @@ struct QuadFlags
 	static constexpr uint16_t KICKERS_TWO = 1 << 8;
 	static constexpr uint16_t MASK_GRAB = 1 << 9;
 	static constexpr uint16_t TIGER_TEMPLE_DOOR = 1 << 10;
-	static constexpr uint16_t COLLISION_TRIGGER = 1 << 11;
+	static constexpr uint16_t CAMERA_SEARCH = 1 << 11;
 	static constexpr uint16_t GROUND = 1 << 12;
 	static constexpr uint16_t WALL = 1 << 13;
 	static constexpr uint16_t NO_COLLISION = 1 << 14;
 	static constexpr uint16_t INVISIBLE_TRIGGER = 1 << 15;
-	static constexpr uint16_t DEFAULT = GROUND | COLLISION_TRIGGER;
+	static constexpr uint16_t DEFAULT = GROUND | CAMERA_SEARCH;
 	static inline const std::unordered_map<std::string, uint16_t> LABELS = {
 		{"Reflection 2", REFLECTION_2}, {"Moon Gravity", MOON_GRAVITY}, {"Reflection 1", REFLECTION_1},
 		{"Kickers (?)", KICKERS}, {"Out of Bounds", OUT_OF_BOUNDS}, {"Never Used (?)", NEVER_USED},
 		{"Trigger Script", TRIGGER_SCRIPT }, {"Reverb", REVERB}, {"Kickers Two (?)", KICKERS_TWO},
-		{"Mask Grab", MASK_GRAB }, {"Tiger Temple Door", TIGER_TEMPLE_DOOR}, {"Collision Trigger", COLLISION_TRIGGER},
+		{"Mask Grab", MASK_GRAB }, {"Tiger Temple Door", TIGER_TEMPLE_DOOR}, {"Camera Search", CAMERA_SEARCH},
 		{"Ground", GROUND}, {"Wall", WALL}, {"No Collision", NO_COLLISION}, {"Invisible Trigger", INVISIBLE_TRIGGER}
 	};
 };
@@ -122,6 +122,7 @@ public:
 	std::array<Vec3, 3> GetTriFace(size_t id0, size_t id1, size_t id2) const;
 	uint8_t GetTerrain() const;
 	uint16_t GetFlags() const;
+	bool GetWater() const;
 	QuadblockTrigger GetTrigger() const;
 	size_t GetTurboPadIndex() const;
 	size_t GetBSPID() const;
@@ -144,6 +145,7 @@ public:
 	void SetRenderPrimitiveIndex(size_t triangleIndex);
 	void SetTerrain(uint8_t terrain);
 	void SetFlag(uint16_t flag);
+	void SetWater(bool isWater);
 	void SetCheckpoint(int index);
 	int GetCheckpoint() const;
 	void SetDrawDoubleSided(bool active);
@@ -166,6 +168,8 @@ public:
 	void SetUVs(const QuadUV& uvs);
 	void SetFaceUVs(size_t faceIndex, const QuadUV& uvs);
 	void SetMaterial(const std::string& material);
+	void SetOceanVertex(PSX::OceanVertex overt, size_t vertId);
+	PSX::OceanVertex GetOceanVertex(size_t vertId) const ;
 	void Translate(float ratio, const Vec3& direction);
 	const BoundingBox& GetBoundingBox() const;
 	std::vector<Primitive> ToGeometry(bool filterTriangles = false, const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>* overrideUvs = nullptr, const std::filesystem::path* overrideTexturePath = nullptr) const;
@@ -199,6 +203,7 @@ private:
 	int m_drawOrderHigh;
 	bool m_hide;
 	Vertex m_p[NUM_VERTICES_QUADBLOCK];
+	PSX::OceanVertex m_oVert[NUM_VERTICES_QUADBLOCK]; // INDEXED WITH PSX QUADBLOCK VERTEX ORDER
 	BoundingBox m_bbox;
 	std::string m_name;
 	std::string m_material;
@@ -209,6 +214,7 @@ private:
 	uint16_t m_flags;
 	uint8_t m_terrain;
 	QuadblockTrigger m_trigger;
+	bool m_water; //water as in animated water vertices, not water terrain.
 	int m_downforce;
 	size_t m_turboPadIndex;
 	Color m_filterColor;

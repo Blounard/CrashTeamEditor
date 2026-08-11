@@ -188,14 +188,14 @@ namespace PSX
 		uint32_t offUnk_0x1C; // 0x1C //ptr to a region of 160 0xff's
 		uint32_t offUnk_0x20; // 0x20 //ptr to a region of 68 0xff's
 		uint32_t offInstancePtrArray; // 0x24
-		uint32_t offUnk_0x28; // 0x28
+		uint32_t offUnk_0x28; // 0x28 //Pointer to a VisibleSet. Used when a quad doesn't have a valid VisibleSet pointer
 		uint32_t null_0x2C; // 0x2C
 		uint32_t null_0x30; // 0x30
 		uint32_t numWaterVertices; // 0x34
 		uint32_t offWaterVertices; // 0x38
 		uint32_t offIconsLookup; // 0x3C
 		uint32_t offIcons; // 0x40
-		uint32_t offEnvironmentMap; // 0x44
+		uint32_t offEnvironmentMap; // 0x44 // Texture layout pointer according to penta
 		PSX::ColorGradient skyGradient[NUM_GRADIENT]; // 0x48
 		PSX::Spawn driverSpawn[NUM_DRIVERS]; // 0x6C
 		uint32_t offUnk_0xCC; // 0xCC //ptr to a region of 60 0xff's
@@ -401,6 +401,36 @@ namespace PSX
 		PSX::Color colorLo; // 0xC
 	};
 
+	struct WaterVertex
+	{
+		uint32_t offVertex;  // pointer to Vertex
+		uint32_t offOceanVertex; //pointer to OceanVertex
+	};
+
+
+
+	struct OceanVertexFrame
+	{
+		uint16_t u : 6;  // 0..63
+		uint16_t v : 6;  // 0..63
+		uint16_t brightness : 4;  // 0..15
+
+		bool operator==(const OceanVertexFrame& other) const
+		{
+			return u == other.u && v == other.v && brightness == other.brightness;
+		}
+	};
+
+	struct OceanVertex
+	{
+		OceanVertexFrame frames[NUM_FRAME_OVERT];
+
+		bool operator==(const OceanVertex& other) const
+		{
+			return std::memcmp(frames, other.frames, sizeof(frames)) == 0;
+		}
+	};
+
 	struct Quadblock
 	{
 		uint16_t index[NUM_VERTICES_QUADBLOCK]; // 0x0
@@ -437,7 +467,7 @@ namespace PSX
 		uint16_t id;
 		PSX::BoundingBox bbox;
 		PSX::Vec3 axis;
-		int16_t unk1;
+		int16_t splitPoint;
 		uint16_t leftChild;
 		uint16_t rightChild;
 		uint16_t unk2;
@@ -570,10 +600,37 @@ struct std::hash<PSX::VisibleSet>
 	}
 };
 
+template<>
+struct std::hash<PSX::OceanVertex>
+{
+	inline std::size_t operator()(const PSX::OceanVertex& key) const noexcept
+	{
+		std::size_t seed = 0;
+		for (size_t i = 0; i < NUM_FRAME_OVERT; i++)
+		{
+			HashCombine(seed, key.frames[i]);
+		}
+		return seed;
+	}
+};
+template<>
+struct std::hash<PSX::OceanVertexFrame>
+{
+	inline std::size_t operator()(const PSX::OceanVertexFrame& key) const noexcept
+	{
+		uint16_t packed;
+		std::memcpy(&packed, &key, sizeof(packed));
+		return std::hash<uint16_t>{}(packed);
+	}
+};
+
+
+
 static constexpr int16_t FP_ONE = 0x1000;
 static constexpr int16_t FP_ONE_GEO = 64;
 static constexpr int16_t FP_ONE_CP = 8;
 static constexpr int16_t FP_ONE_ROT = 256;
+static constexpr int16_t FP_ONE_SPLITPOINT = 32;
 
 static inline int16_t ConvertFloat(float x, int16_t one = FP_ONE) { return static_cast<int16_t>(std::round(x * static_cast<float>(one))); };
 static inline int16_t ConvertAngle(float x, int16_t one = FP_ONE) { return static_cast<int16_t>(std::round((x * static_cast<float>(FP_ONE)) / 360.0f)); }

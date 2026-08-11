@@ -11,14 +11,12 @@ struct VisTreeSettings
 {
 	bool centerOnlySamples;
 	bool commutativeRays;
-	bool castFromGroundOnly;
 	bool selfTargetNearClip;
 	float nearClipDistance;
 	float farClipDistance;
 	VisTreeSettings() :
 		centerOnlySamples(true),
 		commutativeRays(false),
-		castFromGroundOnly(false),
 		selfTargetNearClip(true),
 		nearClipDistance(-1.0f), 
 		farClipDistance(1000.0f) {}
