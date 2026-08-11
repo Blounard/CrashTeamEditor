@@ -3298,6 +3298,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		serializedSpawnTypeHeader.push_back(psxSpawnType);
 		currOffset += sizeof(psxSpawnType);
 	}
+	int spawnTypePosCount = 0;
 	for (size_t i = 0; i < serializedSpawnTypeHeader.size(); i++)
 	{
 		serializedSpawnTypeHeader[i].offPos = static_cast<uint32_t>(currOffset);
@@ -3306,8 +3307,18 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		{
 			serializedSpawnTypes[i].push_back(ConvertVec3(pos, FP_ONE_GEO));
 			currOffset += sizeof(PSX::Vec3);
+			spawnTypePosCount++;
 		}
 	}
+	std::vector<uint16_t> spawnTypePosPadding;
+	if (spawnTypePosCount % 2)
+	{
+		spawnTypePosPadding.push_back(0);
+		currOffset += sizeof(uint16_t);
+	}
+
+	
+
 
 	size_t offSpawnTypePosRot = currOffset;
 	std::vector<PSX::SpawnType2> serializedSpawnTypePosRotHeader;
@@ -3794,6 +3805,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	Write(file, &extraHeader, sizeof(extraHeader));
 	for (PSX::SpawnType2 st2 : serializedSpawnTypeHeader) { Write(file, &st2, sizeof(st2)); }
 	for (auto& spawntypes : serializedSpawnTypes) { for (PSX::Vec3 pos : spawntypes) { Write(file, &pos, sizeof(pos)); } }
+	for (uint16_t pad : spawnTypePosPadding) { Write(file, &pad, sizeof(pad)); }
 	for (PSX::SpawnType2 st2 : serializedSpawnTypePosRotHeader) { Write(file, &st2, sizeof(st2)); }
 	for (auto& spawntypes : serializedSpawnPosRotTypes) { for (PSX::Spawn pos : spawntypes) { Write(file, &pos, sizeof(pos)); } }
 	Write(file, &navTable, sizeof(navTable));
