@@ -4,7 +4,6 @@
 #include "psx_types.h"
 #include "quadblock.h"
 #include "texture.h"
-#include "levdataextractor.h"
 #include <filesystem>
 #include <string>
 #include <cstdint>

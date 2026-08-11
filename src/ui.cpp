@@ -91,7 +91,6 @@ void UI::MainMenu()
 			}
 
 			if (ImGui::MenuItem("Hot Reload")) { m_lev.OpenHotReloadWindow(); }
-			if (ImGui::MenuItem("Model Extractor")) { m_lev.OpenModelExtractorWindow(); }
 
 			ImGui::BeginDisabled(!m_lev.IsLoaded());
 			if (ImGui::BeginMenu("Preset"))

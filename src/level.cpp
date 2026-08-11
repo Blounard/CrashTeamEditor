@@ -9,7 +9,6 @@
 #include "renderer.h"
 #include "vistree.h"
 #include "text3d.h"
-#include "levdataextractor.h"
 
 
 #include <filesystem>
@@ -49,18 +48,11 @@ void Level::OpenHotReloadWindow()
 	m_showHotReloadWindow = true;
 }
 
-void Level::OpenModelExtractorWindow()
-{
-	m_showModelExtractorWindow = true;
-}
-
 
 void Level::Clear(bool clearErrors)
 {
 	m_loaded = false;
 	m_showHotReloadWindow = false;
-	m_showModelExtractorWindow = false;
-	m_showExtractorLogWindow = false;
 	for (size_t i = 0; i < NUM_DRIVERS; i++) { m_spawn[i] = Spawn(); }
 	for (size_t i = 0; i < NUM_GRADIENT; i++) { m_skyGradient[i] = ColorGradient(); }
 	if (clearErrors)

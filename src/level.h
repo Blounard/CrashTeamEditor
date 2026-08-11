@@ -97,7 +97,6 @@ private:
 	bool SetGhostData(const std::filesystem::path& path, bool tropy);
 	bool UpdateVRM();
 	std::vector<uint16_t> ReadRawVRAM(std::filesystem::path vrmPath);
-	std::vector<uint8_t> SerializeModel(const std::string& modelName, std::unordered_map<std::string, size_t>& modelOffsets);
 	void GenerateBotPathChangeCode();
 	bool GenerateSpawn(float colSpacing, float rowSpacing);
 	bool GenerateInstanceRow(int checkpointIndex, size_t instanceIndex, int numInstances, float spacing, bool deleteAfter);
@@ -108,7 +107,6 @@ private:
 	bool ReOrderBSP();
 	bool GenerateOceanVertices();
 	void OpenHotReloadWindow();
-	void OpenModelExtractorWindow();
 	void RenderUI(Renderer& renderer);
 	void InitModels(Renderer& renderer);
 	void UpdateAnimationRenderData();
@@ -127,8 +125,6 @@ private:
 	bool m_saveScript;
 	bool m_showLogWindow;
 	bool m_showHotReloadWindow;
-	bool m_showModelExtractorWindow;
-	bool m_showExtractorLogWindow;
 	bool m_loaded;
 	BSPTreeSettings m_bspSettings;
 	VisTreeSettings m_visTreeSettings;
@@ -137,15 +133,11 @@ private:
 
 	std::vector<std::tuple<std::string, std::string>> m_invalidQuadblocks;
 	std::string m_logMessage;
-	std::string m_extractorLog;
 	std::string m_name;
 
 	std::filesystem::path m_parentPath;
 	std::filesystem::path m_hotReloadLevPath;
 	std::filesystem::path m_hotReloadVRMPath;
-	std::filesystem::path m_modelExtractorLevPath;
-	std::filesystem::path m_modelExtractorVrmPath;
-	std::filesystem::path m_modelImporterPath;
 
 	std::array<Spawn, NUM_DRIVERS> m_spawn;
 	uint32_t m_configFlags;
