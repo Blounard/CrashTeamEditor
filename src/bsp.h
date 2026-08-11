@@ -10,18 +10,10 @@ struct BSPTreeSettings
 	int maxQuadPerLeaf;
 	float maxAxisDistance;
 	bool separateMaterial;
-	int k; // power of quadcount
-	int l; // norm of bbox diag
-	int c; // norm of the cost (cost = costLeft^c + costRight^c)
-	float splitRange;
 	BSPTreeSettings() :
 		maxQuadPerLeaf(32),
 		maxAxisDistance(64.0f),
-		separateMaterial(false),
-		k(0),
-		l(1),
-		c(1),
-		splitRange(0.5f) {}
+		separateMaterial(false) {}
 };
 
 enum class BSPNode

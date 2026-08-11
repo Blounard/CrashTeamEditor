@@ -440,81 +440,6 @@ void BSP::MergeBranch()
 }
 
 
-float BSP::FindBestSplitCandidates(const std::vector<Quadblock>& quadblocks, AxisSplit axis, const std::vector<float>& candidates, BSPTreeSettings settings, float& outCost)
-{	
-	outCost = -1.0f;
-	float bestMidpoint = 0.0f;
-	if (candidates.empty() || m_quadblockIndexes.empty())
-		return bestMidpoint;
-
-	std::vector<size_t> sortedIndexes = m_quadblockIndexes;
-	std::sort(sortedIndexes.begin(), sortedIndexes.end(), [&](size_t a, size_t b)
-		{
-			return ProjectionAxis(quadblocks[a].GetCenter(), axis) < ProjectionAxis(quadblocks[b].GetCenter(), axis);
-		});
-
-	std::vector<float> sortedCenters(sortedIndexes.size());
-	for (size_t i = 0; i < sortedIndexes.size(); i++)
-		sortedCenters[i] = ProjectionAxis(quadblocks[sortedIndexes[i]].GetCenter(), axis);
-
-	const size_t n = sortedIndexes.size();
-
-	auto emptyBBox = []() -> BoundingBox
-		{
-			BoundingBox bbox;
-			bbox.min = Vec3(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
-			bbox.max = Vec3(-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max(), -std::numeric_limits<float>::max());
-			return bbox;
-		};
-
-	// prefixBBox[i] = union of the first i quads in sorted order (empty at i == 0) -> this is "Right" at split i.
-	// suffixBBox[i] = union of quads from i to n-1 (empty at i == n)              -> this is "Left" at split i.
-	std::vector<BoundingBox> prefixBBox(n + 1);
-	std::vector<BoundingBox> suffixBBox(n + 1);
-	prefixBBox[0] = emptyBBox();
-	for (size_t i = 0; i < n; i++)
-		prefixBBox[i + 1] = prefixBBox[i].Union(quadblocks[sortedIndexes[i]].GetBoundingBox());
-	suffixBBox[n] = emptyBBox();
-	for (size_t i = n; i-- > 0; )
-		suffixBBox[i] = suffixBBox[i + 1].Union(quadblocks[sortedIndexes[i]].GetBoundingBox());
-
-	for (float candidate : candidates)
-	{
-		int i = static_cast<int>(std::lower_bound(sortedCenters.begin(), sortedCenters.end(), candidate) - sortedCenters.begin());
-		if (i == 0 || i == n)
-			continue;
-
-		float leftCost;
-		float rightCost;
-		if (settings.l > 5)
-		{
-			leftCost = std::pow(n - i, settings.k) * suffixBBox[i].MaxAxisLength();
-			rightCost = std::pow(i, settings.k) * prefixBBox[i].MaxAxisLength();
-		}
-		else
-		{
-			leftCost = std::pow(n - i, settings.k) * suffixBBox[i].NormL(settings.l);
-			rightCost = std::pow(i, settings.k) * prefixBBox[i].NormL(settings.l);
-		}
-
-		float cost;
-		if (settings.c > 5)
-			cost = std::max(leftCost, rightCost);
-		else
-		{
-			double leftCostD = std::pow(static_cast<double>(leftCost), static_cast<double>(settings.c));
-			double rightCostD = std::pow(static_cast<double>(rightCost), static_cast<double>(settings.c));
-			cost = static_cast<float>(leftCostD + rightCostD);
-		}
-		
-		if (outCost < 0.0f || cost < outCost)
-		{
-			outCost = cost;
-			bestMidpoint = candidate;
-		}
-	}
-	return bestMidpoint;
-}
 
 bool BSP::FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& outAxis, float& outMidpoint, BSPTreeSettings settings)
 {	// Must return false when the node doesn't need split.
@@ -536,36 +461,25 @@ bool BSP::FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& out
 		allowedAxis = { AxisSplit::X, AxisSplit::Y, AxisSplit::Z };
 	}
 
-	float p1 = (1.0f - settings.splitRange) * 0.5f;
-	float p2 = 1.0f - p1;
-
 	for (AxisSplit axis : allowedAxis)
 	{
-		std::vector<float> centers;
-		for (size_t idx : m_quadblockIndexes)
-		{
-			centers.push_back(ProjectionAxis(quadblocks[idx].GetCenter(), axis));
-		}
-		std::sort(centers.begin(), centers.end());
-
-		std::vector<float> candidates;
-		candidates.push_back(ProjectionAxis(m_bbox.Midpoint(), axis));
-		for (size_t i = 0; i < m_quadblockIndexes.size() - 1; i++)
-		{
-			float splitPoint = (centers[i] + centers[i + 1]) / 2;
-			float smallBound = ProjectionAxis((m_bbox.min * p2) + (m_bbox.max * p1), axis);
-			float upBound = ProjectionAxis((m_bbox.min * p1) + (m_bbox.max * p2), axis);
-			if (splitPoint > smallBound && splitPoint < upBound)
-				candidates.push_back(splitPoint);
-		}		
+		float candidate = ProjectionAxis(m_bbox.Midpoint(), axis);	
 
 		float cost = 0.0f;
-		float midPoint = FindBestSplitCandidates(quadblocks, axis, candidates, settings, cost);
-		if (cost >= 0.0f && cost < bestCost)
+		if (SplitLeafGeometry(quadblocks, axis, candidate))
 		{
-			bestAxis = axis;
-			bestCost = cost;
-			bestMidpoint = midPoint;
+			float leftCost = m_left->GetBoundingBox().NormL(1);
+			float rightCost = m_right->GetBoundingBox().NormL(1);
+			double leftCostD = std::pow(static_cast<double>(leftCost), static_cast<double>(3));
+			double rightCostD = std::pow(static_cast<double>(rightCost), static_cast<double>(3));
+			cost = static_cast<float>(leftCostD + rightCostD);
+			MergeBranch();
+			if (cost < bestCost)
+			{
+				bestCost = cost;
+				bestMidpoint = candidate;
+				bestAxis = axis;
+			}
 		}
 	}
 
