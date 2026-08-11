@@ -312,7 +312,7 @@ namespace PSX
 		uint16_t id;
 		PSX::BoundingBox bbox;
 		PSX::Vec3 axis;
-		int16_t unk1;
+		int16_t splitPoint;
 		uint16_t leftChild;
 		uint16_t rightChild;
 		uint16_t unk2;
@@ -472,6 +472,7 @@ static constexpr int16_t FP_ONE = 0x1000;
 static constexpr int16_t FP_ONE_GEO = 64;
 static constexpr int16_t FP_ONE_CP = 8;
 static constexpr int16_t FP_ONE_ROT = 256;
+static constexpr int16_t FP_ONE_SPLITPOINT = 32;
 
 static inline int16_t ConvertFloat(float x, int16_t one = FP_ONE) { return static_cast<int16_t>(std::round(x * static_cast<float>(one))); };
 static inline int16_t ConvertAngle(float x, int16_t one = FP_ONE) { return static_cast<int16_t>(std::round((x * static_cast<float>(FP_ONE)) / 360.0f)); }

@@ -30,6 +30,18 @@ float BoundingBox::SemiPerimeter() const
 	return dist.x + dist.y + dist.z;
 }
 
+float BoundingBox::NormL(int power) const
+{
+	Vec3 dist = max - min;
+	return std::pow(std::pow(dist.x, power) + std::pow(dist.y, power) + std::pow(dist.z, power), 1.0f/static_cast<float>(power));
+}
+
+float BoundingBox::MaxAxisLength() const
+{
+	Vec3 dist = max - min;
+	return std::max(std::max(dist.x, dist.y), dist.z);
+}
+
 Vec3 BoundingBox::AxisLength() const
 {
 	return max - min;
@@ -38,6 +50,31 @@ Vec3 BoundingBox::AxisLength() const
 Vec3 BoundingBox::Midpoint() const
 {
 	return (max + min) / 2;
+}
+
+BoundingBox BoundingBox::Union(const BoundingBox other) const 
+{
+	BoundingBox box{};
+	box.min.x = std::min(min.x, other.min.x); box.max.x = std::max(max.x, other.max.x);
+	box.min.y = std::min(min.y, other.min.y); box.max.y = std::max(max.y, other.max.y);
+	box.min.z = std::min(min.z, other.min.z); box.max.z = std::max(max.z, other.max.z);
+	return box;
+}
+
+BoundingBox BoundingBox::Intersect(const BoundingBox& other) const 
+{
+	BoundingBox result{};
+	result.min.x = std::max(min.x, other.min.x);
+	result.min.y = std::max(min.y, other.min.y);
+	result.min.z = std::max(min.z, other.min.z);
+	result.max.x = std::min(max.x, other.max.x);
+	result.max.y = std::min(max.y, other.max.y);
+	result.max.z = std::min(max.z, other.max.z);
+	// If min > max on an axis, there's no overlap there — treat as zero extent, not negative.
+	result.max.x = std::max(result.max.x, result.min.x);
+	result.max.y = std::max(result.max.y, result.min.y);
+	result.max.z = std::max(result.max.z, result.min.z);
+	return result;
 }
 
 std::vector<Primitive> BoundingBox::ToGeometry() const

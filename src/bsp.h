@@ -10,12 +10,10 @@ struct BSPTreeSettings
 	int maxQuadPerLeaf;
 	float maxAxisDistance;
 	bool separateMaterial;
-	float scoreWeight;
 	BSPTreeSettings() :
 		maxQuadPerLeaf(32),
 		maxAxisDistance(64.0f),
-		separateMaterial(false),
-		scoreWeight(0.5f) {}
+		separateMaterial(false) {}
 };
 
 enum class BSPNode
@@ -29,6 +27,16 @@ enum class AxisSplit
 	NONE, X, Y, Z
 };
 static const char* AxisSplitNames[] = { "NONE", "X", "Y", "Z" };
+inline float ProjectionAxis(const Vec3& vec, const AxisSplit& axis)
+{
+	switch (axis)
+	{
+	case AxisSplit::X: return vec.x;
+	case AxisSplit::Y: return vec.y;
+	case AxisSplit::Z: return vec.z;
+	default:           return 0.0f;
+	}
+}
 
 struct BSPFlags
 {
@@ -82,7 +90,6 @@ public:
 	void ComputeBoundingBox(const std::vector<Quadblock>& quadblocks);
 	void SetParent(BSP* parent);
 	void Clear();
-	bool NeedSplitGeometry(const BSPTreeSettings settings, std::vector<AxisSplit>& allowedAxis);
 	bool SplitLeafGeometry(const std::vector<Quadblock>& quadblocks, const AxisSplit axis, const float midpoint);
 	bool SplitLeafMaterial(const std::vector<Quadblock>& quadblocks);
 	bool SplitLeafWater(const std::vector<Quadblock>& quadblocks);
@@ -93,14 +100,13 @@ public:
 	void RenderUI(const std::vector<Quadblock>& quadblocks);
 
 private:
+
 	bool IsInvisible(const std::vector<Quadblock>& quadblocks);
 	bool HasWater(const std::vector<Quadblock>& quadblocks) const;
-	float FindBestSplitCandidates(const std::vector<Quadblock>& quadblocks, AxisSplit& axis, std::vector<float>& candidates, float scoreQuadWeight, float &score);
-	float SplitScoreLeft(float scoreQuadWeight);
-	float SplitScoreRight(float scoreQuadWeight);
-	float SplitScore(float scoreQuadWeight);
+
 	std::vector<uint8_t> SerializeBranch(const std::vector<Quadblock>& quadblocks) const;
 	std::vector<uint8_t> SerializeLeaf(size_t offQuads, const std::vector<Quadblock>& quadblocks) const;
+
 
 
 private:
@@ -108,6 +114,7 @@ private:
 	size_t m_idFlag;
 	BSPNode m_node;
 	AxisSplit m_axis;
+	float m_splitPoint;
 	uint16_t m_flags;
 	BSP* m_left;
 	BSP* m_right;
