@@ -1605,7 +1605,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 
 	if (baseFaces.empty()) { preFlipMin = Vec3(0, 0, 0); preFlipMax = Vec3(0, 0, 0); }
 
-	constexpr float MIN_BOX_SIZE = 1.0f / (2.0f * FP_ONE); // smallest extent guaranteed nonzero after int16 rounding
+	constexpr float MIN_BOX_SIZE = 1.0f / (2.0f * FP_ONE_MODEL); // smallest extent guaranteed nonzero after int16 rounding
 	Vec3 boxSize(
 		std::max(preFlipMax.x - preFlipMin.x, MIN_BOX_SIZE),
 		std::max(preFlipMax.y - preFlipMin.y, MIN_BOX_SIZE),
@@ -1616,7 +1616,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	// Recompute float scale FROM the rounded int16 (not from boxSize/m_scale
 	// directly) so quantization below agrees exactly with what the decoder
 	// reconstructs.
-	Vec3 effScale = ConvertPSXVec3(header.scale, FP_ONE);
+	Vec3 effScale = ConvertPSXVec3(header.scale, FP_ONE_MODEL);
 
 	// Encodes one full pose into a tight-fit ModelFrame + vertex bytes,
 	// using the shared effScale (always big enough, since it was sized
