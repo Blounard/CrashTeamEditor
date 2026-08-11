@@ -1710,7 +1710,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							continue;
 						}
 							
-						Vec3 modelScale = ConvertPSXVec3(modelHeader.scale, FP_ONE); // Not sure about the conversion factor.
+						Vec3 modelScale = ConvertPSXVec3(modelHeader.scale, FP_ONE_MODEL); // Not sure about the conversion factor.
 
 						// Step 1 : Decode all commands
 						file.seekg(offLev + std::streampos(modelHeader.offCommandList));

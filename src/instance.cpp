@@ -1106,9 +1106,9 @@ InstanceModelHeader::InstanceModelHeader(PSX::ModelHeader& modelHeader, PSX::Mod
 	m_name = std::string(modelHeader.name, strnlen(modelHeader.name, sizeof(modelHeader.name)));
 	m_maxDistLOD = ConvertFP(modelHeader.maxDistanceLOD, FP_ONE_GEO);
 	m_flags = modelHeader.flags;
-	m_scale = ConvertPSXVec3(modelHeader.scale, FP_ONE);
+	m_scale = ConvertPSXVec3(modelHeader.scale, FP_ONE_MODEL);
 	m_scaleOrPad = modelHeader.maybeScaleMaybePadding;
-	m_origin = ConvertPSXVec3(baseFrame.pos, FP_ONE_GEO);
+	m_origin = ConvertPSXVec3(baseFrame.pos, FP_ONE_GEO); // TODO VERIFY
 	m_originOrPad = baseFrame.maybePosMaybePadding;
 	m_unk1 = modelHeader.unk1;
 	m_colorCount = colorCount;
@@ -1612,7 +1612,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 		std::max(preFlipMax.z - preFlipMin.z, MIN_BOX_SIZE)
 	);
 
-	header.scale = m_hasScale ? ConvertVec3(m_scale, FP_ONE) : ConvertVec3(boxSize, FP_ONE);
+	header.scale = m_hasScale ? ConvertVec3(m_scale, FP_ONE_MODEL) : ConvertVec3(boxSize, FP_ONE_MODEL);
 	// Recompute float scale FROM the rounded int16 (not from boxSize/m_scale
 	// directly) so quantization below agrees exactly with what the decoder
 	// reconstructs.
