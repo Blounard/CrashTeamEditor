@@ -930,8 +930,13 @@ namespace
 					int imgIdx = model.textures[texIdx].source;
 					if (imgIdx >= 0 && imgIdx < (int)model.images.size() && !model.images[imgIdx].uri.empty())
 					{
-						std::filesystem::path pngPath = gltfDir / model.images[imgIdx].uri;
-						std::string baseName = !mat.name.empty() ? mat.name : std::filesystem::path(model.images[imgIdx].uri).stem().string();
+						std::string filename;
+						if (!tinygltf::URIDecode(model.images[imgIdx].uri, &filename, nullptr))
+						{
+							filename = model.images[imgIdx].uri;
+						}
+						std::filesystem::path pngPath = gltfDir / filename;
+						std::string baseName = !mat.name.empty() ? mat.name : std::filesystem::path(filename).stem().string();
 						std::string globalName = MakeUniqueMaterialName(baseName, materialToTexture);
 						materialToTexture.emplace(globalName, Texture(pngPath));
 						pd.materialName = globalName;

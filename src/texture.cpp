@@ -27,7 +27,7 @@ Texture::Texture(const std::filesystem::path& path)
 	if (!CreateTexture()) 
 	{ 
 		ClearTexture(); 
-		printf("ERROR : Couldn't create texture from path %s\n", path);
+		printf("ERROR : Couldn't create texture from path %s\n", path.string().c_str());
 	}
 }
 
