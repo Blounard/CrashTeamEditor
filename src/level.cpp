@@ -493,6 +493,16 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 						m_propSpeedImpact.SetPreview(material, json[material + "_speedImpact"]);
 						m_propSpeedImpact.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
 					}
+					if (json.contains(material + "_weatherIntensity"))
+					{
+						m_propWeatherIntensity.SetPreview(material, json[material + "_weatherIntensity"]);
+						m_propWeatherIntensity.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+					}
+					if (json.contains(material + "_weatherVanishRate"))
+					{
+						m_propWeatherVanishRate.SetPreview(material, json[material + "_weatherVanishRate"]);
+						m_propWeatherVanishRate.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+					}
 					if (json.contains(material + "_checkpointPathable"))
 					{
 						m_propCheckpointPathable.SetPreview(material, json[material + "_checkpointPathable"]);
@@ -607,6 +617,8 @@ bool Level::SavePreset(const std::filesystem::path& path)
 			materialJson[key + "_visTreeTransparent"] = m_propVisTreeTransparent.GetBackup(key);
 			materialJson[key + "_trigger"] = m_propTurboPads.GetBackup(key);
 			materialJson[key + "_speedImpact"] = m_propSpeedImpact.GetBackup(key);
+			materialJson[key + "_weatherIntensity"] = m_propWeatherIntensity.GetBackup(key);
+			materialJson[key + "_weatherVanishRate"] = m_propWeatherVanishRate.GetBackup(key);
 		}
 		materialJson["materials"] = materials;
 		SaveJSON(dirPath / "material.json", materialJson);
@@ -1618,6 +1630,8 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile)
 						m_propDoubleSided.SetDefaultValue(material, false);
 						m_propCheckpoints.SetDefaultValue(material, false);
 						m_propTurboPads.SetDefaultValue(material, QuadblockTrigger::NONE);
+						m_propWeatherIntensity.SetDefaultValue(material, 0);
+						m_propWeatherVanishRate.SetDefaultValue(material, 0);
 						m_propCheckpointPathable.SetDefaultValue(material, true);
 						m_propVisTreeTransparent.SetDefaultValue(material, false);
 						m_propTerrain.RegisterMaterial(this);
@@ -1626,6 +1640,8 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile)
 						m_propCheckpoints.RegisterMaterial(this);
 						m_propTurboPads.RegisterMaterial(this);
 						m_propSpeedImpact.RegisterMaterial(this);
+						m_propWeatherIntensity.RegisterMaterial(this);
+						m_propWeatherVanishRate.RegisterMaterial(this);
 						m_propCheckpointPathable.RegisterMaterial(this);
 						m_propVisTreeTransparent.RegisterMaterial(this);
 					}

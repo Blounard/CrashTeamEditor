@@ -296,6 +296,32 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 			return true;
 		}
 	}
+	else if constexpr (M == MaterialType::WEATHER_INTENSITY)
+	{
+		T& preview = GetPreview(material);
+		ImGui::Text("Weather intensity:"); ImGui::SameLine();
+		if (ImGui::InputInt("##Weather intensity", &preview)) { preview = Clamp(preview, static_cast<T>(0), static_cast<T>(UINT8_MAX)); }
+		ImGui::SameLine();
+		static ButtonUI WeatherIntesityApplyButton = ButtonUI();
+		if (WeatherIntesityApplyButton.Show(("Apply##Weather intensity" + material).c_str(), "Weather intensity successfully updated.", UnsavedChanges(material)))
+		{
+			Apply(material, quadblockIndexes, quadblocks);
+			return true;
+		}
+	}
+	else if constexpr (M == MaterialType::WEATHER_VANISH_RATE)
+	{
+		T& preview = GetPreview(material);
+		ImGui::Text("Weather vanish rate:"); ImGui::SameLine();
+		if (ImGui::InputInt("##Weather vanish rate", &preview)) { preview = Clamp(preview, static_cast<T>(0), static_cast<T>(UINT8_MAX)); }
+		ImGui::SameLine();
+		static ButtonUI WeathervanishRateApplyButton = ButtonUI();
+		if (WeathervanishRateApplyButton.Show(("Apply##Weather vanish rate" + material).c_str(), "Weather vanish rate successfully updated.", UnsavedChanges(material)))
+		{
+			Apply(material, quadblockIndexes, quadblocks);
+			return true;
+		}
+	}
 	else if constexpr (M == MaterialType::CHECKPOINT_PATHABLE)
 	{
 		T& preview = GetPreview(material);
@@ -614,6 +640,8 @@ void Level::RenderUI(Renderer& renderer)
 						}
 					}
 					m_propSpeedImpact.RenderUI(material, quadblockIndexes, m_quadblocks);
+					m_propWeatherIntensity.RenderUI(material, quadblockIndexes, m_quadblocks);
+					m_propWeatherVanishRate.RenderUI(material, quadblockIndexes, m_quadblocks);
 
 					if (m_materialToTexture.contains(material))
 					{
