@@ -580,7 +580,7 @@ bool InstanceModelHeader::RenderUI(std::unordered_map<std::string, Texture>& mat
 	if (ImGui::TreeNode(m_name.c_str()))
 	{
 		ImGui::SetNextItemWidth(200.0f);
-		ImGui::DragFloat("Max visible distance##", &m_maxDistLOD, 0.5f, 0.0f, 1000.0f, "%.1f");
+		ImGui::DragFloat("Max visible distance##", &m_maxDistLOD, 0.5f, -1.0f, 1000.0f, "%.1f");
 		ImGui::InputScalar("Flags", ImGuiDataType_U16, &m_flags, nullptr, nullptr, "%04X", ImGuiInputTextFlags_CharsHexadecimal);
 		ImGui::Checkbox("Hardcoded scale", &m_hasScale);
 		ImGui::BeginDisabled(!m_hasScale);

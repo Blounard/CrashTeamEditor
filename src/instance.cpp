@@ -1553,7 +1553,8 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	std::memset(header.name, 0, sizeof(header.name));
 	std::memcpy(header.name, m_name.data(), std::min(m_name.size(), sizeof(header.name)));
 	header.unk1 = m_unk1;
-	header.maxDistanceLOD = ConvertFloat(m_maxDistLOD, FP_ONE_GEO);
+	if (m_maxDistLOD < 0.0f) header.maxDistanceLOD = 0xFFFF;
+	else header.maxDistanceLOD = ConvertFloat(m_maxDistLOD, FP_ONE_GEO);
 	header.flags = m_flags;
 	header.maybeScaleMaybePadding = m_scaleOrPad;
 	header.offStaticDeltaArray = 0; // compressed static vertices unsupported by this encoder -- intentional
