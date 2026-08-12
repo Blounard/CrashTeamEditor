@@ -55,6 +55,7 @@ void Level::Clear(bool clearErrors)
 	m_clearColor = Color();
 	m_stars = {};
 	m_stars.zDepth = static_cast<uint16_t>(OT_SIZE) - 2;
+	m_weather = {};
 	m_name.clear();
 	m_hotReloadLevPath.clear();
 	m_hotReloadVRMPath.clear();
@@ -732,6 +733,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	m_configFlags = header.config;
 	m_clearColor = ConvertColor(header.clear);
 	m_stars = ConvertStars(header.stars);
+	m_weather = ConvertWeather(header.weather);
 	for (size_t i = 0; i < m_spawn.size(); i++)
 	{
 		m_spawn[i].pos = ConvertPSXVec3(header.driverSpawn[i].pos, FP_ONE_GEO);
@@ -1299,6 +1301,7 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 		header.skyGradient[i].colorTo = ConvertColor(m_skyGradient[i].colorTo);
 	}
 	header.stars = ConvertStars(m_stars);
+	header.weather = ConvertWeather(m_weather);
 	header.offExtra = static_cast<uint32_t>(offExtraHeader);
 	header.numCheckpointNodes = static_cast<uint32_t>(m_checkpoints.size());
 	header.offCheckpointNodes = static_cast<uint32_t>(offCheckpoints);

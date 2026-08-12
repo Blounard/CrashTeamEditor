@@ -143,15 +143,19 @@ namespace PSX
 
 	struct Weather
 	{
-		uint32_t numParticles; // 0x0
-		uint16_t maxParticles; // 0x4
-		int16_t vanishRate; // 0x6
-		uint8_t unk_0x8[0x10]; // 0x8
-		PSX::Vec3 camPos; // 0x18
-		uint16_t unk_0x1E; // 0x1E - maybe padding
-		PSX::Color top; // 0x20
-		PSX::Color bottom; // 0x24
-		uint32_t renderMode[2]; // 0x28
+		uint32_t numParticles; // 0x0 overwritten on runtime (start at 0, sum of weatherIntensity)
+		uint16_t maxParticles; // 0x4 overwritten on runtime by quadblock.weatherIntensity
+		int16_t vanishRate; // 0x6 overwritten on runtime by quadblock.weatherVanishRate
+		uint32_t scrollXY; // 0x8 overwritten on runtime (start at 0, and is the sum of velocity every frame)
+		int32_t scrollZ; // 0xC overwritten on runtime (start at 0, and is the sum of velocity every frame)
+		PSX::Vec3 velocity; //0x10
+		uint16_t padding; // 0x16 padding
+		PSX::Vec3 camPos; // 0x18 overwritten on runtime
+		uint16_t unk_0x1E; // 0x1E - padding
+		PSX::Color colorTop; // 0x20
+		PSX::Color colorBottom; // 0x24
+		uint32_t fillMode; // 0x28 ;; rain :0xE1000A60; snow : 0xE1000A20
+		uint32_t OTindex; // 0x2C ;; 0x1 for both rain and snow
 	};
 
 	struct LevHeader
@@ -474,4 +478,28 @@ static inline Stars ConvertStars(const PSX::Stars& stars)
     out.seed = stars.seed;
     out.zDepth = stars.zDepth;
     return out;
+}
+
+static inline Weather ConvertWeather(const PSX::Weather& weather)
+{
+	Weather out = {};
+	out.velocity = ConvertPSXVec3(weather.velocity, FP_ONE_GEO);
+	out.colorTop = ConvertColor(weather.colorTop);
+	out.colorBottom = ConvertColor(weather.colorBottom);
+	out.fillMode = weather.fillMode;
+	out.OTindex = static_cast<int>(weather.OTindex);
+	return out;
+}
+
+static inline PSX::Weather ConvertWeather(const Weather& weather)
+{
+	PSX::Weather out = {};
+	out.velocity = ConvertVec3(weather.velocity, FP_ONE_GEO);
+	out.colorTop = ConvertColor(weather.colorTop);
+	out.colorTop.a = 0;
+	out.colorBottom = ConvertColor(weather.colorBottom);
+	out.colorBottom.a = 0;
+	out.fillMode = weather.fillMode;
+	out.OTindex = static_cast<uint32_t>(weather.OTindex);
+	return out;
 }

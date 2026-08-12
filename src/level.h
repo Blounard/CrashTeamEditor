@@ -120,6 +120,7 @@ private:
 	uint32_t m_configFlags;
 	std::array<ColorGradient, NUM_GRADIENT> m_skyGradient;
 	Color m_clearColor;
+	Weather m_weather;
 	Stars m_stars;
 	std::vector<uint8_t> m_tropyGhost;
 	std::vector<uint8_t> m_oxideGhost;

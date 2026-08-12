@@ -499,6 +499,57 @@ void Level::RenderUI(Renderer& renderer)
 				ImGui::TreePop();
 			}
 
+			if (ImGui::TreeNode("Weather"))
+			{
+				static WeatherPreset weatherPreset = WeatherPreset::CUSTOM;
+				const char* presetNames[] = { "Custom", "Rain", "Snow" };
+				int selectedIndex = static_cast<int>(weatherPreset);
+
+				if (ImGui::Combo("Preset", &selectedIndex, presetNames, IM_ARRAYSIZE(presetNames)))
+				{
+					weatherPreset = static_cast<WeatherPreset>(selectedIndex);
+
+					if (weatherPreset == WeatherPreset::RAIN)
+					{
+						m_weather.velocity = Vec3(0.3125f, -1.875f, 0.0f);
+						m_weather.colorTop = Color(static_cast<uint8_t>(64), 64, 64);
+						m_weather.colorBottom = Color(static_cast<uint8_t>(255), 255, 255);
+						m_weather.fillMode = 0xE1000A60;
+						m_weather.OTindex = 0x1;
+					}
+					else if (weatherPreset == WeatherPreset::SNOW)
+					{
+						m_weather.velocity = Vec3(0.0f, -0.125f, 0.0f);
+						m_weather.colorTop = Color(static_cast<uint8_t>(64), 64, 64);
+						m_weather.colorBottom = Color(static_cast<uint8_t>(255), 255, 255);
+						m_weather.fillMode = 0xE1000A20;
+						m_weather.OTindex = 0x1;
+					}
+				}
+
+				ImGui::BeginDisabled(weatherPreset != WeatherPreset::CUSTOM);
+
+				ImGui::InputFloat3("Velocity##weatherlev", m_weather.velocity.Data());
+				ImGui::SetItemTooltip("Speed the weather falls at. Control both direction and magnitude.");
+				float topColor[3] = { m_weather.colorTop.Red(), m_weather.colorTop.Green(), m_weather.colorTop.Blue() };
+				if (ImGui::ColorEdit3("Top Color", topColor))
+				{
+					m_weather.colorTop = Color(topColor[0], topColor[1], topColor[2]);
+				}
+				float bottomColor[3] = { m_weather.colorBottom.Red(), m_weather.colorBottom.Green(), m_weather.colorBottom.Blue() };
+				if (ImGui::ColorEdit3("Bottom Color", bottomColor))
+				{
+					m_weather.colorBottom = Color(bottomColor[0], bottomColor[1], bottomColor[2]);
+				}
+				ImGui::InputScalar("Fill Mode (Hex)", ImGuiDataType_U32, &m_weather.fillMode, NULL, NULL, "%08X", ImGuiInputTextFlags_CharsHexadecimal);
+				ImGui::SetItemTooltip("PS1 primCode");
+				if (ImGui::InputInt("OTindex", &m_weather.OTindex)) { m_weather.OTindex = Clamp(m_weather.OTindex, 0, 0x3FF); }
+				ImGui::SetItemTooltip("Z buffer packet");
+
+				ImGui::EndDisabled();
+				ImGui::TreePop();
+			}
+
 			if (ImGui::TreeNode("Stars"))
 			{
 				ImGui::InputScalar("Number of Stars", ImGuiDataType_U16, &m_stars.numStars);

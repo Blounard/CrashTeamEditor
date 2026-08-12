@@ -35,6 +35,16 @@ struct ColorGradient
 	Color colorTo;
 };
 
+struct Weather
+{
+	Vec3 velocity;
+	Color colorTop;
+	Color colorBottom; 
+	uint32_t fillMode; 
+	int OTindex; 
+};
+enum class WeatherPreset { CUSTOM, RAIN, SNOW };
+
 struct Stars
 {
     uint16_t numStars;
