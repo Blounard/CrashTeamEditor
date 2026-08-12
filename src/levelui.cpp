@@ -1495,6 +1495,12 @@ bool Quadblock::RenderUI(size_t checkpointCount, bool& resetBsp)
 		ImGui::Text("Downforce:");
 		ImGui::SameLine();
 		if (ImGui::InputInt("##downforceQuad", &m_downforce)) { m_downforce = Clamp(m_downforce, static_cast<int>(INT8_MIN), static_cast<int>(INT8_MAX)); }
+		ImGui::Text("Weather Intensity:");
+		ImGui::SameLine();
+		if (ImGui::InputInt("##Weather IntensityQuad", &m_weatherIntensity)) { m_weatherIntensity = Clamp(m_weatherIntensity, static_cast<int>(0), static_cast<int>(UINT8_MAX)); }
+		ImGui::Text("Weather Vanish Rate:");
+		ImGui::SameLine();
+		if (ImGui::InputInt("##Weather Vanish RateQuad", &m_weatherVanishRate)) { m_weatherVanishRate = Clamp(m_weatherVanishRate, static_cast<int>(0), static_cast<int>(UINT8_MAX)); }
 		ImGui::Checkbox("Checkpoint", &m_checkpointStatus);
 		ImGui::SameLine();
 		ImGui::Checkbox("Checkpoint Pathable", &m_checkpointPathable);

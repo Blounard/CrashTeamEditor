@@ -133,6 +133,8 @@ public:
 	bool GetCheckpointStatus() const;
 	bool GetCheckpointPathable() const;
 	bool GetVisTreeTransparent() const;
+	int GetWeatherIntensity() const;
+	int GetWeatherVanishRate() const;
 	const QuadUV& GetQuadUV(size_t quad) const;
 	const std::filesystem::path& GetTexPath() const;
 	const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>& GetUVs() const;
@@ -159,6 +161,8 @@ public:
 	void SetFilter(bool filter);
 	void SetFilterColor(const Color& color);
 	void SetSpeedImpact(int speed);
+	void SetWeatherIntensity(int intensity);
+	void SetWeatherVanishRate(int vanishRate);
 	void Translate(float ratio, const Vec3& direction);
 	const BoundingBox& GetBoundingBox() const;
 	std::vector<Primitive> ToGeometry(bool filterTriangles = false, const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>* overrideUvs = nullptr, const std::filesystem::path* overrideTexturePath = nullptr) const;
@@ -202,6 +206,8 @@ private:
 	uint8_t m_terrain;
 	QuadblockTrigger m_trigger;
 	int m_downforce;
+	int m_weatherIntensity;
+	int m_weatherVanishRate;
 	size_t m_turboPadIndex;
 	Color m_filterColor;
 	mutable size_t m_bspID;
