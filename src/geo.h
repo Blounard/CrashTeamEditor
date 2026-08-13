@@ -243,3 +243,9 @@ struct Line : public Primitive
 	Line() : Primitive(PrimitiveType::LINE, 2) {};
 	Line(const Point& p0, const Point& p1);
 };
+
+// Test if point can be projected alongside projectDir onto ABC plane, and land inside the ABC triangle.
+// projectDir must be normalized.
+// If the test is true, also update outdist so [point + projectDir * outdist] is in the ABC plane.
+// If the test is true, also update outnormal to be equal to the normal of the ABC plane (depends on ABC order)
+bool TestBarycentric(const Vec3& A, const Vec3& B, const Vec3& C, const Vec3& point, const Vec3& projectDir, float& outdist, Vec3& outnormal, float barycentricTolerance = EPSILON);

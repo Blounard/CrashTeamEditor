@@ -46,49 +46,15 @@ void BitMatrix::Clear()
 
 static bool WorldspaceRayTriIntersection(const Vec3& worldSpaceRayOrigin, const Vec3& worldSpaceRayDir, const std::array<Vec3, 3>& tri, float& dist)
 {
-	//TODO : merge with renderer
 	constexpr float failsafe = 0.5f;
 	constexpr float barycentricTolerance = 0.5f;
 
-	//moller-trumbore intersection test
-	//https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
-
-	Vec3 edge_1 = tri[1] - tri[0], edge_2 = tri[2] - tri[0];
-	Vec3 ray_cross_e2 = worldSpaceRayDir.Cross(edge_2);
-	float det = edge_1.Dot(ray_cross_e2);
-
-	if (std::abs(det) < EPSILON) { return false; } // ray is parallel to plane
-
-	float inv_det = 1.0f / det;
-	Vec3 s = worldSpaceRayOrigin - tri[0];
-	float u = inv_det * s.Dot(ray_cross_e2);
-
-	// Allow u to be slightly outside [0, 1] range
-	// u < -tolerance means point is beyond edge 0->1
-	// u > 1+tolerance means point is beyond the opposite side
-	if (u < -barycentricTolerance || u > 1.0f + barycentricTolerance) {
-		return false;
-	}
-
-	Vec3 s_cross_e1 = s.Cross(edge_1);
-	float v = inv_det * worldSpaceRayDir.Dot(s_cross_e1);
-
-	// Allow v to be slightly outside [0, 1] range
-	if (v < -barycentricTolerance || v > 1.0f + barycentricTolerance) { return false; }
-
-	// Check if u+v is within triangle (with tolerance)
-	// u+v > 1 means outside the triangle on the hypotenuse edge
-	if (u + v > 1.0f + barycentricTolerance) { return false; }
-
-	float t = inv_det * edge_2.Dot(s_cross_e1); // time value (interpolant)
-
-	// Allow hits slightly behind the origin (for edge cases where ray starts on surface)
-	if (t > -failsafe)
+	Vec3 unusedNormal;
+	if (TestBarycentric(tri[0], tri[1], tri[2], worldSpaceRayOrigin, worldSpaceRayDir, dist, unusedNormal, barycentricTolerance))
 	{
-		dist = t;
-		return true;
+		if (dist > -failsafe)
+			return true;
 	}
-
 	return false;
 }
 

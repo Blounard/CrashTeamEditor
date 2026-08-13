@@ -221,3 +221,50 @@ Color::Color(double hue, double sat, double value)
 		break;
 	}
 }
+
+bool TestBarycentric(
+	const Vec3& A, const Vec3& B, const Vec3& C,
+	const Vec3& point, const Vec3& projectDir,
+	float& outdist, Vec3& outnormal,
+	float barycentricTolerance)
+{
+	//moller-trumbore intersection test
+	//https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm
+
+	if (std::abs(projectDir.LengthSquared() - 1.0f) > EPSILON)
+	{
+		printf("Warning : must only call TestBarycentric with normalized projectDir");
+		return false;
+	}
+
+	Vec3 edge1 = B - A;
+	Vec3 edge2 = C - A;
+
+	const Vec3 pvec = projectDir.Cross(edge2);
+	const float det = edge1.Dot(pvec);
+
+	if (std::abs(det) < EPSILON)
+		return false; //Ray is parrallel to plane
+
+	const float invDet = 1.0f / det;
+	const Vec3 tvec = point - A;
+	const Vec3 qvec = tvec.Cross(edge1);
+
+	outdist = edge2.Dot(qvec) * invDet;
+	outnormal = edge1.Cross(edge2);
+	outnormal.Normalize();
+
+	// Barycentric U coordinate check
+	const float u = tvec.Dot(pvec) * invDet;
+	if (u < -barycentricTolerance || u > 1.0f + barycentricTolerance)
+		return false;
+
+	// Barycentric V coordinate check
+	const float v = projectDir.Dot(qvec) * invDet;
+	if (v < -barycentricTolerance || v > 1.0f + barycentricTolerance)
+		return false;
+	if (u + v > 1.0f + barycentricTolerance)
+		return false;
+
+	return true;
+}
