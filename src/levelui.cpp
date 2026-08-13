@@ -630,7 +630,7 @@ bool InstanceModel::RenderUI(std::unordered_map<std::string, Texture>& materialT
 		for (size_t i = 0; i < m_headers.size() ; i++)
 		{
 			InstanceModelHeader& header = m_headers[i];
-			ImGui::PushID(i);
+			ImGui::PushID(static_cast<int>(i));
 			if (header.RenderUI(materialToTexture))
 			{
 				headerToDel.push_back(i);
@@ -1168,7 +1168,7 @@ void Level::RenderUI(Renderer& renderer)
 				ImGui::SeparatorText("Path positions only");
 				for (size_t i = 0; i < m_spawntypes.size(); i++)
 				{
-					ImGui::PushID(i);
+					ImGui::PushID(static_cast<int>(i));
 					
 					if (ImGui::TreeNode(("Path " + std::to_string(i) + "##st2pos").c_str()))
 					{
@@ -1193,7 +1193,7 @@ void Level::RenderUI(Renderer& renderer)
 
 						for (size_t j = 0; j < m_spawntypes[i].size(); j++)
 						{
-							ImGui::PushID(j);
+							ImGui::PushID(static_cast<int>(j));
 							ImGui::Text(("Pos " + std::to_string(j) + " : ").c_str()); ImGui::SameLine();
 							ImGui::InputFloat3("##pos", m_spawntypes[i][j].Data());
 							ImGui::Separator();
@@ -1211,7 +1211,7 @@ void Level::RenderUI(Renderer& renderer)
 				ImGui::SeparatorText("Path positions+rotations");
 				for (size_t i = 0; i < m_spawntypesPosRot.size(); i++)
 				{
-					ImGui::PushID(i);
+					ImGui::PushID(static_cast<int>(i));
 					
 					if (ImGui::TreeNode(("Path " + std::to_string(i) + "##st2posRot").c_str()))
 					{
@@ -1228,7 +1228,7 @@ void Level::RenderUI(Renderer& renderer)
 
 						for (size_t j = 0; j < m_spawntypesPosRot[i].size(); j++)
 						{
-							ImGui::PushID(j);
+							ImGui::PushID(static_cast<int>(j));
 							ImGui::Text(("Pos " + std::to_string(j) + " : ").c_str()); ImGui::SameLine();
 							ImGui::InputFloat3("##pos", m_spawntypesPosRot[i][j].pos.Data());
 							ImGui::Text(("Rot " + std::to_string(j) + " : ").c_str()); ImGui::SameLine();
@@ -2300,9 +2300,9 @@ void Level::RenderUI(Renderer& renderer)
 				if (m_instances[i].RenderUI(shouldDelete, shouldDuplicate, static_cast<int>(i), modelNames, m_rendererQueryPoint))
 					renderInstanceNeedsUpdate = true;
 				if (shouldDelete)
-					instanceToDelete = i;
+					instanceToDelete = static_cast<int>(i);
 				if (shouldDuplicate)
-					instanceToDuplicate = i;
+					instanceToDuplicate = static_cast<int>(i);
 				ImGui::PopID();
 			}
 

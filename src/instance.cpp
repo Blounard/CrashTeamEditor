@@ -635,17 +635,6 @@ namespace
 			if (FindMeshNodeRecursive(model, rootNode, Mat4{}, outMeshIdx, outMeshNodeIdx, outAncestorTransform)) { return true; }
 		return false;
 	}
-
-	static std::vector<AnimatedFace> WrapFaces(const std::vector<Tri>& faces, const std::vector<bool>& doubleSided)
-	{
-		std::vector<AnimatedFace> out(faces.size());
-		for (size_t i = 0; i < faces.size(); i++)
-		{
-			out[i].tri = faces[i];
-			out[i].doubleSided = (i < doubleSided.size()) && doubleSided[i];
-		}
-		return out;
-	}
 }
 
 namespace

@@ -444,7 +444,7 @@ bool Level::ReOrderBSP()
 		[](const BSP* a, const BSP* b) 
 		{
 			if (a->GetId() == b->GetId())
-				printf("ERROR : 2 BSP NODES SHARE THE SAME ID : %d\n", b->GetId());
+				printf("ERROR : 2 BSP NODES SHARE THE SAME ID : %zu\n", b->GetId());
 			return a->GetId() < b->GetId(); 
 		});
 	std::unordered_map<size_t, size_t> bspIDOverride; // Map old ID -> New ID
@@ -454,7 +454,7 @@ bool Level::ReOrderBSP()
 		size_t newID = bspIDOverride.size();
 		if (oldID != newID)
 		{
-			printf("INFO : BSP ID WAS CHANGED %d -> %d\n", oldID, newID);
+			printf("INFO : BSP ID WAS CHANGED %zu -> %zu\n", oldID, newID);
 		}
 		bspIDOverride[oldID] = newID;
 	}
@@ -1712,7 +1712,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							(isAnimated && modelHeader.offFrameData != 0))             // ambiguous per RenderBucket_GetFrame
 						{
 							printf("Couldn't import model %s, offAnim 0x%x, numAnim %d, offCommand 0x%x, offAnimTex 0x%x, offColors 0x%x, offSDT 0x%x, offFrameData 0x%x\n",
-								modelName, modelHeader.offAnimations, modelHeader.numAnimations, modelHeader.offCommandList, modelHeader.offAnimtex, modelHeader.offColors, modelHeader.offStaticDeltaArray, modelHeader.offFrameData);
+								modelName.c_str(), modelHeader.offAnimations, modelHeader.numAnimations, modelHeader.offCommandList, modelHeader.offAnimtex, modelHeader.offColors, modelHeader.offStaticDeltaArray, modelHeader.offFrameData);
 							m_instanceModels[modelName].SetValid(false);
 							continue;
 						}
@@ -1735,7 +1735,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 								commandList.push_back(cmd);
 								if (cmd.unk1 != 0 || cmd.unk2 != 0)
 								{
-									printf("Model %s  header %d invalid command unk1 or unk2 non null\n", modelName, j);
+									printf("Model %s  header %d invalid command unk1 or unk2 non null\n", modelName.c_str(), j);
 									m_instanceModels[modelName].SetValid(false);
 								}
 								if (j==0)//modelName == "startbanner_JAP")
@@ -2271,11 +2271,11 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	else { m_bsp.Clear(); }
 	std::set<size_t> validID;
 	
-	printf("BSP ARRAY SIZE : %d\n", bspArray.size());
+	printf("BSP ARRAY SIZE : %zu\n", bspArray.size());
 	std::vector<const BSP*> tree = static_cast<const BSP&>(m_bsp).GetTree();
-	printf("BSP TREE SIZE : %d\n", tree.size());
+	printf("BSP TREE SIZE : %zu\n", tree.size());
 	for (const BSP* bsp : tree) { validID.insert(bsp->GetId()); }
-	for (BSP* bsp : bspArray) { if (!validID.contains(bsp->GetId())) { printf("ID %d isn't in tree\n", bsp->GetId()); } }
+	for (BSP* bsp : bspArray) { if (!validID.contains(bsp->GetId())) { printf("ID %zu isn't in tree\n", bsp->GetId()); } }
 	
 
 
@@ -2642,7 +2642,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	{
 		if (bspcounter != bspid)
 		{
-			printf("BSP ID MISMATCH AT ID %d\n", bspcounter);
+			printf("BSP ID MISMATCH AT ID %zu\n", bspcounter);
 		}
 		bspcounter++;
 	}
@@ -2710,7 +2710,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 							rawOffsetRemap[rawTexOffset] = texGroups.size();
 							if (!m_rawTextureGroup.contains(rawTexOffset))
 							{
-								printf("MISSING TEXTURE FOR %s FACE %d\n", currQuad.GetName().c_str(), i);
+								printf("MISSING TEXTURE FOR %s FACE %zu\n", currQuad.GetName().c_str(), i);
 							}
 							texGroups.push_back(m_rawTextureGroup[rawTexOffset]);
 						}
@@ -2729,7 +2729,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 							rawOffsetRemap[frameRawOffset] = texGroups.size();
 							if (!m_rawTextureGroup.contains(frameRawOffset))
 							{
-								printf("MISSING FRAME TEXTURE FOR %s FACE %d FRAME OFFSET %u\n",
+								printf("MISSING FRAME TEXTURE FOR %s FACE %zu FRAME OFFSET %u\n",
 									currQuad.GetName().c_str(), i, frameRawOffset);
 							}
 							texGroups.push_back(m_rawTextureGroup[frameRawOffset]);
@@ -2776,7 +2776,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 				if (!rawOffsetRemap.contains(rawTexOffset))
 				{
 					rawOffsetRemap[rawTexOffset] = texGroups.size();
-					if (!m_rawTextureGroup.contains(rawTexOffset)) { printf("MISSING TEXTURE FOR %s FACE %d\n", currQuad.GetName().c_str(), i); }
+					if (!m_rawTextureGroup.contains(rawTexOffset)) { printf("MISSING TEXTURE FOR %s FACE %zu\n", currQuad.GetName().c_str(), i); }
 					texGroups.push_back(m_rawTextureGroup[rawTexOffset]);
 				}
 				currQuad.SetTextureID(rawOffsetRemap[rawTexOffset], i);
@@ -3132,8 +3132,8 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		uniqueVisQuads.push_back(visibleQuadsAll);
 		currOffset += visibleQuadsAll.size() * sizeof(uint32_t);
 	}
-	printf("visibleNodesOffsetMapSize %d\n", visNodesOffsetMap.size());
-	printf("visibleQuadsOffsetMapSize %d\n", visQuadsOffsetMap.size());
+	printf("visibleNodesOffsetMapSize %zu\n", visNodesOffsetMap.size());
+	printf("visibleQuadsOffsetMapSize %zu\n", visQuadsOffsetMap.size());
 
 	std::vector<uint32_t> visibleInstancesDummy;
 	visibleInstancesDummy.push_back(0xFFFFFFFF);
@@ -3373,7 +3373,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	{
 		if (m_botPaths[i].IsValid())
 		{
-			navTable.offAIPathArray[i] = currOffset;
+			navTable.offAIPathArray[i] = static_cast<uint32_t>(currOffset);
 			serializedBotPaths.push_back(m_botPaths[i].Serialize(m_instances));
 			currOffset += serializedBotPaths.back().size();
 		}
@@ -3471,8 +3471,8 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 			uniqueModelNames.insert(inst.GetModelName());
 		else
 		{
-			printf("Model %s, valid : %d, header size : %d\n", 
-				inst.GetModelName(), m_instanceModels[inst.GetModelName()].IsValid(), m_instanceModels[inst.GetModelName()].m_headers.size());
+			printf("Model %s, valid : %d, header size : %zu\n", 
+				inst.GetModelName().c_str(), m_instanceModels[inst.GetModelName()].IsValid(), m_instanceModels[inst.GetModelName()].m_headers.size());
 		}
 	}
 	header.numModels = static_cast<uint32_t>(uniqueModelNames.size());
@@ -3521,7 +3521,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		if (!m_instanceModels[m_instances[i].GetModelName()].IsValid())
 			continue;
 
-		uint32_t offModel = modelOffsets[m_instances[i].GetModelName()];
+		uint32_t offModel = static_cast<uint32_t>(modelOffsets[m_instances[i].GetModelName()]);
 		serializedInstDef.push_back(m_instances[i].Serialize(offModel));
 		const size_t offInstDef = currOffset;
 		instDefOffsets.push_back(offInstDef);
@@ -3555,9 +3555,9 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		size_t index = visibleSetMap[set];
 		visibleSetMap.erase(set);
 		if (first && orderedQuads.size() % 2 == 0)
-			set.offVisibleInstances = offInstDefList3_ptrArray;
+			set.offVisibleInstances = static_cast<uint32_t>(offInstDefList3_ptrArray);
 		else 
-			set.offVisibleInstances = offInstDefList2_ptrArray;
+			set.offVisibleInstances = static_cast<uint32_t>(offInstDefList2_ptrArray);
 		visibleSetMap[set] = index;
 		first = false;
 	}
@@ -3587,7 +3587,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 				continue;
 			const InstanceHitbox& settings = m_instances[i].GetHitbox();
 			if (!settings.enabled) { continue; }
-			enabledHitboxes.push_back(m_instances[i].SerializeHitbox(instDefOffsets[i]));
+			enabledHitboxes.push_back(m_instances[i].SerializeHitbox(static_cast<uint32_t>(instDefOffsets[i])));
 		}
 
 		if (!enabledHitboxes.empty())

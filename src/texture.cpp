@@ -71,7 +71,7 @@ Texture::Texture(const LayoutKey& key, const PixelBounds& bounds, const std::vec
 	// Extract VRAM to RGBA buffer
 	std::vector<uint8_t> rgba(croppedWidth * croppedHeight * 4);
 	for (int y = 0; y < croppedHeight; y++) {
-		int srcY = imageY + minV + y;
+		int srcY = static_cast<int>(imageY) + minV + y;
 		size_t vramLine = srcY * 1024;
 
 		for (int x = 0; x < croppedWidth; x++) {

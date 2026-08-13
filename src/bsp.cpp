@@ -23,7 +23,7 @@ size_t FindAvailableID()
 	}
 	else
 	{
-		printf("Error in BSP ID allocation : %d\n", id);
+		printf("Error in BSP ID allocation : %zu\n", id);
 		return 0;
 	}
 }
@@ -173,7 +173,7 @@ void BSP::SetId(size_t id)
 	g_idSet.erase(m_id);
 	if (g_idSet.contains(id))
 	{
-		printf("ERROR : CAN'T ASSIGN ID %d to BSP BECAUSE IT'S ALREADY USED\n", id);
+		printf("ERROR : CAN'T ASSIGN ID %zu to BSP BECAUSE IT'S ALREADY USED\n", id);
 		m_id = FindAvailableID();
 	}
 	m_id = id;
@@ -520,7 +520,7 @@ bool BSP::FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& out
 	}
 	else
 	{
-		printf("BSP WARNING : Needed a split for Leaf %d (%d quads) but couldn't make a valid one\n", m_id, m_quadblockIndexes.size());
+		printf("BSP WARNING : Needed a split for Leaf %zu (%zu quads) but couldn't make a valid one\n", m_id, m_quadblockIndexes.size());
 		return false;
 	}
 }

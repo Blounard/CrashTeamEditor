@@ -519,7 +519,7 @@ std::vector<uint8_t> BotPath::Serialize(std::vector<Instance>& instances) const
 
 
 std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, float dist) {
-    int numPoint = pos.size();
+    int numPoint = static_cast<int>(pos.size());
     if (numPoint < 2 || dist <= 0.0f) return pos;
 
     auto catmullRomAlpha = [](const Vec3& p0, const Vec3& p1, const Vec3& p2, const Vec3& p3, float t, float alpha = 0.5f) -> Vec3 {

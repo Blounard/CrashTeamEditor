@@ -33,7 +33,7 @@ float BoundingBox::SemiPerimeter() const
 float BoundingBox::NormL(int power) const
 {
 	Vec3 dist = max - min;
-	return std::pow(std::pow(dist.x, power) + std::pow(dist.y, power) + std::pow(dist.z, power), 1.0f/static_cast<float>(power));
+	return static_cast<float>(std::pow(std::pow(dist.x, power) + std::pow(dist.y, power) + std::pow(dist.z, power), 1.0f/static_cast<float>(power)));
 }
 
 float BoundingBox::MaxAxisLength() const
