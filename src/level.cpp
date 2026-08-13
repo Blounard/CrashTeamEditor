@@ -239,7 +239,7 @@ bool Level::GenerateSpawn(float colSpacing, float rowSpacing)
 	Vec3 center = m_checkpoints[m_checkpoints[0].GetDown()].GetPos();
 	Vec3 forward = cp1 - cp0;
 	forward.y = 0;
-	float yaw = - std::atan2(forward.z, forward.x) * (180.0f / 3.14159265f);
+	float yaw = - std::atan2(forward.z, forward.x) * (180.0f / MATH_PI);
 	yaw = std::fmod(yaw, 360.0f);
 	forward.Normalize();
 	Vec3 right = forward.Cross(up);
@@ -367,7 +367,7 @@ bool Level::GenerateInstanceRow(int checkpointIndex, size_t instanceIndex, int n
 		groundNormal = Vec3(0.0f, 1.0f, 0.0f);
 	}
 
-	float yaw = -std::atan2(forward.z, forward.x) * (180.0f / 3.14159265f);
+	float yaw = -std::atan2(forward.z, forward.x) * (180.0f / MATH_PI);
 	yaw = std::fmod(yaw, 360.0f);
 	forward.Normalize();
 	Vec3 right = forward.Cross(groundNormal);
@@ -391,11 +391,11 @@ bool Level::GenerateInstanceRow(int checkpointIndex, size_t instanceIndex, int n
 			pos.y = instHeight;
 			if (instNormal.y < 0.0f)
 				instNormal = instNormal * -1.0f;
-			float yawRad = yaw * (3.14159265f / 180.0f);
+			float yawRad = yaw * (MATH_PI / 180.0f);
 			float nzLocal = instNormal.x * std::sin(yawRad) + instNormal.z * std::cos(yawRad);
 			float nxLocal = instNormal.x * std::cos(yawRad) - instNormal.z * std::sin(yawRad);
-			float pitch = std::asin(std::min(std::max(nzLocal, -1.0f), 1.0f)) * (180.0f / 3.14159265f);
-			float roll = std::atan2(-nxLocal, instNormal.y) * (180.0f / 3.14159265f);
+			float pitch = std::asin(std::min(std::max(nzLocal, -1.0f), 1.0f)) * (180.0f / MATH_PI);
+			float roll = std::atan2(-nxLocal, instNormal.y) * (180.0f / MATH_PI);
 			newInstance.SetPos(pos);
 			newInstance.SetRot(Vec3(pitch, yaw, roll));
 		}
@@ -892,13 +892,12 @@ bool Level::GenerateCheckpoints()
 
 bool Level::GenerateOceanVertices()
 {
-	constexpr float PI = 3.14159265358979323846f;
 	WaterAnimSettings& p = m_waterAnimSettings;
 	
 	const int brightCyclesTime = p.brightWaveCycle;
 	const float baseBright = p.baseBrightness;
 	const float waveLength = std::max(p.waveLength, 1.0f);
-	const float waveK = 2.0f * PI / waveLength;
+	const float waveK = 2.0f * MATH_PI / waveLength;
 
 	for (Quadblock& quad : m_quadblocks)
 	{
@@ -919,12 +918,12 @@ bool Level::GenerateOceanVertices()
 
 				const float scrollU = p.ScrollULoops * 64.0f * frac;
 				const float scrollV = p.ScrollVLoops * 64.0f * frac;
-				const float waveU = p.waveAmplitude  * spaceWave * std::sin(2.0f * PI * p.waveCyclesTimeU * frac);
-				const float waveV = p.waveAmplitude  * spaceWave * std::sin(2.0f * PI * p.waveCyclesTimeV * frac);
+				const float waveU = p.waveAmplitude  * spaceWave * std::sin(2.0f * MATH_PI * p.waveCyclesTimeU * frac);
+				const float waveV = p.waveAmplitude  * spaceWave * std::sin(2.0f * MATH_PI * p.waveCyclesTimeV * frac);
 				const int u = static_cast<int>(std::round(baseU + scrollU + waveU));
 				const int v = static_cast<int>(std::round(baseV + scrollV + waveV));
 
-				const float brightTemporalPhase = 2.0f * PI * brightCyclesTime * frac;	
+				const float brightTemporalPhase = 2.0f * MATH_PI * brightCyclesTime * frac;
 				const float waveBright = p.brightAmp * std::sin(brightTemporalPhase) * spaceWave;
 				const int b = static_cast<int>(std::round(baseBright + waveBright));
 

@@ -213,7 +213,7 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
         const Vec3 delta = next - curr;
         forwardVec[i] = delta - upVec[i] * (upVec[i].Dot(delta));
         forwardVec[i].Normalize();
-        yaws[i] = std::atan2(delta.x, delta.z) * (180.0f / 3.14159265f);
+        yaws[i] = std::atan2(delta.x, delta.z) * (180.0f / MATH_PI);
         segmentDist[i] = delta.Length();
     }
 
@@ -335,12 +335,12 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
     // Once driftDir is up to date, set the drift flag, and rotate forward.
     for (size_t i = 0; i < nodeCount; i++)
     {
-        m_nodes[i].SetYaw(std::atan2(forwardVec[i].x, forwardVec[i].z) * (180.0f / 3.14159265f));
+        m_nodes[i].SetYaw(std::atan2(forwardVec[i].x, forwardVec[i].z) * (180.0f / MATH_PI));
     }
 
 
     const float DRIFT_ANGLE_DEG = 30.0f;
-    const float DRIFT_ANGLE_RAD = DRIFT_ANGLE_DEG * (3.14159265f / 180.0f);
+    const float DRIFT_ANGLE_RAD = DRIFT_ANGLE_DEG * (MATH_PI / 180.0f);
     for (size_t i = 0; i < nodeCount; i++)
     {
         //Rotate forward to simulate drift.
@@ -373,9 +373,9 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
         Vec3& forward = forwardVec[i];
         Vec3& up = upVec[i];
         Vec3 right = forward.Cross(up);
-        node.SetPitch(-std::asin(forward.y) * (180.0f / 3.14159265f));
-       // node.SetYaw(std::atan2(forward.x, forward.z) * (180.0f / 3.14159265f));
-        node.SetRoll(std::atan2(-right.y, up.y) * (180.0f / 3.14159265f));
+        node.SetPitch(-std::asin(forward.y) * (180.0f / MATH_PI));
+       // node.SetYaw(std::atan2(forward.x, forward.z) * (180.0f / MATH_PI));
+        node.SetRoll(std::atan2(-right.y, up.y) * (180.0f / MATH_PI));
         
         // --- Terrain & go back count from ground quad ---
         

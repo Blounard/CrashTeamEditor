@@ -169,6 +169,7 @@ struct Quaternion
 	float z;
 	float w;
 };
+
 struct Point
 {
 	Vec3 pos;
