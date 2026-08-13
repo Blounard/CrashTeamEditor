@@ -421,6 +421,8 @@ Quadblock::Quadblock(const PSX::Quadblock& quadblock, const std::vector<PSX::Ver
 	m_offTextures[NUM_FACES_QUADBLOCK] = quadblock.offLowTexture;
 	m_terrain = quadblock.terrain;
 	m_downforce = static_cast<int>(quadblock.speedImpact);
+	m_weatherIntensity = quadblock.weatherIntensity;
+	m_weatherVanishRate = quadblock.weatherVanishRate;
 	m_checkpointIndex = quadblock.checkpointIndex;
 	if (m_checkpointIndex == std::numeric_limits<uint8_t>::max()) { m_checkpointIndex = -1; }
 	else { m_checkpointStatus = true; }
@@ -585,6 +587,16 @@ bool Quadblock::GetVisTreeTransparent() const
 int Quadblock::GetDrawOrderHigh() const
 {
 	return m_drawOrderHigh;
+}
+
+int Quadblock::GetWeatherIntensity() const
+{
+	return m_weatherIntensity;
+}
+
+int Quadblock::GetWeatherVanishRate() const
+{
+	return m_weatherVanishRate;
 }
 
 const QuadUV& Quadblock::GetQuadUV(size_t quad) const
@@ -760,6 +772,16 @@ PSX::OceanVertex Quadblock::GetOceanVertex(size_t vertId) const
 	return m_oVert[vertId];
 }
 
+void Quadblock::SetWeatherIntensity(int intensity)
+{
+	m_weatherIntensity = intensity;
+}
+
+void Quadblock::SetWeatherVanishRate(int vanishRate)
+{
+	m_weatherVanishRate = vanishRate;
+}
+
 void Quadblock::Translate(float ratio, const Vec3& direction)
 {
 	for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++) { m_p[i].m_pos += direction * ratio; }
@@ -933,6 +955,8 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 	quadblock.weatherIntensity = 0;
 	quadblock.weatherVanishRate = 0;
 	quadblock.speedImpact = static_cast<int8_t>(m_downforce);
+	quadblock.weatherIntensity = static_cast<uint8_t>(m_weatherIntensity);
+	quadblock.weatherVanishRate = static_cast<uint8_t>(m_weatherVanishRate);
 	const size_t idVis = id / 32;
 	quadblock.id = static_cast<uint16_t>((32 * idVis) + (31 - (id % 32)));
 	quadblock.checkpointIndex = static_cast<uint8_t>(m_checkpointIndex);
@@ -1021,6 +1045,8 @@ void Quadblock::SetDefaultValues()
 	m_downforce = 0;
 	m_hasRawNormalData = false;
 	m_hasRawTexture = false;
+	m_weatherIntensity = 0;
+	m_weatherVanishRate = 0;
 	m_filterColor = GuiRenderSettings::defaultFilterColor;
 	m_renderPrimitiveIndex = RENDER_INDEX_NONE;
 	m_water = false;

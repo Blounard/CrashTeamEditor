@@ -143,6 +143,7 @@ private:
 	uint32_t m_configFlags;
 	std::array<ColorGradient, NUM_GRADIENT> m_skyGradient;
 	Color m_clearColor;
+	Weather m_weather;
 	Stars m_stars;
 	float m_splitLines[2];
 	int m_jumpYSpeedCap;
@@ -176,6 +177,8 @@ private:
 	MaterialProperty<bool, MaterialType::CHECKPOINT> m_propCheckpoints;
 	MaterialProperty<QuadblockTrigger, MaterialType::TURBO_PAD> m_propTurboPads;
 	MaterialProperty<int, MaterialType::SPEED_IMPACT> m_propSpeedImpact;
+	MaterialProperty<int, MaterialType::WEATHER_INTENSITY> m_propWeatherIntensity;
+	MaterialProperty<int, MaterialType::WEATHER_VANISH_RATE> m_propWeatherVanishRate;
 	MaterialProperty<bool, MaterialType::CHECKPOINT_PATHABLE> m_propCheckpointPathable;
 	MaterialProperty<bool, MaterialType::VISTREE_TRANSPARENT> m_propVisTreeTransparent;
 	MaterialProperty<int, MaterialType::DRAW_ORDER_HIGH> m_propDrawOrderHigh;

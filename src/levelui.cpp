@@ -823,6 +823,32 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 			return true;
 		}
 	}
+	else if constexpr (M == MaterialType::WEATHER_INTENSITY)
+	{
+		T& preview = GetPreview(material);
+		ImGui::Text("Weather intensity:"); ImGui::SameLine();
+		if (ImGui::InputInt("##Weather intensity", &preview)) { preview = Clamp(preview, static_cast<T>(0), static_cast<T>(UINT8_MAX)); }
+		ImGui::SameLine();
+		static ButtonUI WeatherIntesityApplyButton = ButtonUI();
+		if (WeatherIntesityApplyButton.Show(("Apply##Weather intensity" + material).c_str(), "Weather intensity successfully updated.", UnsavedChanges(material)))
+		{
+			Apply(material, quadblockIndexes, quadblocks);
+			return true;
+		}
+	}
+	else if constexpr (M == MaterialType::WEATHER_VANISH_RATE)
+	{
+		T& preview = GetPreview(material);
+		ImGui::Text("Weather vanish rate:"); ImGui::SameLine();
+		if (ImGui::InputInt("##Weather vanish rate", &preview)) { preview = Clamp(preview, static_cast<T>(0), static_cast<T>(UINT8_MAX)); }
+		ImGui::SameLine();
+		static ButtonUI WeathervanishRateApplyButton = ButtonUI();
+		if (WeathervanishRateApplyButton.Show(("Apply##Weather vanish rate" + material).c_str(), "Weather vanish rate successfully updated.", UnsavedChanges(material)))
+		{
+			Apply(material, quadblockIndexes, quadblocks);
+			return true;
+		}
+	}
 	else if constexpr (M == MaterialType::CHECKPOINT_PATHABLE)
 	{
 		T& preview = GetPreview(material);
@@ -1057,6 +1083,57 @@ void Level::RenderUI(Renderer& renderer)
 				{
 					m_clearColor = Color(static_cast<float>(clearColor[0]), clearColor[1], clearColor[2]);
 				}
+				ImGui::TreePop();
+			}
+
+			if (ImGui::TreeNode("Weather"))
+			{
+				static WeatherPreset weatherPreset = WeatherPreset::CUSTOM;
+				const char* presetNames[] = { "Custom", "Rain", "Snow" };
+				int selectedIndex = static_cast<int>(weatherPreset);
+
+				if (ImGui::Combo("Preset", &selectedIndex, presetNames, IM_ARRAYSIZE(presetNames)))
+				{
+					weatherPreset = static_cast<WeatherPreset>(selectedIndex);
+
+					if (weatherPreset == WeatherPreset::RAIN)
+					{
+						m_weather.velocity = Vec3(0.3125f, -1.875f, 0.0f);
+						m_weather.colorTop = Color(static_cast<uint8_t>(64), 64, 64);
+						m_weather.colorBottom = Color(static_cast<uint8_t>(255), 255, 255);
+						m_weather.fillMode = 0xE1000A60;
+						m_weather.OTindex = 0x1;
+					}
+					else if (weatherPreset == WeatherPreset::SNOW)
+					{
+						m_weather.velocity = Vec3(0.0f, -0.125f, 0.0f);
+						m_weather.colorTop = Color(static_cast<uint8_t>(64), 64, 64);
+						m_weather.colorBottom = Color(static_cast<uint8_t>(255), 255, 255);
+						m_weather.fillMode = 0xE1000A20;
+						m_weather.OTindex = 0x1;
+					}
+				}
+
+				ImGui::BeginDisabled(weatherPreset != WeatherPreset::CUSTOM);
+
+				ImGui::InputFloat3("Velocity##weatherlev", m_weather.velocity.Data());
+				ImGui::SetItemTooltip("Speed the weather falls at. Control both direction and magnitude.");
+				float topColor[3] = { m_weather.colorTop.Red(), m_weather.colorTop.Green(), m_weather.colorTop.Blue() };
+				if (ImGui::ColorEdit3("Top Color", topColor))
+				{
+					m_weather.colorTop = Color(topColor[0], topColor[1], topColor[2]);
+				}
+				float bottomColor[3] = { m_weather.colorBottom.Red(), m_weather.colorBottom.Green(), m_weather.colorBottom.Blue() };
+				if (ImGui::ColorEdit3("Bottom Color", bottomColor))
+				{
+					m_weather.colorBottom = Color(bottomColor[0], bottomColor[1], bottomColor[2]);
+				}
+				ImGui::InputScalar("Fill Mode (Hex)", ImGuiDataType_U32, &m_weather.fillMode, NULL, NULL, "%08X", ImGuiInputTextFlags_CharsHexadecimal);
+				ImGui::SetItemTooltip("PS1 primCode");
+				if (ImGui::InputInt("OTindex", &m_weather.OTindex)) { m_weather.OTindex = Clamp(m_weather.OTindex, 0, 0x3FF); }
+				ImGui::SetItemTooltip("Z buffer packet");
+
+				ImGui::EndDisabled();
 				ImGui::TreePop();
 			}
 
@@ -1301,6 +1378,8 @@ void Level::RenderUI(Renderer& renderer)
 						}
 					}
 					m_propSpeedImpact.RenderUI(material, quadblockIndexes, m_quadblocks);
+					m_propWeatherIntensity.RenderUI(material, quadblockIndexes, m_quadblocks);
+					m_propWeatherVanishRate.RenderUI(material, quadblockIndexes, m_quadblocks);
 
 					if (m_materialToTexture.contains(material))
 					{
@@ -2677,6 +2756,12 @@ bool Quadblock::RenderUI(size_t checkpointCount, bool& resetBsp)
 		ImGui::Text("Downforce:");
 		ImGui::SameLine();
 		if (ImGui::InputInt("##downforceQuad", &m_downforce)) { m_downforce = Clamp(m_downforce, static_cast<int>(INT8_MIN), static_cast<int>(INT8_MAX)); }
+		ImGui::Text("Weather Intensity:");
+		ImGui::SameLine();
+		if (ImGui::InputInt("##Weather IntensityQuad", &m_weatherIntensity)) { m_weatherIntensity = Clamp(m_weatherIntensity, static_cast<int>(0), static_cast<int>(UINT8_MAX)); }
+		ImGui::Text("Weather Vanish Rate:");
+		ImGui::SameLine();
+		if (ImGui::InputInt("##Weather Vanish RateQuad", &m_weatherVanishRate)) { m_weatherVanishRate = Clamp(m_weatherVanishRate, static_cast<int>(0), static_cast<int>(UINT8_MAX)); }
 		ImGui::Checkbox("Checkpoint", &m_checkpointStatus);
 		ImGui::SameLine();
 		ImGui::Checkbox("Checkpoint Pathable", &m_checkpointPathable);
