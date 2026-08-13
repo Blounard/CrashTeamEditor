@@ -8,6 +8,7 @@
 #include <string>
 
 static constexpr float EPSILON = 0.000001f;
+static constexpr float MATH_PI = 3.14159265358979323846f;
 
 struct Color
 {
@@ -131,6 +132,43 @@ struct BoundingBox
 	void RenderUI() const;
 };
 
+struct Quaternion
+{
+	Quaternion() : x(0.0f), y(0.0f), z(0.0f), w(1.0f) {};
+	Quaternion(float x, float y, float z, float w) : x(x), y(y), z(z), w(w) {};
+	Quaternion(const Vec3& axis, float angleRad);
+
+	inline float* Data() { return &x; }
+	inline const float* Data() const { return &x; }
+	inline float Length() const { return static_cast<float>(std::sqrt((x * x) + (y * y) + (z * z) + (w * w))); }
+	inline float LengthSquared() const { return (x * x) + (y * y) + (z * z) + (w * w); }
+	inline void Normalize() { const float len = Length(); if (len > EPSILON) {x /= len; y /= len; z /= len; w /= len; } }
+	inline Quaternion Normalized() const { Quaternion q = *this; q.Normalize(); return q; }
+	inline Quaternion Conjugate() const { return { -x, -y, -z, w }; }
+	inline float Dot(const Quaternion& q) const { return (x * q.x) + (y * q.y) + (z * q.z) + (w * q.w); }
+	Quaternion operator*(const Quaternion& q) const; // Hamilton Product (q1 * q2)
+	inline Quaternion& operator*=(const Quaternion& q) { *this = *this * q; return *this; }
+	Vec3 operator*(const Vec3& v) const; // Rotate a 3D vector by this quaternion
+	inline Quaternion operator+(const Quaternion& q) const { return { x + q.x, y + q.y, z + q.z, w + q.w }; }
+	inline Quaternion operator-(const Quaternion& q) const { return { x - q.x, y - q.y, z - q.z, w - q.w }; }
+	inline Quaternion operator*(float n) const { return { x * n, y * n, z * n, w * n }; }
+	inline Quaternion operator/(float n) const { return { x / n, y / n, z / n, w / n }; }
+	inline bool operator==(const Quaternion& q) const { return (x == q.x) && (y == q.y) && (z == q.z) && (w == q.w); }
+	inline bool operator!=(const Quaternion& q) const { return !(*this == q); }
+	inline Quaternion& operator+=(const Quaternion& q) { x += q.x; y += q.y; z += q.z; w += q.w; return *this; }
+	inline Quaternion& operator-=(const Quaternion& q) { x -= q.x; y -= q.y; z -= q.z; w -= q.w; return *this; }
+	inline Quaternion& operator*=(float n) { x *= n; y *= n; z *= n; w *= n; return *this; }
+	inline Quaternion& operator/=(float n) { x /= n; y /= n; z /= n; w /= n; return *this; }
+
+	static Quaternion Identity() { return Quaternion(0.0f, 0.0f, 0.0f, 1.0f); }
+	static Quaternion Zero() { return Quaternion(0.0f, 0.0f, 0.0f, 0.0f); }
+	static Quaternion FromAxisAngle(const Vec3& axis, float angleRad) { return Quaternion(axis, angleRad); }
+
+	float x;
+	float y;
+	float z;
+	float w;
+};
 struct Point
 {
 	Vec3 pos;

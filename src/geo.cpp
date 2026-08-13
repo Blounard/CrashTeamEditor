@@ -133,6 +133,33 @@ std::vector<Primitive> BoundingBox::ToGeometry() const
 	return primitives;
 }
 
+Quaternion::Quaternion(const Vec3& axis, float angleRad)
+{
+	const float half = angleRad * 0.5f;
+	const float s = std::sin(half);
+	x = axis.x * s;
+	y = axis.y * s;
+	z = axis.z * s;
+	w = std::cos(half);
+}
+
+Quaternion Quaternion::operator*(const Quaternion& q) const
+{
+	return {
+		w * q.x + x * q.w + y * q.z - z * q.y,
+		w * q.y - x * q.z + y * q.w + z * q.x,
+		w * q.z + x * q.y - y * q.x + z * q.w,
+		w * q.w - x * q.x - y * q.y - z * q.z
+	};
+}
+
+Vec3 Quaternion::operator*(const Vec3& v) const
+{
+	const Vec3 qv(x, y, z);
+	const Vec3 t = qv.Cross(v) * 2.0f;
+	return v + (t * w) + qv.Cross(t);
+}
+
 Color::Color(double hue, double sat, double value)
 {
 	a = 255u;
