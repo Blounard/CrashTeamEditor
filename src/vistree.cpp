@@ -218,7 +218,7 @@ static std::vector<size_t> GetPotentialQuadblockIndexes(
 	return result;
 }
 
-static std::vector<Vec3> GenerateSamplePointLeaf(const std::vector<Quadblock>& quadblocks, const BSP& leaf, float camera_raise, bool centerOnlySamples)
+static std::vector<Vec3> GenerateSamplePointLeaf(const std::vector<Quadblock>& quadblocks, const BSP& leaf, float camera_raise, bool centerOnlySamples, bool isSource)
 {
 	// For a leaf node, generate all the points for the vis ray test.
 	std::vector<Vec3> samples;
@@ -251,7 +251,7 @@ static std::vector<Vec3> GenerateSamplePointLeaf(const std::vector<Quadblock>& q
 	{
 		Quadblock quad = quadblocks[quadID];
 		uint16_t flags = quad.GetFlags();
-		if (!(flags & QuadFlags::CAMERA_SEARCH))
+		if (isSource && !(flags & QuadFlags::CAMERA_SEARCH))
 			continue;
 		addIfUnique(quad.GetCenter() + (up * camera_raise), false);
 		if (!centerOnlySamples)
@@ -313,8 +313,8 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 	std::vector<std::vector<Vec3>> targetSamples(leaves.size());
 	for (size_t i = 0; i < leaves.size(); i++)
 	{
-		sourceSamples[i] = GenerateSamplePointLeaf(quadblocks, *leaves[i], cameraHeight, settings.centerOnlySamples);
-		targetSamples[i] = GenerateSamplePointLeaf(quadblocks, *leaves[i], 0.0f, settings.centerOnlySamples);
+		sourceSamples[i] = GenerateSamplePointLeaf(quadblocks, *leaves[i], cameraHeight, settings.centerOnlySamples, true);
+		targetSamples[i] = GenerateSamplePointLeaf(quadblocks, *leaves[i], 0.0f, settings.centerOnlySamples, false);
 	}
 
 	std::vector<std::vector<uint8_t>> visibilityRows(leaves.size(), std::vector<uint8_t>(leaves.size(), 0));
