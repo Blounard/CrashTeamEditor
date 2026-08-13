@@ -905,6 +905,19 @@ float Quadblock::DistanceClosestVertex(Vec3& out, const Vec3& v) const
 	return minDist;
 }
 
+bool Quadblock::IntersectRay(const Vec3& point, const Vec3& projectDir, float& outdist, Vec3& outnormal, float barycentricTolerance) const
+{
+	for (std::array<size_t, 3> tri : m_collTriFaces)
+	{
+		const Vec3& A = m_p[tri[0]].m_pos;
+		const Vec3& B = m_p[tri[1]].m_pos;
+		const Vec3& C = m_p[tri[2]].m_pos;
+		if (TestBarycentric(A, B, C, point, projectDir, outdist, outnormal, barycentricTolerance))
+			return true;
+	}
+	return false;
+}
+
 bool Quadblock::Neighbours(const Quadblock& quadblock, float threshold) const
 {
 	for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++)

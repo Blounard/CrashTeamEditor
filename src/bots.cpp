@@ -74,44 +74,6 @@ bool BotPath::IsValid()
     return m_nodes.size() > 1;
 }
 
-static bool TestBarycentric(const Vec3& A, const Vec3& B, const Vec3& C, const Vec3& point, float& height, Vec3* normal)
-{
-    const float d1 = (B.x - A.x) * (point.z - A.z) - (B.z - A.z) * (point.x - A.x);
-    const float d2 = (C.x - B.x) * (point.z - B.z) - (C.z - B.z) * (point.x - B.x);
-    const float d3 = (A.x - C.x) * (point.z - C.z) - (A.z - C.z) * (point.x - C.x);
-    if ((d1 < -EPSILON || d2 < -EPSILON || d3 < -EPSILON) && (d1 > EPSILON || d2 > EPSILON || d3 > EPSILON))
-        return false;
-
-    const float denom = (B.z - C.z) * (A.x - C.x) + (C.x - B.x) * (A.z - C.z);
-    if (std::abs(denom) < EPSILON)
-        return false;
-
-    const float u = ((B.z - C.z) * (point.x - C.x) + (C.x - B.x) * (point.z - C.z)) / denom;
-    const float v = ((C.z - A.z) * (point.x - C.x) + (A.x - C.x) * (point.z - C.z)) / denom;
-    const float w = 1.0f - u - v;
-
-    height = u * A.y + v * B.y + w * C.y;
-    if (normal)
-    {
-        Vec3 edge1 = B - A;
-        Vec3 edge2 = C - A;
-        *normal = edge1.Cross(edge2);
-        normal->Normalize();
-    }
-    return true;
-}
-
-bool isAboveQuad(const Vec3& point, const Quadblock& quad, float& height, Vec3* normal)
-{
-    const Vertex* verts = quad.GetUnswizzledVertices();
-    for (const std::array<size_t, 3>& ids : quad.GetCollTriFacesIndexes())
-    {
-        if (TestBarycentric(verts[ids[0]].m_pos, verts[ids[1]].m_pos, verts[ids[2]].m_pos, point, height, normal))
-            return true;
-    }
-    return false;
-}
-
 
 bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& quadblocks)
 {
@@ -170,6 +132,7 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
     std::vector<Vec3> upVec(nodeCount);
     std::vector<Vec3> forwardVec(nodeCount);
     std::vector<float> segmentDist(nodeCount);
+    const Vec3 upGlobal = Vec3(0.0f, 1.0f, 0.0f);
     for (size_t i = 0; i < nodeCount; i++)
     {
         Vec3        pos = nodesPos[i];
@@ -186,19 +149,16 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
             if (pos.x < bb.min.x || pos.x > bb.max.x) continue;
             if (pos.z < bb.min.z || pos.z > bb.max.z) continue;
 
-            float height = 0.0f;
-            bool above = isAboveQuad(pos, quad, height);
-            if (!above)
+            float dist = 0.0f;
+            Vec3 normal;
+            if (!quad.IntersectRay(pos, upGlobal, dist, normal))
                 continue;
-
-            const float dist = std::abs(pos.y - height);
-            if (dist > bestDist)
+            if (std::abs(dist) > bestDist)
                 continue;
-            bestDist = dist;
+            bestDist = std::abs(dist);
             groundQuads[i] = &quad;
-            upVec[i] = quad.GetNormal();
-            upVec[i].Normalize();
-            pos.y = height;
+            upVec[i] = normal;
+            pos += upGlobal * dist;
             grounded[i] = true;
         }
         m_nodes[i].SetPos(pos); 
@@ -518,7 +478,7 @@ std::vector<uint8_t> BotPath::Serialize(std::vector<Instance>& instances) const
 }
 
 
-std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, float dist) {
+std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist) {
     int numPoint = static_cast<int>(pos.size());
     if (numPoint < 2 || dist <= 0.0f) return pos;
 
@@ -628,7 +588,8 @@ std::vector<Vec3> GenerateLateralPath(const std::vector<BotNode>& nodes, float l
             {
                 if (quad.GetCheckpoint() > checkpointID + 1 || quad.GetCheckpoint() < checkpointID - 1)
                     continue;
-                if (isAboveQuad(testPos, quad, height))
+                Vec3 _;
+                if (quad.IntersectRay(testPos, up, height, _))
                     return true;
             }
             return false;

@@ -252,6 +252,8 @@ bool Level::GenerateSpawn(float colSpacing, float rowSpacing)
 			float lateralOffset = (col - 1.5f) * colSpacing;
 			float forwardOffset = (row - 0.5f) * rowSpacing;
 			Vec3 pos = center + right * lateralOffset + forward * forwardOffset;
+			float dist;
+			Vec3 norm;
 			bool isInRange = false;
 			int lastCkpt = m_checkpoints[0].GetDown();
 			int prevCkpt = m_checkpoints[lastCkpt].GetDown();
@@ -259,11 +261,15 @@ bool Level::GenerateSpawn(float colSpacing, float rowSpacing)
 			{
 				if (quad.GetCheckpoint() != lastCkpt && quad.GetCheckpoint() != prevCkpt)
 					continue;
-				if (isAboveQuad(pos, quad, pos.y))
+				if (quad.IntersectRay(pos, up, dist, norm))
+				{
+					pos += up * dist;
 					isInRange = true;
+				}	
 			}
 			if (!isInRange)
 				return false;
+			// TODO : USE NORM TO AFFECT PITCH AND ROLL
 			m_spawn[index].pos = pos;
 			m_spawn[index].rot.x = 0.0f;
 			m_spawn[index].rot.y = yaw;
@@ -304,29 +310,30 @@ std::string Level::GenerateUniqueInstanceName(const std::string& name) const
 	return stripped + "#" + std::to_string(maxN + 1);
 }
 
-bool Level::QueryGround(const Vec3& pos, float& height, Vec3& normal) const
+bool Level::QueryGround(const Vec3& pos, float& dist, Vec3& normal) const
 {
 	constexpr float GROUND_THRESHOLD = 8.0f;
-	float best_height = GROUND_THRESHOLD;
+	float best_dist = GROUND_THRESHOLD;
 	Vec3 best_normal(0.0f, 0.0f, 0.0f);
+	Vec3 up(0.0f, 1.0f, 0.0f);
 	bool found = false;
 	for (const Quadblock& quad : m_quadblocks)
 	{
 		if (!(quad.GetFlags() & QuadFlags::GROUND))
 			continue;
 
-		if (isAboveQuad(pos, quad, height, &normal))
+		if (quad.IntersectRay(pos, up, dist, normal))
 		{
-			if (std::abs(height) < std::abs(best_height))
+			if (std::abs(dist) < std::abs(best_dist))
 			{
-				best_height = height;
+				best_dist = dist;
 				best_normal = normal;
 				found = true;
 			}
 		}
 	}
 	normal = best_normal;
-	height = best_height;
+	dist = best_dist;
 	return found;
 }
 
@@ -355,10 +362,10 @@ bool Level::GenerateInstanceRow(int checkpointIndex, size_t instanceIndex, int n
 		forward = Vec3(0.0f, 0.0f, 1.0f);
 
 	Vec3 groundNormal;
-	float groundHeight;
-	if (QueryGround(center, groundHeight, groundNormal))
+	float groundDist;
+	if (QueryGround(center, groundDist, groundNormal))
 	{
-		center.y = groundHeight;
+		center.y += groundDist;
 		forward = forward - groundNormal * forward.Dot(groundNormal);
 	}
 	else
@@ -384,11 +391,11 @@ bool Level::GenerateInstanceRow(int checkpointIndex, size_t instanceIndex, int n
 		Instance newInstance = original;
 		newInstance.SetName(GenerateUniqueInstanceName(original.GetName()));
 
-		float instHeight;
+		float instDist;
 		Vec3 instNormal;
-		if (QueryGround(pos, instHeight, instNormal))
+		if (QueryGround(pos, instDist, instNormal))
 		{
-			pos.y = instHeight;
+			pos.y += instDist;
 			if (instNormal.y < 0.0f)
 				instNormal = instNormal * -1.0f;
 			float yawRad = yaw * (MATH_PI / 180.0f);
