@@ -1,5 +1,10 @@
 #include "geo.h"
 
+#include <iostream>
+#include <fstream>
+#include <unordered_set>
+
+
 Tri::Tri(const Point& p0, const Point& p1, const Point& p2)
 	: Primitive(PrimitiveType::TRI, 3)
 {
@@ -356,4 +361,90 @@ bool SnapTriangle(const Vec3& A, const Vec3& B, const Vec3& C,
 
 	rot = (qAlign * q).Normalized().ToEulerYXZ();
 	return true;
+}
+
+
+std::vector<Vec3> LoadPath(const std::filesystem::path& path)
+{
+	// AI MADE, TODO : RECODE / VERIFY
+	std::ifstream file(path);
+	if (!file.is_open())
+		return {};
+
+	std::vector<Vec3>                        rawVertices;
+	std::unordered_map<int, int>             adjacency;   // edge map: from -> to (1-based)
+	bool                                     inFirstObject = false;
+
+	std::string line;
+	while (std::getline(file, line))
+	{
+		if (line.empty() || line[0] == '#')
+			continue;
+
+		std::istringstream ss(line);
+		std::string        token;
+		ss >> token;
+
+		if (token == "o")
+		{
+			// Only parse the first object
+			if (!inFirstObject)
+				inFirstObject = true;
+			else
+				break;
+		}
+		else if (token == "v" && inFirstObject)
+		{
+			float x, y, z;
+			ss >> x >> y >> z;
+			rawVertices.emplace_back(x, y, z);
+		}
+		else if (token == "l" && inFirstObject)
+		{
+			int a, b;
+			if (ss >> a >> b)
+				adjacency[a] = b;  // directed edge a -> b (OBJ indices are 1-based)
+		}
+	}
+
+	if (rawVertices.empty() || adjacency.empty())
+		return rawVertices;
+
+	// Find the start of the chain: a vertex that appears as a source but never as a destination
+	std::unordered_set<int> destinations;
+	for (auto& [from, to] : adjacency)
+		destinations.insert(to);
+
+	int start = -1;
+	for (auto& [from, to] : adjacency)
+	{
+		if (destinations.find(from) == destinations.end())
+		{
+			start = from;
+			break;
+		}
+	}
+
+	// Fallback: if it's a closed loop, just pick any start
+	if (start == -1 && !adjacency.empty())
+		start = adjacency.begin()->first;
+
+	// Walk the chain in edge order
+	std::vector<Vec3> ordered;
+	ordered.reserve(rawVertices.size());
+
+	int current = start;
+	while (adjacency.count(current))
+	{
+		// OBJ indices are 1-based
+		ordered.push_back(rawVertices[current - 1]);
+		int next = adjacency[current];
+		adjacency.erase(current);  // prevent infinite loops on malformed data
+		current = next;
+	}
+	// Push the final vertex (the chain end that has no outgoing edge)
+	if (current >= 1 && current <= static_cast<int>(rawVertices.size()))
+		ordered.push_back(rawVertices[current - 1]);
+
+	return ordered;
 }

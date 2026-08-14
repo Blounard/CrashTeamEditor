@@ -88,7 +88,6 @@ private:
 	void ManageTurbopad(Quadblock& quadblock);
 	bool LoadLEV(const std::filesystem::path& levFile);
 	bool LoadOBJ(const std::filesystem::path& objFile, bool isLevel);
-	std::vector<Vec3> LoadPath(const std::filesystem::path& path);
 
 
 	bool StartEmuIPC(const std::string& emulator);
