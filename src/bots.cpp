@@ -3,9 +3,9 @@
 BotNode::BotNode(const PSX::NavFrame& frame)
 {
     m_pos = ConvertPSXVec3(frame.pos, FP_ONE_GEO);
-    m_pitch = BamToAngle(frame.rot[0]);
-    m_yaw = BamToAngle(frame.rot[1]);
-    m_roll = BamToAngle(frame.rot[2]);
+    m_rot.x = BamToAngle(frame.rot[0]);
+    m_rot.y = BamToAngle(frame.rot[1]);
+    m_rot.z = BamToAngle(frame.rot[2]);
     m_flags = frame.flags;
     m_terrain = (frame.flags & BotNodeFlags::TERRAIN_MASK) >> 3;
     m_pathChangeIndex = static_cast<int>(frame.pathChangeOpCode & 0x3FF) ;
@@ -20,9 +20,9 @@ std::vector<uint8_t> BotNode::Serialize(const Vec3& nextPos, std::vector<Instanc
     PSX::NavFrame frame = {};
     std::vector<uint8_t> buffer(sizeof(frame));
     frame.pos = ConvertVec3(m_pos, FP_ONE_GEO);
-    frame.rot[0] = AngleToBam(m_pitch); 
-    frame.rot[1] = AngleToBam(m_yaw);
-    frame.rot[2] = AngleToBam(m_roll);
+    frame.rot[0] = AngleToBam(m_rot.x);
+    frame.rot[1] = AngleToBam(m_rot.y);
+    frame.rot[2] = AngleToBam(m_rot.z);
     frame.rot[3] = -frame.rot[0]; // Not sure what this is
     frame.distXYZ = ConvertFloat((m_pos - nextPos).Length(), FP_ONE_GEO);
     frame.distXZ = ConvertFloat((m_pos - nextPos).LengthHorizontal(), FP_ONE_GEO);

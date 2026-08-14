@@ -273,9 +273,9 @@ void BotNode::RenderUI(int index, bool& deleteRequested)
 		}
 
 		// Rotation
-		ImGui::DragFloat("Yaw", &m_yaw, 0.5f, -180.0f, 180.0f, "%.1f deg");
-		ImGui::DragFloat("Pitch", &m_pitch, 0.5f, -180.0f, 180.0f, "%.1f deg");
-		ImGui::DragFloat("Roll", &m_roll, 0.5f, -180.0f, 180.0f, "%.1f deg");
+		ImGui::DragFloat("Yaw", &m_rot.y, 0.5f, -180.0f, 180.0f, "%.1f deg");
+		ImGui::DragFloat("Pitch", &m_rot.x, 0.5f, -180.0f, 180.0f, "%.1f deg");
+		ImGui::DragFloat("Roll", &m_rot.z, 0.5f, -180.0f, 180.0f, "%.1f deg");
 
 		// Flags — one checkbox per named flag bit
 		ImGui::SeparatorText("Flags");

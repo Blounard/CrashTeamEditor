@@ -252,4 +252,6 @@ struct Line : public Primitive
 // If the test is true, also update outnormal to be equal to the normal of the ABC plane (depends on ABC order)
 bool TestBarycentric(const Vec3& A, const Vec3& B, const Vec3& C, const Vec3& point, const Vec3& projectDir, float& outdist, Vec3& outnormal, float barycentricTolerance = EPSILON);
 
+// Snap a point and rot to a triangle.
+// rot must be in degree.
 bool SnapTriangle(const Vec3& A, const Vec3& B, const Vec3& C, Vec3& pos, Vec3& rot, const Vec3& projectDir, float barycentricTolerance = EPSILON);

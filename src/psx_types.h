@@ -10,21 +10,6 @@ namespace PSX
 {
 	static constexpr size_t MAX_NUM_PLAYERS = 4;
 
-
-	// Command list encoding. See RenderBucket_DrawFunc_Normal in the game's
-	// RenderBucket_QueueExecute.c -- all five DrawFunc variants share this logic.
-	static constexpr uint32_t CMD_TERMINATOR = 0xFFFFFFFF;
-	// (command & CMD_COLOR_ONLY_MASK) == 0 means a color-only command: it consumes no
-	// vertex, and its low 9 bits are a color index rather than a texture index.
-	static constexpr uint32_t CMD_COLOR_ONLY_MASK = 0xFFFF0000;
-	// Bit 26. Set means "reuse the cached vertex at stackIndex" -- no vertex consumed.
-	static constexpr uint32_t CMD_REUSE_VERTEX_FLAG = 0x04000000;
-	static constexpr uint32_t CMD_TEX_INDEX_MASK = 0x1FF;
-
-	// ModelAnim::numFrames encoding.
-	static constexpr uint16_t ANIM_INTERPOLATED_BIT = 0x8000;
-	static constexpr uint16_t ANIM_FRAME_COUNT_MASK = 0x7FFF;
-
 	struct Vec3b //for vertices in ModelFrame Might need to check if it's signed or not
 	{
 		uint8_t x;
@@ -273,6 +258,23 @@ namespace PSX
 		uint16_t numHeaders; // 0x12
 		uint32_t offHeaders; // 0x14
 	};
+
+
+
+	// Command list encoding. See RenderBucket_DrawFunc_Normal in the game's
+	// RenderBucket_QueueExecute.c -- all five DrawFunc variants share this logic.
+	static constexpr uint32_t CMD_TERMINATOR = 0xFFFFFFFF;
+	// (command & CMD_COLOR_ONLY_MASK) == 0 means a color-only command: it consumes no
+	// vertex, and its low 9 bits are a color index rather than a texture index.
+	static constexpr uint32_t CMD_COLOR_ONLY_MASK = 0xFFFF0000;
+	// Bit 26. Set means "reuse the cached vertex at stackIndex" -- no vertex consumed.
+	static constexpr uint32_t CMD_REUSE_VERTEX_FLAG = 0x04000000;
+	static constexpr uint32_t CMD_TEX_INDEX_MASK = 0x1FF;
+
+	// ModelAnim::numFrames encoding.
+	static constexpr uint16_t ANIM_INTERPOLATED_BIT = 0x8000;
+	static constexpr uint16_t ANIM_FRAME_COUNT_MASK = 0x7FFF;
+
 
 	struct ModelHeader
 	{

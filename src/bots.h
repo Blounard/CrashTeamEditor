@@ -79,16 +79,16 @@ public:
     void  SetPosZ(float z) { m_pos.z = z; }
 
     // Yaw: 0 = facing +Z, 90 = facing +X. Increases counter-clockwise (left turns).
-    float GetYaw()   const { return m_yaw; }
-    void  SetYaw(float deg) { m_yaw = deg; }
+    float GetYaw()   const { return m_rot.y; }
+    void  SetYaw(float deg) { m_rot.y = deg; }
 
     // Pitch: positive = nose down (descending), negative = nose up (climbing).
-    float GetPitch() const { return m_pitch; }
-    void  SetPitch(float deg) { m_pitch = deg; }
+    float GetPitch() const { return m_rot.x; }
+    void  SetPitch(float deg) { m_rot.x = deg; }
 
     // Roll: lateral road banking.
-    float GetRoll()  const { return m_roll; }
-    void  SetRoll(float deg) { m_roll = deg; }
+    float GetRoll()  const { return m_rot.z; }
+    void  SetRoll(float deg) { m_rot.z = deg; }
 
     uint16_t GetFlags()            const { return m_flags; }
     void     SetFlags(uint16_t f) { m_flags = f; }
@@ -110,9 +110,7 @@ public:
 
 private:
     Vec3 m_pos = {};
-    float m_yaw = 0.0f; // rot[1]
-    float m_pitch = 0.0f; // rot[0]
-    float m_roll = 0.0f; // rot[2]
+    Vec3 m_rot = {};
 
     uint16_t m_flags = 0;
     uint8_t m_terrain = TerrainType::ASPHALT;
@@ -158,4 +156,3 @@ private:
 
 std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, float dist);
 std::vector<Vec3> GenerateLateralPath(const std::vector<BotNode>& nodes, float lateralOffset, std::vector<Quadblock>& quadblocks);
-bool isAboveQuad(const Vec3& point, const Quadblock& quad, float& height, Vec3* normal = nullptr);
