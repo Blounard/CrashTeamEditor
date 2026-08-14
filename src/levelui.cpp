@@ -1295,7 +1295,7 @@ void Level::RenderUI(Renderer& renderer)
 										totalDist += (pos - prevpos).Length();
 										float rotAngleRad = totalDist / m_instPathSettings.radius;
 										Quaternion preRoll(rotvec[j + 1]);
-										Quaternion rolling(Vec3(0.0f, 0.0f, 1.0f), rotAngleRad);
+										Quaternion rolling(Vec3(1.0f, 0.0f, 0.0f), rotAngleRad);
 										rotvec[j + 1] = (preRoll * rolling).ToEulerYXZ();
 									}
 									for (size_t j = 0; j < posvec.size(); j++)
