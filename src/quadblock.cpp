@@ -918,6 +918,19 @@ bool Quadblock::IntersectRay(const Vec3& point, const Vec3& projectDir, float& o
 	return false;
 }
 
+bool Quadblock::SnapPoint(Vec3& pos, Vec3& rot, const Vec3& projectDir, float barycentricTolerance) const
+{
+	for (std::array<size_t, 3> tri : m_collTriFaces)
+	{
+		const Vec3& A = m_p[tri[0]].m_pos;
+		const Vec3& B = m_p[tri[1]].m_pos;
+		const Vec3& C = m_p[tri[2]].m_pos;
+		if (SnapTriangle(A, B, C, point, pos, rot, projectDir, barycentricTolerance))
+			return true;
+	}
+	return false;
+}
+
 bool Quadblock::Neighbours(const Quadblock& quadblock, float threshold) const
 {
 	for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++)

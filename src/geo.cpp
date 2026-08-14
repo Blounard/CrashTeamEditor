@@ -143,6 +143,18 @@ Quaternion::Quaternion(const Vec3& axis, float angleRad)
 	w = std::cos(half);
 }
 
+Quaternion::Quaternion(const Vec3& eulerDeg)
+{
+	float yaw = eulerDeg.y * MATH_PI / 180.0f * 0.5f;
+	float picth = eulerDeg.x * MATH_PI / 180.0f * 0.5f;
+	float roll = eulerDeg.z * MATH_PI / 180.0f * 0.5f;
+	Quaternion qy{ 0, std::sin(yaw), 0, std::cos(yaw) };
+	Quaternion qx{ std::sin(picth), 0, 0, std::cos(picth) };
+	Quaternion qz{ 0, 0, std::sin(roll), std::cos(roll) };
+	Quaternion res = (qy * (qx * qz)).Normalized();
+	x = res.x; y = res.y; z = res.z; w = res.w;
+}
+
 Quaternion Quaternion::operator*(const Quaternion& q) const
 {
 	return {
@@ -158,6 +170,37 @@ Vec3 Quaternion::operator*(const Vec3& v) const
 	const Vec3 qv(x, y, z);
 	const Vec3 t = qv.Cross(v) * 2.0f;
 	return v + (t * w) + qv.Cross(t);
+}
+
+Vec3 Quaternion::ToEulerYXZ() const  
+{
+	float r00 = 1 - 2 * (y * y + z * z);
+	float r01 = 2 * (x * y - w * z); 
+	float r02 = 2 * (x * z + w * y);
+	float r10 = 2 * (x * y + w * z);
+	float r11 = 1 - 2 * (x * x + z * z);
+	float r12 = 2 * (y * z - w * x);
+	float r22 = 1 - 2 * (x * x + y * y);
+
+	float pitch = std::asin(Clamp(-r12, -1.0f, 1.0f));
+	float yaw, roll;
+	if (1.0f - std::fabs(r12) > EPSILON)
+	{
+		yaw = std::atan2(r02, r22);
+		roll = std::atan2(r10, r11);
+	}
+	else if (r12 < 0) // x = +90 deg: only (yaw - roll) is recoverable
+	{
+		yaw = std::atan2(r01, r00);
+		roll = 0.0f;
+	}
+	else // x = -90 deg: only (yaw + roll) is recoverable
+	{
+		yaw = std::atan2(-r01, r00);
+		roll = 0.0f;
+	}
+	constexpr float RAD2DEG = 180.0f / MATH_PI;
+	return Vec3(pitch * RAD2DEG, yaw * RAD2DEG, roll * RAD2DEG);
 }
 
 Color::Color(double hue, double sat, double value)
@@ -266,5 +309,51 @@ bool TestBarycentric(
 	if (u + v > 1.0f + barycentricTolerance)
 		return false;
 
+	return true;
+}
+
+bool SnapTriangle(const Vec3& A, const Vec3& B, const Vec3& C,
+	Vec3& pos, Vec3& rot,
+	const Vec3& projectDir, float barycentricTolerance)
+{
+	float dist;
+	Vec3 normal;
+	if (!TestBarycentric(A, B, C, pos, projectDir, dist, normal, barycentricTolerance))
+	{
+		return false;
+	}
+
+	pos = pos + projectDir * dist;
+
+	Quaternion q(rot);
+	Vec3 currentUp = q * Vec3(0.0f, 1.0f, 0.0f);
+
+	Vec3 axis = currentUp.Cross(normal);
+	float axisLenSq = axis.LengthSquared();
+	float dot = Clamp(currentUp.Dot(normal), -1.0f, 1.0f);
+
+	Quaternion qAlign;
+	if (axisLenSq > EPSILON)
+	{
+		axis.Normalize();
+		float angle = std::acos(dot);
+		qAlign = Quaternion::FromAxisAngle(axis, angle);
+	}
+	else
+	{
+		if (dot > 0.0f)
+		{
+			qAlign = Quaternion::Identity(); // already aligned
+		}
+		else
+		{
+			Vec3 arbitrary = (std::fabs(currentUp.x) < 0.9f) ? Vec3(1, 0, 0) : Vec3(0, 0, 1);
+			Vec3 perp = currentUp.Cross(arbitrary);
+			perp.Normalize();
+			qAlign = Quaternion::FromAxisAngle(perp, MATH_PI);
+		}
+	}
+
+	rot = (qAlign * q).Normalized().ToEulerYXZ();
 	return true;
 }

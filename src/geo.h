@@ -137,6 +137,7 @@ struct Quaternion
 	Quaternion() : x(0.0f), y(0.0f), z(0.0f), w(1.0f) {};
 	Quaternion(float x, float y, float z, float w) : x(x), y(y), z(z), w(w) {};
 	Quaternion(const Vec3& axis, float angleRad);
+	Quaternion(const Vec3& eulerDeg);
 
 	inline float* Data() { return &x; }
 	inline const float* Data() const { return &x; }
@@ -159,6 +160,7 @@ struct Quaternion
 	inline Quaternion& operator-=(const Quaternion& q) { x -= q.x; y -= q.y; z -= q.z; w -= q.w; return *this; }
 	inline Quaternion& operator*=(float n) { x *= n; y *= n; z *= n; w *= n; return *this; }
 	inline Quaternion& operator/=(float n) { x /= n; y /= n; z /= n; w /= n; return *this; }
+	Vec3 ToEulerYXZ() const;
 
 	static Quaternion Identity() { return Quaternion(0.0f, 0.0f, 0.0f, 1.0f); }
 	static Quaternion Zero() { return Quaternion(0.0f, 0.0f, 0.0f, 0.0f); }
@@ -249,3 +251,5 @@ struct Line : public Primitive
 // If the test is true, also update outdist so [point + projectDir * outdist] is in the ABC plane.
 // If the test is true, also update outnormal to be equal to the normal of the ABC plane (depends on ABC order)
 bool TestBarycentric(const Vec3& A, const Vec3& B, const Vec3& C, const Vec3& point, const Vec3& projectDir, float& outdist, Vec3& outnormal, float barycentricTolerance = EPSILON);
+
+bool SnapTriangle(const Vec3& A, const Vec3& B, const Vec3& C, Vec3& pos, Vec3& rot, const Vec3& projectDir, float barycentricTolerance = EPSILON);
