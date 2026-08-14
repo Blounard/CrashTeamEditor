@@ -298,10 +298,6 @@ bool TestBarycentric(
 	const Vec3 tvec = point - A;
 	const Vec3 qvec = tvec.Cross(edge1);
 
-	outdist = edge2.Dot(qvec) * invDet;
-	outnormal = edge1.Cross(edge2);
-	outnormal.Normalize();
-
 	// Barycentric U coordinate check
 	const float u = tvec.Dot(pvec) * invDet;
 	if (u < -barycentricTolerance || u > 1.0f + barycentricTolerance)
@@ -313,6 +309,10 @@ bool TestBarycentric(
 		return false;
 	if (u + v > 1.0f + barycentricTolerance)
 		return false;
+
+	outdist = edge2.Dot(qvec) * invDet;
+	outnormal = edge2.Cross(edge1);
+	outnormal.Normalize();
 
 	return true;
 }
