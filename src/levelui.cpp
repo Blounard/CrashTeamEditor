@@ -1165,6 +1165,29 @@ void Level::RenderUI(Renderer& renderer)
 
 			if (ImGui::TreeNode("Moving Instances Path"))
 			{
+				ImGui::SeparatorText("Loading settings");
+				ImGui::Checkbox("Normalize Distances##mip", &m_instPathSettings.normalize); 
+				ImGui::BeginDisabled(!m_instPathSettings.normalize);
+				ImGui::SameLine();
+				ImGui::SetNextItemWidth(200.0f);
+				ImGui::DragFloat("Node Distance", &m_instPathSettings.normalizeDist, 0.1f, 0.1f, 100.0f, "%.1f");
+				ImGui::EndDisabled();
+				ImGui::Checkbox("Snap to Ground##mip", &m_instPathSettings.groundSnap);
+				ImGui::BeginDisabled(!m_instPathSettings.groundSnap);
+				ImGui::SameLine();
+				ImGui::SetNextItemWidth(150.0f);
+				ImGui::DragFloat("Below ground threshold##mip", &m_instPathSettings.negSnapDist, 0.1f, -50.0f, -0.1f, "%.1f");
+				ImGui::SameLine();
+				ImGui::SetNextItemWidth(150.0f);
+				ImGui::DragFloat("Above ground threshold##mip", &m_instPathSettings.posSnapDist, 0.1f, 0.1f, 50.0f, "%.1f");
+				ImGui::EndDisabled();
+				ImGui::DragFloat("Object Radius##mip", &m_instPathSettings.radius, 0.1f, 0.1f, 100.0f, "%.1f");
+				ImGui::SetItemTooltip("Only used for pos + rot");
+				ImGui::Checkbox("Rolling##mip", &m_instPathSettings.rolling);
+				ImGui::SetItemTooltip("Only used for pos + rot");
+				ImGui::Checkbox("Loop##mip", &m_instPathSettings.loop);
+				ImGui::SetItemTooltip("Loop or Point to Point");
+
 				ImGui::SeparatorText("Path positions only");
 				for (size_t i = 0; i < m_spawntypes.size(); i++)
 				{
@@ -1174,12 +1197,30 @@ void Level::RenderUI(Renderer& renderer)
 					{
 						if (ImGui::Button("Load##st2pos"))
 						{
-							auto selection = pfd::open_file("Select Path OBJ", m_parentPath.string() ,
+							auto selection = pfd::open_file("Select Path OBJ", m_parentPath.string(),
 								{ "OBJ Files", "*.obj", "All Files", "*" }).result();
 
 							if (!selection.empty())
 							{
 								std::vector<Vec3> vec = LoadPath(selection[0]);
+								if (m_instPathSettings.normalize)
+									vec = NormalizePos(vec, m_instPathSettings.normalizeDist, m_instPathSettings.loop);
+								if (m_instPathSettings.groundSnap)
+								{
+									std::vector<size_t> quadindexes;
+									for (size_t j = 0; j < m_quadblocks.size(); j++)
+									{
+										if (m_quadblocks[j].GetFlags() & QuadFlags::GROUND)
+											quadindexes.push_back(j);
+									}
+									Vec3 dummyRot;
+									for (Vec3& pos : vec)
+									{
+										SnapToClosestQuad(m_quadblocks, quadindexes, pos, dummyRot, Vec3(0.0f, 1.0f, 0.0f),
+											m_instPathSettings.negSnapDist, m_instPathSettings.posSnapDist);
+									}
+										
+								}
 								m_spawntypes[i].clear();
 								m_spawntypes[i] = std::move(vec);
 							}		
@@ -1217,7 +1258,58 @@ void Level::RenderUI(Renderer& renderer)
 					{
 						if (ImGui::Button("Load##st2posrot"))
 						{
-							;
+							auto selection = pfd::open_file("Select Path OBJ", m_parentPath.string(),
+								{ "OBJ Files", "*.obj", "All Files", "*" }).result();
+
+							if (!selection.empty())
+							{
+								std::vector<Vec3> posvec = LoadPath(selection[0]);
+								if (m_instPathSettings.normalize)
+									posvec = NormalizePos(posvec, m_instPathSettings.normalizeDist, m_instPathSettings.loop);
+								std::vector<Vec3> rotvec = ComputeYaw(posvec, m_instPathSettings.loop);
+								std::vector<Vec3> upvec(rotvec.size(), Vec3(0.0f, 1.0f, 0.0f));
+								if (m_instPathSettings.groundSnap)
+								{
+									std::vector<size_t> quadindexes;
+									for (size_t j = 0; j < m_quadblocks.size(); j++)
+									{
+										if (m_quadblocks[j].GetFlags() & QuadFlags::GROUND)
+											quadindexes.push_back(j);
+									}
+									for (size_t j = 0; j < posvec.size() ; j++)
+									{
+
+										size_t quadId = SnapToClosestQuad(m_quadblocks, quadindexes, posvec[j], rotvec[j], Vec3(0.0f, 1.0f, 0.0f),
+											m_instPathSettings.negSnapDist, m_instPathSettings.posSnapDist);
+										if (quadId != -1)
+											upvec[j] = m_quadblocks[quadId].GetNormal();
+									}
+								}
+								if (m_instPathSettings.rolling)
+								{
+									float totalDist = 0.0f;
+									for (size_t j = 0; j < posvec.size() - 1; j++)
+									{
+										Vec3& pos = posvec[j + 1];
+										Vec3& prevpos = posvec[j];
+										totalDist += (pos - prevpos).Length();
+										float rotAngleRad = totalDist / m_instPathSettings.radius;
+										Quaternion preRoll(rotvec[j + 1]);
+										Quaternion rolling(Vec3(0.0f, 0.0f, 1.0f), rotAngleRad);
+										rotvec[j + 1] = (preRoll * rolling).ToEulerYXZ();
+									}
+									for (size_t j = 0; j < posvec.size(); j++)
+									{
+										posvec[j] += upvec[j] * m_instPathSettings.radius;
+									}
+								}
+								m_spawntypesPosRot[i].clear();
+								for (size_t j = 0; j < posvec.size(); j++)
+								{
+									m_spawntypesPosRot[i].emplace_back(posvec[j], rotvec[j]);
+								}
+								
+							}
 						}
 						ImGui::SameLine();
 						if (ImGui::Button("Delete##st2posrot"))

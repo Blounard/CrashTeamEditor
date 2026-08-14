@@ -491,3 +491,15 @@ private:
 	uint32_t m_unk28;
 	InstanceHitbox m_hitbox;
 };
+
+struct InstanceLoadPathSettings
+{
+	bool normalize = true;
+	float normalizeDist = 5.0f;
+	bool groundSnap = true;
+	float negSnapDist = -10.0f; // MUST BE NEGATIVE
+	float posSnapDist = 8.0f; // MUST BE POSITIVE
+	float radius = 10.0f; // Only for Pos+Rot
+	bool loop = true;
+	bool rolling = true;
+};
