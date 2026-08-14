@@ -449,6 +449,32 @@ std::vector<Vec3> LoadPath(const std::filesystem::path& path)
 	return ordered;
 }
 
+std::vector<Vec3> ComputeYaw(const std::vector<Vec3>& pos, bool loop)
+{
+	const Vec3 up(0.0f, 1.0f, 0.0f);
+	float curYaw = 0.0f;
+	int nodeCount = static_cast<int>(pos.size());
+	std::vector<Vec3> rots(nodeCount);
+	for (size_t i = 0; i < nodeCount; i++)
+	{
+		const Vec3& curr = pos[i];
+		const Vec3& next = pos[(i + 1) % nodeCount];
+		Vec3 delta = next - curr;
+		if ((i + 1) == nodeCount && !loop)
+			delta = pos[i] - pos[i - 1];
+		
+		Vec3 forwardVec = delta - up * (up.Dot(delta));
+		if (forwardVec.LengthSquared() > EPSILON)
+		{
+			forwardVec.Normalize();
+			curYaw = std::atan2(forwardVec.x, forwardVec.z) * (180.0f / MATH_PI);
+		}
+		rots[i].y = curYaw;
+		rots[i].x = 0.0f;
+		rots[i].z = 0.0f;
+	}
+	return rots;
+}
 
 std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist) 
 {
@@ -459,7 +485,7 @@ std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist)
 
 	auto catmullRomAlpha = [](const Vec3& p0, const Vec3& p1, const Vec3& p2, const Vec3& p3, float t, float alpha = 0.5f) -> Vec3 {
 		auto getT = [alpha](float t, const Vec3& p0, const Vec3& p1) -> float {
-			float d = (p1 - p0).Length(); // Assuming Vec3 has a Length() method
+			float d = (p1 - p0).Length();
 			return t + std::pow(std::max(d, 1e-6f), alpha);
 			};
 
@@ -528,14 +554,6 @@ std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist)
 			accumulated = overshot;
 			// In a loop, we usually don't want the last point to overlap the first.
 			// If the last point is extremely close to the first, you might want to break.
-		}
-	}
-
-	// Since it's a loop, the very last point in 'result' might be very close to result[0].
-	// Depending on your needs, you might want to pop_back() the last point if it's too close.
-	if (result.size() > 1) {
-		if ((result.back() - result.front()).Length() < dist * 0.5f) {
-			result.pop_back();
 		}
 	}
 

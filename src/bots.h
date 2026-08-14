@@ -78,6 +78,8 @@ public:
     void  SetPosY(float y) { m_pos.y = y; }
     void  SetPosZ(float z) { m_pos.z = z; }
 
+    const Vec3& GetRot() const { return m_rot; }
+    void        SetRot(const Vec3& rot) { m_rot = rot; }
     // Yaw: 0 = facing +Z, 90 = facing +X. Increases counter-clockwise (left turns).
     float GetYaw()   const { return m_rot.y; }
     void  SetYaw(float deg) { m_rot.y = deg; }

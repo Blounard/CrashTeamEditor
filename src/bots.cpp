@@ -125,6 +125,7 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
         };
 
     m_nodes.resize(nodeCount);
+    const std::vector<Vec3> nodesRot = ComputeYaw(nodesPos, true);
 
     // Pass 1 : Detect AirTime + Snap to Ground + construct up vec list
     std::vector<const Quadblock*> groundQuads(nodeCount);
@@ -135,8 +136,9 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
     const Vec3 upGlobal = Vec3(0.0f, 1.0f, 0.0f);
     for (size_t i = 0; i < nodeCount; i++)
     {
-        Vec3        pos = nodesPos[i];
-        float       bestDist = GROUND_THRESHOLD;
+        Vec3 pos = nodesPos[i];
+        Vec3 rot = nodesRot[i];
+        float bestDist = GROUND_THRESHOLD;
 
         grounded[i] = false;
         upVec[i] = { 0.0f, 1.0f, 0.0f };
@@ -156,12 +158,14 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
             if (std::abs(dist) > bestDist)
                 continue;
             bestDist = std::abs(dist);
+            quad.SnapPoint(pos, rot, upGlobal);
             groundQuads[i] = &quad;
             upVec[i] = normal;
-            pos += upGlobal * dist;
             grounded[i] = true;
         }
-        m_nodes[i].SetPos(pos); 
+            
+        m_nodes[i].SetPos(pos);
+        m_nodes[i].SetRot(rot);
     }
 
     /// --- Pre-pass: compute yaw ---
@@ -292,11 +296,6 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
     }
 
 
-    // Once driftDir is up to date, set the drift flag, and rotate forward.
-    for (size_t i = 0; i < nodeCount; i++)
-    {
-        m_nodes[i].SetYaw(std::atan2(forwardVec[i].x, forwardVec[i].z) * (180.0f / MATH_PI));
-    }
 
 
     const float DRIFT_ANGLE_DEG = 30.0f;
@@ -333,9 +332,6 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
         Vec3& forward = forwardVec[i];
         Vec3& up = upVec[i];
         Vec3 right = forward.Cross(up);
-        node.SetPitch(-std::asin(forward.y) * (180.0f / MATH_PI));
-       // node.SetYaw(std::atan2(forward.x, forward.z) * (180.0f / MATH_PI));
-        node.SetRoll(std::atan2(-right.y, up.y) * (180.0f / MATH_PI));
         
         // --- Terrain & go back count from ground quad ---
         
