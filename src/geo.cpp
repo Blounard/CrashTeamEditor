@@ -476,9 +476,8 @@ std::vector<Vec3> ComputeYaw(const std::vector<Vec3>& pos, bool loop)
 	return rots;
 }
 
-std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist) 
+std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist, bool loop) 
 {
-	// AI MADE, TODO : RECODE / VERIFY
 
 	int numPoint = static_cast<int>(pos.size());
 	if (numPoint < 2 || dist <= 0.0f) return pos;
@@ -486,7 +485,7 @@ std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist)
 	auto catmullRomAlpha = [](const Vec3& p0, const Vec3& p1, const Vec3& p2, const Vec3& p3, float t, float alpha = 0.5f) -> Vec3 {
 		auto getT = [alpha](float t, const Vec3& p0, const Vec3& p1) -> float {
 			float d = (p1 - p0).Length();
-			return t + std::pow(std::max(d, 1e-6f), alpha);
+			return t + std::pow(std::max(d, EPSILON), alpha);
 			};
 
 		const float t0 = 0.0f;
@@ -507,7 +506,13 @@ std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist)
 		};
 
 	auto getPoint = [&](int i) -> const Vec3& {
-		return pos[((i % numPoint) + numPoint) % numPoint];
+		if (loop) {
+			return pos[((i % numPoint) + numPoint) % numPoint];
+		}
+		else {
+			int clamped = std::clamp(i, 0, numPoint - 1);
+			return pos[clamped];
+		}
 		};
 
 	// 1. Generate Dense Samples
@@ -515,19 +520,23 @@ std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist)
 	std::vector<Vec3> denseSamples;
 	denseSamples.reserve(numPoint * stepsPerSegment);
 
-	for (int i = 0; i < numPoint; i++) {
+	const int segmentCount = loop ? numPoint : (numPoint - 1);
+	for (int i = 0; i < segmentCount; i++) {
 		const Vec3& p0 = getPoint(i - 1);
 		const Vec3& p1 = getPoint(i);
 		const Vec3& p2 = getPoint(i + 1);
 		const Vec3& p3 = getPoint(i + 2);
-
 		for (int step = 0; step < stepsPerSegment; step++) {
 			float t = (float)step / (float)stepsPerSegment;
 			denseSamples.push_back(catmullRomAlpha(p0, p1, p2, p3, t));
 		}
 	}
-	// Add the very first point again at the end to "close" the dense loop for the distance walker
-	denseSamples.push_back(denseSamples.front());
+
+	
+	if (loop)
+		denseSamples.push_back(denseSamples.front());
+	else
+		denseSamples.push_back(getPoint(numPoint - 1));
 
 	// 2. Distribute points by 'dist'
 	std::vector<Vec3> result;
