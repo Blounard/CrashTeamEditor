@@ -259,3 +259,4 @@ bool TestBarycentric(const Vec3& A, const Vec3& B, const Vec3& C, const Vec3& po
 bool SnapTriangle(const Vec3& A, const Vec3& B, const Vec3& C, Vec3& pos, Vec3& rot, const Vec3& projectDir, float barycentricTolerance = EPSILON);
 
 std::vector<Vec3> LoadPath(const std::filesystem::path& path);
+std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist);

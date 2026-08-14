@@ -154,5 +154,4 @@ private:
     uint16_t m_physUnk[0x20] = {};
 };
 
-std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, float dist);
 std::vector<Vec3> GenerateLateralPath(const std::vector<BotNode>& nodes, float lateralOffset, std::vector<Quadblock>& quadblocks);
