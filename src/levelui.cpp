@@ -2442,7 +2442,7 @@ void Level::RenderUI(Renderer& renderer)
 					{
 						std::vector<Vec3> vec = LoadPath(s_objPaths[i]);
 						if (m_botPathSettings.normalizeNodeDist)
-							vec = NormalizePos(vec, m_botPathSettings.nodeDistance); 
+							vec = NormalizePos(vec, m_botPathSettings.nodeDistance, true); 
 						success = m_botPaths[i].GeneratePath(vec, m_quadblocks);
 					}
 					else
@@ -2457,7 +2457,7 @@ void Level::RenderUI(Renderer& renderer)
 						}
 
 						if (m_botPathSettings.normalizeNodeDist) 
-							vec = NormalizePos(vec, m_botPathSettings.nodeDistance); 
+							vec = NormalizePos(vec, m_botPathSettings.nodeDistance, true); 
 						if (i == 1) // Middle Path
 						{
 							success = m_botPaths[i].GeneratePath(vec, m_quadblocks);
@@ -2468,7 +2468,7 @@ void Level::RenderUI(Renderer& renderer)
 							middlePath.GeneratePath(vec, m_quadblocks);
 							vec = GenerateLateralPath(middlePath.GetNodes(), i == 0 ? -m_botPathSettings.sidewayOffset : +m_botPathSettings.sidewayOffset, m_quadblocks);
 							if (m_botPathSettings.normalizeNodeDist) 
-								vec = NormalizePos(vec, m_botPathSettings.nodeDistance);
+								vec = NormalizePos(vec, m_botPathSettings.nodeDistance, true);
 							success = m_botPaths[i].GeneratePath(vec, m_quadblocks);
 						}
 					}
