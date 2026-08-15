@@ -80,18 +80,16 @@ AnimTexture::AnimTexture(const std::string& animName, const std::filesystem::pat
 			if (crop)
 			{
 				const PixelBounds& bounds = textureToPixelBounds.at(key);
-				float croppedWidth = static_cast<float>(bounds.maxU - bounds.minU);
-				float croppedHeight = static_cast<float>(bounds.maxV - bounds.minV);
-				if (croppedWidth == 0) croppedWidth = 1.0f;
-				if (croppedHeight == 0) croppedHeight = 1.0f;
-				u0 = (layout.u0 - bounds.minU) / croppedWidth;
-				v0 = (layout.v0 - bounds.minV) / croppedHeight;
-				u1 = (layout.u1 - bounds.minU) / croppedWidth;
-				v1 = (layout.v1 - bounds.minV) / croppedHeight;
-				u2 = (layout.u2 - bounds.minU) / croppedWidth;
-				v2 = (layout.v2 - bounds.minV) / croppedHeight;
-				u3 = (layout.u3 - bounds.minU) / croppedWidth;
-				v3 = (layout.v3 - bounds.minV) / croppedHeight;
+				const RawUV rawUV(layout);
+				QuadUV uvs = MakeUV(bounds, rawUV);
+				u0 = uvs[0].x;
+				v0 = uvs[0].y;
+				u1 = uvs[1].x;
+				v1 = uvs[1].y;
+				u2 = uvs[2].x;
+				v2 = uvs[2].y;
+				u3 = uvs[3].x;
+				v3 = uvs[3].y;
 			}
 			else
 			{

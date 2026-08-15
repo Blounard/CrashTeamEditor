@@ -251,13 +251,18 @@ PSX::TextureLayout Texture::Serialize(const QuadUV& uvs) const
 
 	size_t x = (m_imageX % TEXPAGE_WIDTH) * bppMultiplier;
 	size_t y = m_imageY % TEXPAGE_HEIGHT;
-	const float width = static_cast<float>(GetWidth() - 1);
-	const float height = static_cast<float>(GetHeight() - 1);
-	// MIGHT NEED TO CHANGE THIS TO width*U - u==maxU ? 1 : 0
+	const float width = static_cast<float>(GetWidth());
+	const float height = static_cast<float>(GetHeight());
+
 	size_t u0 = x + static_cast<size_t>(std::round(uvs[0].x * width));	size_t v0 = y + static_cast<size_t>(std::round(uvs[0].y * height));
 	size_t u1 = x + static_cast<size_t>(std::round(uvs[1].x * width));	size_t v1 = y + static_cast<size_t>(std::round(uvs[1].y * height));
 	size_t u2 = x + static_cast<size_t>(std::round(uvs[2].x * width));	size_t v2 = y + static_cast<size_t>(std::round(uvs[2].y * height));
 	size_t u3 = x + static_cast<size_t>(std::round(uvs[3].x * width));	size_t v3 = y + static_cast<size_t>(std::round(uvs[3].y * height));
+	size_t maxU = std::max(std::max(u0, u1), std::max(u2, u3)); size_t maxV = std::max(std::max(v0, v1), std::max(v2, v3));
+	if (u0 == maxU) u0 -= 1; if (v0 == maxV) v0 -= 1;
+	if (u1 == maxU) u1 -= 1; if (v1 == maxV) v1 -= 1;
+	if (u2 == maxU) u2 -= 1; if (v2 == maxV) v2 -= 1;
+	if (u3 == maxU) u3 -= 1; if (v3 == maxV) v3 -= 1;
 
 	layout.u0 = static_cast<uint8_t>(u0); layout.v0 = static_cast<uint8_t>(v0);
 	layout.u1 = static_cast<uint8_t>(u1); layout.v1 = static_cast<uint8_t>(v1);

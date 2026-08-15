@@ -1990,17 +1990,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 
 				RawUV rawUV(layout, psxQuad.drawOrderLow, f);
 				const PixelBounds& bounds = textureToPixelBounds[key];
-				float croppedWidth = static_cast<float>(bounds.maxU - bounds.minU);
-				float croppedHeight = static_cast<float>(bounds.maxV - bounds.minV);
-				if (croppedWidth == 0) croppedWidth = 1.0f;
-				if (croppedHeight == 0) croppedHeight = 1.0f;
-				QuadUV uvs = {
-					Vec2((rawUV.u0 - bounds.minU) / croppedWidth, (rawUV.v0 - bounds.minV) / croppedHeight),
-					Vec2((rawUV.u1 - bounds.minU) / croppedWidth, (rawUV.v1 - bounds.minV) / croppedHeight),
-					Vec2((rawUV.u2 - bounds.minU) / croppedWidth, (rawUV.v2 - bounds.minV) / croppedHeight),
-					Vec2((rawUV.u3 - bounds.minU) / croppedWidth, (rawUV.v3 - bounds.minV) / croppedHeight)
-				};
-				qb.SetFaceUVs(f, uvs);
+				qb.SetFaceUVs(f, MakeUV(bounds, rawUV));
 			}
 		}
 		if (!materialAssigned) 

@@ -235,17 +235,25 @@ private:
 };
 
 std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures);
-inline QuadUV MakeUV(PixelBounds& bounds, RawUV rawUV) 
+inline QuadUV MakeUV(const PixelBounds& bounds, const RawUV rawUV) 
 {
-	float croppedWidth = static_cast<float>(bounds.maxU - bounds.minU);
-	float croppedHeight = static_cast<float>(bounds.maxV - bounds.minV);
-	if (croppedWidth == 0) croppedWidth = 1.0f;
-	if (croppedHeight == 0) croppedHeight = 1.0f;
+	float croppedWidth = 1.0f + static_cast<float>(bounds.maxU - bounds.minU);
+	float croppedHeight = 1.0f + static_cast<float>(bounds.maxV - bounds.minV);
+	uint8_t maxU = std::max(std::max(rawUV.u0, rawUV.u1), std::max(rawUV.u2, rawUV.u3));
+	uint8_t maxV = std::max(std::max(rawUV.v0, rawUV.v1), std::max(rawUV.v2, rawUV.v3));
+
+	auto toFloat = [&](const uint8_t raw, const uint8_t min, uint8_t max , float size) -> float
+		{
+			if (raw == max)
+				return (static_cast<float>(raw - min) + 1.0f) / size;
+			else 
+				return (static_cast<float>(raw - min)) / size;
+		};
 	QuadUV uvs = {
-		Vec2((rawUV.u0 - bounds.minU) / croppedWidth, (rawUV.v0 - bounds.minV) / croppedHeight),
-		Vec2((rawUV.u1 - bounds.minU) / croppedWidth, (rawUV.v1 - bounds.minV) / croppedHeight),
-		Vec2((rawUV.u2 - bounds.minU) / croppedWidth, (rawUV.v2 - bounds.minV) / croppedHeight),
-		Vec2((rawUV.u3 - bounds.minU) / croppedWidth, (rawUV.v3 - bounds.minV) / croppedHeight)
+		Vec2(toFloat(rawUV.u0, bounds.minU, maxU, croppedWidth), toFloat(rawUV.v0, bounds.minV, maxV, croppedHeight)),
+		Vec2(toFloat(rawUV.u1, bounds.minU, maxU, croppedWidth), toFloat(rawUV.v1, bounds.minV, maxV, croppedHeight)),
+		Vec2(toFloat(rawUV.u2, bounds.minU, maxU, croppedWidth), toFloat(rawUV.v2, bounds.minV, maxV, croppedHeight)),
+		Vec2(toFloat(rawUV.u3, bounds.minU, maxU, croppedWidth), toFloat(rawUV.v3, bounds.minV, maxV, croppedHeight))
 	};
 	return uvs;
 }
