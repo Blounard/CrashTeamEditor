@@ -503,6 +503,11 @@ std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures)
 		size_t x, y;
 		if (!FindAvailableSpace(vramUsed, texture->GetVRAMWidth(), texture->GetHeight(), x, y, false))
 		{
+			printf(" VRAM GENERATION FAILED : NO SPACE LEFT DURING TEXTURE PASS\n");
+			printf("VRAM USED : %zu / %zu (%f %%)\n",
+				std::count(vramUsed.begin(), vramUsed.end(), true),
+				VRAM_WIDTH * VRAM_HEIGHT,
+				100.0f * static_cast<float>(std::count(vramUsed.begin(), vramUsed.end(), true)) / static_cast<float>(VRAM_WIDTH * VRAM_HEIGHT));
 			return std::vector<uint8_t>();
 		}
 		empty = false;
@@ -513,7 +518,7 @@ std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures)
 
 	
 
-	if (empty) { return std::vector<uint8_t>(); }
+	if (empty) { printf("VRAM GENERATION FAILED : EMPTY VRAM\n"); return std::vector<uint8_t>(); }
 
 	// Place level texture CLUTs
 	for (Texture* texture : textures)
@@ -528,6 +533,11 @@ std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures)
 
 		if (!FindAvailableSpace(vramUsed, clut.size(), 1, x, y, true))
 		{
+			printf(" VRAM GENERATION FAILED : NO SPACE LEFT DURING CLUT PASS\n");
+			printf("VRAM USED : %zu / %zu (%f %%)\n",
+				std::count(vramUsed.begin(), vramUsed.end(), true),
+				VRAM_WIDTH * VRAM_HEIGHT,
+				100.0f * static_cast<float>(std::count(vramUsed.begin(), vramUsed.end(), true)) / static_cast<float>(VRAM_WIDTH * VRAM_HEIGHT));
 			return std::vector<uint8_t>();
 		}
 		texture->SetCLUTCoords(x, y);
@@ -577,5 +587,9 @@ std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures)
 
 	constexpr size_t buffer_2_Location = GetVRAMLocation(0, TEXPAGE_HEIGHT);
 	memcpy(pVrm, &vram[buffer_2_Location], buffer_2_size); pVrm += buffer_2_size;
+	printf("VRAM USED : %zu / %zu (%f %%)\n", 
+		std::count(vramUsed.begin(), vramUsed.end(), true), 
+		VRAM_WIDTH * VRAM_HEIGHT, 
+		100.0f * static_cast<float>(std::count(vramUsed.begin(), vramUsed.end(), true)) / static_cast<float>(VRAM_WIDTH * VRAM_HEIGHT));
 	return vrm;
 }
