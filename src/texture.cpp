@@ -454,65 +454,7 @@ static bool TestRect(std::vector<bool>& vramUsed, size_t x, size_t y, size_t wid
 	return true;
 }
 
-// Convert raw PSX pixel bytes to VRAM uint16_t format
-static std::vector<uint16_t> ConvertRawPSXToVRAM(
-	const std::vector<uint8_t>& rawPixels,
-	int width, int height, int bpp)
-{
-	std::vector<uint16_t> vramPixels;
 
-	if (bpp == 2) // 16-bit: reinterpret as uint16_t (little-endian)
-	{
-		vramPixels.resize(width * height);
-		for (int i = 0; i < width * height; i++)
-		{
-			vramPixels[i] = rawPixels[i * 2] | (rawPixels[i * 2 + 1] << 8);
-		}
-	}
-	else if (bpp == 1) // 8-bit: pack 2 pixels per uint16_t
-	{
-		int vramWidth = (width + 1) / 2;
-		vramPixels.resize(vramWidth * height);
-		for (int y = 0; y < height; y++)
-		{
-			for (int vx = 0; vx < vramWidth; vx++)
-			{
-				int srcIdx = y * width + vx * 2;
-				uint8_t p0 = rawPixels[srcIdx];
-				uint8_t p1 = (vx * 2 + 1 < width) ? rawPixels[srcIdx + 1] : 0;
-				vramPixels[y * vramWidth + vx] = p0 | (p1 << 8);
-			}
-		}
-	}
-	else // bpp == 0: 4-bit: pack 4 pixels per uint16_t
-	{
-		int vramWidth = (width + 3) / 4;
-		int srcRowBytes = (width + 1) / 2;
-		vramPixels.resize(vramWidth * height);
-		for (int y = 0; y < height; y++)
-		{
-			for (int vx = 0; vx < vramWidth; vx++)
-			{
-				// 4 pixels → 1 uint16_t
-				// Source: 2 bytes = 4 pixels (2 per byte, low/high nibble)
-				int srcByte0 = y * srcRowBytes + vx * 2;
-				int srcByte1 = srcByte0 + 1;
-				uint8_t b0 = (srcByte0 < (int)rawPixels.size()) ? rawPixels[srcByte0] : 0;
-				uint8_t b1 = (srcByte1 < (int)rawPixels.size()) ? rawPixels[srcByte1] : 0;
-				vramPixels[y * vramWidth + vx] = b0 | (b1 << 8);
-			}
-		}
-	}
-	return vramPixels;
-}
-
-// Get VRAM width for a texture based on BPP
-static int GetVRAMWidthForBPP(int width, int bpp)
-{
-	if (bpp == 0) return (width + 3) / 4;      // 4-bit: 4 pixels per VRAM pixel
-	else if (bpp == 1) return (width + 1) / 2; // 8-bit: 2 pixels per VRAM pixel
-	else return width;                          // 16-bit: 1:1
-}
 
 static bool FindAvailableSpace(std::vector<bool>& vramUsed, size_t width, size_t height, size_t& retX, size_t& retY, bool clut)
 {
