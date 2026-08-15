@@ -234,7 +234,7 @@ private:
 	std::filesystem::path m_path;
 };
 
-std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures, std::vector<ModelTextureForVRM>* modelTextures = nullptr);
+std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures);
 inline QuadUV MakeUV(PixelBounds& bounds, RawUV rawUV) 
 {
 	float croppedWidth = static_cast<float>(bounds.maxU - bounds.minU);

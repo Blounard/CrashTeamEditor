@@ -4523,8 +4523,32 @@ bool Level::UpdateVRM()
 {
 	std::vector<Texture*> textures;
 	std::vector<std::tuple<Texture*, Texture*>> copyTextureAttributes;
-	for (auto& [material, texture] : m_materialToTexture)
+	std::set<std::string> usedMaterials;
+
+	for (const Quadblock& quad : m_quadblocks) // Quad textures
 	{
+		if (quad.GetFlags() & QuadFlags::INVISIBLE_TRIGGER)
+			continue;
+		usedMaterials.insert(quad.GetMaterial());
+	}
+	for (const Instance& inst : m_instances) // Model textures
+	{
+		InstanceModel& model = m_instanceModels[inst.GetModelName()];
+		for (InstanceModelHeader& head : model.m_headers)
+		{
+			for (AnimatedFace& face : head.GetGeometry())
+			{
+				usedMaterials.insert(face.tri.texture);
+			}
+		}
+	}
+	usedMaterials.insert(m_envMapMatName); // Water texture
+
+	for (std::string material : usedMaterials)
+	{
+		if (!m_materialToTexture.contains(material))
+			continue;
+		Texture& texture = m_materialToTexture[material];
 		bool foundEqual = false;
 		for (Texture* addedTexture : textures)
 		{
@@ -4561,81 +4585,8 @@ bool Level::UpdateVRM()
 		}
 	}
 	
-	/*
-	// Extract textures from imported models
-	m_modelTexturesInVRAM.clear();
-	for (auto& [modelName, instModel] : m_instanceModels)
-	{
-		const std::vector<uint8_t>& ctrmodelData = instModel.GetRawData();
-		const SH::CtrModel* ctrHeader = reinterpret_cast<const SH::CtrModel*>(ctrmodelData.data());
 
-		// Skip if no texture section
-		if (ctrHeader->textureDataOffset == 0) { continue; }
-
-		// Parse texture section
-		const SH::TextureSectionHeader* texSection =
-			reinterpret_cast<const SH::TextureSectionHeader*>(ctrmodelData.data() + ctrHeader->textureDataOffset);
-
-		if (texSection->numTextures == 0) { continue; }
-
-		// Offset array follows header
-		const uint32_t* texOffsets = reinterpret_cast<const uint32_t*>(texSection + 1);
-
-		for (uint32_t i = 0; i < texSection->numTextures; i++)
-		{
-			const SH::TextureDataHeader* texData =
-				reinterpret_cast<const SH::TextureDataHeader*>(ctrmodelData.data() + texOffsets[i]);
-
-			ModelTextureForVRM modelTex;
-			modelTex.modelName = modelName;
-			modelTex.textureIndex = i;
-			modelTex.width = texData->width;
-			modelTex.height = texData->height;
-			modelTex.bpp = texData->bpp;
-			modelTex.blendMode = texData->blendMode;
-			modelTex.origPageX = texData->origPageX;
-			modelTex.origPageY = texData->origPageY;
-			modelTex.origPalX = texData->origPalX;
-			modelTex.origPalY = texData->origPalY_lo | (texData->origPalY_hi << 8);
-			modelTex.originU = texData->originU;
-			modelTex.originV = texData->originV;
-
-			// Calculate pixel data size
-			size_t pixelDataSize = 0;
-			size_t paletteSize = 0;
-			if (texData->bpp == 0) // 4-bit
-			{
-				pixelDataSize = ((texData->width + 1) / 2) * texData->height;
-				paletteSize = 16;
-			}
-			else if (texData->bpp == 1) // 8-bit
-			{
-				pixelDataSize = texData->width * texData->height;
-				paletteSize = 256;
-			}
-			else // 16-bit
-			{
-				pixelDataSize = texData->width * texData->height * 2;
-				paletteSize = 0;
-			}
-
-			// Copy pixel data
-			const uint8_t* pixelStart = reinterpret_cast<const uint8_t*>(texData + 1);
-			modelTex.pixelData.assign(pixelStart, pixelStart + pixelDataSize);
-
-			// Copy palette data (if indexed)
-			if (paletteSize > 0)
-			{
-				const uint16_t* paletteStart = reinterpret_cast<const uint16_t*>(pixelStart + pixelDataSize);
-				modelTex.palette.assign(paletteStart, paletteStart + paletteSize);
-			}
-
-			m_modelTexturesInVRAM.push_back(std::move(modelTex));
-		}
-	}
-	*/
-
-	m_vrm = PackVRM(textures, m_modelTexturesInVRAM.empty() ? nullptr : &m_modelTexturesInVRAM);
+	m_vrm = PackVRM(textures);
 	if (m_vrm.empty()) { return false; }
 
 	for (auto& [from, to] : copyTextureAttributes)

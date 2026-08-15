@@ -534,14 +534,13 @@ static bool FindAvailableSpace(std::vector<bool>& vramUsed, size_t width, size_t
 	return false;
 }
 
-std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures, std::vector<ModelTextureForVRM>* modelTextures)
+std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures)
 {
 	bool empty = true;
 	std::vector<Texture*> cachedTextures;
 	std::vector<uint16_t> vram(VRAM_WIDTH * VRAM_HEIGHT, 0);
 	std::vector<bool> vramUsed(VRAM_WIDTH * VRAM_HEIGHT, false);
 
-	// Place level textures first
 	for (Texture* texture : textures)
 	{
 		if (texture->IsEmpty()) { continue; }
@@ -570,33 +569,7 @@ std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures, std::vector<ModelT
 		cachedTextures.push_back(texture);
 	}
 
-	// Place model textures
-	if (modelTextures)
-	{
-		for (ModelTextureForVRM& modelTex : *modelTextures)
-		{
-			// Convert raw PSX bytes to VRAM format
-			std::vector<uint16_t> vramPixels = ConvertRawPSXToVRAM(
-				modelTex.pixelData, modelTex.width, modelTex.height, modelTex.bpp);
-
-			int vramWidth = GetVRAMWidthForBPP(modelTex.width, modelTex.bpp);
-
-			size_t x, y;
-			if (!FindAvailableSpace(vramUsed, vramWidth, modelTex.height, x, y, false))
-			{
-				printf("Warning: Failed to place model texture %s[%zu] in VRAM\n",
-				       modelTex.modelName.c_str(), modelTex.textureIndex);
-				modelTex.placed = false;
-				continue;
-			}
-
-			empty = false;
-			modelTex.imageX = x;
-			modelTex.imageY = y;
-			modelTex.placed = true;
-			BufferToVRM(vram, vramUsed, vramPixels, x, y, vramWidth);
-		}
-	}
+	
 
 	if (empty) { return std::vector<uint8_t>(); }
 
@@ -619,28 +592,6 @@ std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures, std::vector<ModelT
 		BufferToVRM(vram, vramUsed, clut, x, y, clut.size());
 	}
 
-	// Place model texture CLUTs
-	if (modelTextures)
-	{
-		for (ModelTextureForVRM& modelTex : *modelTextures)
-		{
-			if (!modelTex.placed) { continue; }
-			if (modelTex.bpp == 2) { continue; } // 16-bit has no CLUT
-
-			size_t x, y;
-			if (!FindAvailableSpace(vramUsed, modelTex.palette.size(), 1, x, y, true))
-			{
-				printf("Warning: Failed to place model CLUT %s[%zu] in VRAM\n",
-				       modelTex.modelName.c_str(), modelTex.textureIndex);
-				modelTex.placed = false;
-				continue;
-			}
-
-			modelTex.clutX = x;
-			modelTex.clutY = y;
-			BufferToVRM(vram, vramUsed, modelTex.palette, x, y, modelTex.palette.size());
-		}
-	}
 
 	constexpr size_t vrmSize = 0x70038;
 	std::vector<uint8_t> vrm(vrmSize);

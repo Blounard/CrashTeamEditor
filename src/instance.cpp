@@ -1200,9 +1200,9 @@ const std::string& InstanceModelHeader::GetName() const
 { 
 	return m_name; 
 }
-std::vector<AnimatedFace>& InstanceModelHeader::GetGeometry()
+std::vector<AnimatedFace>& InstanceModelHeader::GetGeometry()  
 {
-	return m_animations[0].frames[0];;
+	return m_animations[0].frames[0];
 }
 
 void InstanceModelHeader::LoadOBJ(const std::filesystem::path& objFilename, std::unordered_map<std::string, Texture>& materialToTexture)
