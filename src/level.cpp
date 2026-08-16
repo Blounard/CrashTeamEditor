@@ -1696,15 +1696,27 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							Read(file, baseFrame);
 						}
 
-						// Decode Vertices from base
-						Vec3 frameOrigin = ConvertPSXVec3(baseFrame.pos, FP_ONE_MODEL_ORIGIN); // TODO Verify this 256 factor. Came from DataPlus lev viewer
+
+						// Decodes one frame's raw per-vertex positions from its own file offset.
+						auto DecodeFrameVertices = [&](size_t frameFileOffset, const PSX::ModelFrame& frame) -> std::vector<Vec3>
+							{
+								Vec3 origin = ConvertPSXVec3(frame.pos, FP_ONE_MODEL_ORIGIN);
+								std::vector<Vec3> raw(numVerts);
+								for (int vi = 0; vi < numVerts; vi++)
+								{
+									file.seekg(offLev + std::streampos(frameFileOffset + frame.vertexOffset + vi * sizeof(PSX::Vec3b)));
+									PSX::Vec3b vert;
+									Read(file, vert);
+									raw[vi] = (ConvertPSXVec3b(vert, 255) + origin) * modelScale;
+								}
+								return raw;
+							};
+
+
+						// Decode Vertices from base				
 						std::vector<Point> headerVertices;
-						for (int vi = 0; vi < numVerts; vi++)
+						for (Vec3 pos : DecodeFrameVertices(baseFrameFileOffset, baseFrame))
 						{
-							file.seekg(offLev + std::streampos(baseFrameFileOffset + baseFrame.vertexOffset + vi * sizeof(PSX::Vec3b)));
-							PSX::Vec3b vert;
-							Read(file, vert);
-							Vec3 pos = (ConvertPSXVec3b(vert, 255) + frameOrigin) * modelScale;
 							Point p{}; p.pos = pos;
 							headerVertices.push_back(p);
 						}
@@ -1788,43 +1800,12 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							stripLength++;
 						}
 
-						// Decodes one frame's raw per-vertex positions from its own file offset.
-						auto DecodeFrameVertices = [&](size_t frameFileOffset, const PSX::ModelFrame& frame) -> std::vector<Vec3>
-							{
-								Vec3 origin = ConvertPSXVec3(frame.pos, 256);
-								std::vector<Vec3> raw(numVerts);
-								for (int vi = 0; vi < numVerts; vi++)
-								{
-									file.seekg(offLev + std::streampos(frameFileOffset + frame.vertexOffset + vi * sizeof(PSX::Vec3b)));
-									PSX::Vec3b vert;
-									Read(file, vert);
-									Vec3 pos;
-									pos.x = ((vert.x / 255.0f) + origin.x) * modelScale.x;
-									pos.y = ((vert.z / 255.0f) + origin.y) * modelScale.y;
-									pos.z = ((vert.y / 255.0f) + origin.z) * modelScale.z;
-									raw[vi] = pos;
-								}
-								return raw;
-							};
-
-						// Remaps raw per-vertex positions into a full Tri list, cloning
-						// topology/color/uv/texture/doubleSided from baseFaces (constant across
-						// every frame by construction) and substituting only position.
-						auto RemapFrame = [&](const std::vector<Vec3>& rawVerts) -> std::vector<Tri>
-							{
-								std::vector<Tri> frame = triList;
-								for (size_t t = 0; t < triSourceVertexIndices.size(); t++)
-									for (int c = 0; c < 3; c++)
-										frame[t].p[c].pos = rawVerts[triSourceVertexIndices[t][c]];
-								return frame;
-							};
-
+						// Decode all frames of animations
 						std::vector<ModelAnimation> animations;
-
 						if (!isAnimated)
 						{
 							ModelAnimation staticAnim{};
-							staticAnim.name = ""; // synthetic: uniform "1 clip, 1 frame" wrapper for a static header, not a real named clip
+							staticAnim.name = ""; 
 							staticAnim.interpolated = false;
 							staticAnim.hasRawNumFrames = false;
 							staticAnim.frames.push_back(triList);
@@ -1850,19 +1831,16 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 
 								for (size_t f = 0; f < numStoredFrames; f++)
 								{
-									if (a == 0 && f == 0)
-									{
-										// Identical file bytes to baseFrameFileOffset, already decoded
-										// above -- reuse directly rather than re-reading through a
-										// second path that could silently diverge from this one.
-										animation.frames.push_back(triList);
-										continue;
-									}
 									size_t offFrame = animOffsets[a] + sizeof(PSX::ModelAnim) + f * anim.frameSize;
 									file.seekg(offLev + std::streampos(offFrame));
 									PSX::ModelFrame animFrame{};
 									Read(file, animFrame);
-									animation.frames.push_back(RemapFrame(DecodeFrameVertices(offFrame, animFrame)));
+									std::vector<Vec3> rawVerts = DecodeFrameVertices(offFrame, animFrame);
+									std::vector<Tri> frame = triList;
+									for (size_t t = 0; t < triSourceVertexIndices.size(); t++)
+										for (int c = 0; c < 3; c++)
+											frame[t].p[c].pos = rawVerts[triSourceVertexIndices[t][c]];
+									animation.frames.push_back(frame);
 								}
 								animations.push_back(std::move(animation));
 							}
@@ -1872,7 +1850,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 								continue;
 							}
 						}
-
 						m_instanceModels[modelName].m_headers.emplace_back(modelHeader, baseFrame, colorCount, std::move(animations), isAnimated);
 					}
 				}
