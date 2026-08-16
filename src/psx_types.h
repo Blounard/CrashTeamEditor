@@ -623,9 +623,9 @@ struct std::hash<PSX::OceanVertexFrame>
 static constexpr int16_t FP_ONE = 0x1000;
 static constexpr int16_t FP_ONE_GEO = 64;
 static constexpr int16_t FP_ONE_CP = 8;
-static constexpr int16_t FP_ONE_ROT = 256;
 static constexpr int16_t FP_ONE_SPLITPOINT = 32;
-static constexpr int16_t FP_ONE_MODEL = 1024; // WAS 1024
+static constexpr int16_t FP_ONE_MODEL_ORIGIN = 256;
+static constexpr int16_t FP_ONE_MODEL_SCALE = 1024; 
 
 static inline int16_t ConvertFloat(float x, int16_t one = FP_ONE) { return static_cast<int16_t>(std::round(x * static_cast<float>(one))); };
 static inline int16_t ConvertAngle(float x, int16_t one = FP_ONE) { return static_cast<int16_t>(std::round((x * static_cast<float>(FP_ONE)) / 360.0f)); }

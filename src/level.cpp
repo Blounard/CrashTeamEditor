@@ -1637,7 +1637,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							continue;
 						}
 							
-						Vec3 modelScale = ConvertPSXVec3(modelHeader.scale, FP_ONE_MODEL);
+						Vec3 modelScale = ConvertPSXVec3(modelHeader.scale, FP_ONE_MODEL_SCALE);
 
 						// Step 1 : Decode all commands
 						file.seekg(offLev + std::streampos(modelHeader.offCommandList));
@@ -1696,7 +1696,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							Read(file, baseFrame);
 						}
 
-						Vec3 frameOrigin = ConvertPSXVec3(baseFrame.pos, 256); // TODO Verify this 256 factor. Came from DataPlus lev viewer
+						Vec3 frameOrigin = ConvertPSXVec3(baseFrame.pos, FP_ONE_MODEL_ORIGIN); // TODO Verify this 256 factor. Came from DataPlus lev viewer
 
 						std::vector<Point> headerVertices;
 						for (int vi = 0; vi < numVerts; vi++)
