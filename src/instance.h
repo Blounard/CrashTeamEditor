@@ -13,6 +13,9 @@
 #include <nlohmann/json.hpp>
 
 
+// TODO IMPORTANT : MAKE MODELS NAME NOT UNIQUE KEYS
+
+
 // Per-InstDef settings for emitting a BSP-leaf collision hitbox at save time.
 // Presets mirror flag/extent combos observed in vanilla levels (proto8).
 struct InstanceHitbox
@@ -330,8 +333,6 @@ static const std::map<ModelId, const char*> ModelIdLabels = {
 	{ModelId::STATIC_T,           "T Letter"},
 	{ModelId::STATIC_R,           "R Letter"},
 };
-constexpr char     kAnimMagic[4] = { 'A', 'N', 'I', 'M' };
-constexpr uint32_t kAnimVersion = 1;
 
 struct AnimatedFace //Rename to ModelFace
 {
@@ -348,7 +349,7 @@ struct ModelAnimation
 };
 
 class InstanceModelHeader
-{ // TODO : double sided to .obj with material names
+{ 
 public:
 
 	InstanceModelHeader() = default;

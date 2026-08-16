@@ -260,22 +260,6 @@ namespace PSX
 	};
 
 
-
-	// Command list encoding. See RenderBucket_DrawFunc_Normal in the game's
-	// RenderBucket_QueueExecute.c -- all five DrawFunc variants share this logic.
-	static constexpr uint32_t CMD_TERMINATOR = 0xFFFFFFFF;
-	// (command & CMD_COLOR_ONLY_MASK) == 0 means a color-only command: it consumes no
-	// vertex, and its low 9 bits are a color index rather than a texture index.
-	static constexpr uint32_t CMD_COLOR_ONLY_MASK = 0xFFFF0000;
-	// Bit 26. Set means "reuse the cached vertex at stackIndex" -- no vertex consumed.
-	static constexpr uint32_t CMD_REUSE_VERTEX_FLAG = 0x04000000;
-	static constexpr uint32_t CMD_TEX_INDEX_MASK = 0x1FF;
-
-	// ModelAnim::numFrames encoding.
-	static constexpr uint16_t ANIM_INTERPOLATED_BIT = 0x8000;
-	static constexpr uint16_t ANIM_FRAME_COUNT_MASK = 0x7FFF;
-
-
 	struct ModelHeader
 	{
 		char name[0x10]; // 0x0 name of model group, "oxide_hi" for example
@@ -324,6 +308,10 @@ namespace PSX
 		char unk16[16]; // sixteen 0x0
 		int vertexOffset; // usually 0x1C
 	};
+
+	// ModelAnim::numFrames encoding.
+	static constexpr uint16_t ANIM_INTERPOLATED_BIT = 0x8000;
+	static constexpr uint16_t ANIM_FRAME_COUNT_MASK = 0x7FFF;
 
 	struct ModelAnim
 	{

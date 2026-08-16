@@ -1609,10 +1609,8 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				PSX::Model model{};
 				Read(file, model);
 				std::string modelName(model.name, strnlen(model.name, sizeof(model.name)));
-				/*if (modelName != "startbanner_JAP")
-					continue;*/
 				if (m_instanceModels.contains(modelName))
-				{	// Model already imported
+				{
 					continue;
 				}
 				m_instanceModels[modelName] = InstanceModel(model, modelName);
@@ -1625,13 +1623,13 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 						Read(file, modelHeader);
 						bool isAnimated = modelHeader.offAnimations != 0;
 
-						if ((modelHeader.numAnimations != 0) != isAnimated ||        // internally inconsistent -- our format model would be wrong
-							modelHeader.offAnimtex != 0 ||                             // still unsupported
+						if ((modelHeader.numAnimations != 0) != isAnimated ||
+							modelHeader.offAnimtex != 0 ||							// still unsupported
 							modelHeader.offCommandList == 0 ||
 							modelHeader.offColors == 0 ||
 							(!isAnimated && modelHeader.offFrameData == 0) ||
-							(!isAnimated && modelHeader.offStaticDeltaArray != 0) ||   // compressed static: still unsupported
-							(isAnimated && modelHeader.offFrameData != 0))             // ambiguous per RenderBucket_GetFrame
+							(!isAnimated && modelHeader.offStaticDeltaArray != 0) ||// compressed static: still unsupported
+							(isAnimated && modelHeader.offFrameData != 0))			// ambiguous per RenderBucket_GetFrame
 						{
 							printf("Couldn't import model %s, offAnim 0x%x, numAnim %d, offCommand 0x%x, offAnimTex 0x%x, offColors 0x%x, offSDT 0x%x, offFrameData 0x%x\n",
 								modelName.c_str(), modelHeader.offAnimations, modelHeader.numAnimations, modelHeader.offCommandList, modelHeader.offAnimtex, modelHeader.offColors, modelHeader.offStaticDeltaArray, modelHeader.offFrameData);
@@ -1639,7 +1637,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							continue;
 						}
 							
-						Vec3 modelScale = ConvertPSXVec3(modelHeader.scale, FP_ONE_MODEL); // Not sure about the conversion factor.
+						Vec3 modelScale = ConvertPSXVec3(modelHeader.scale, FP_ONE_MODEL);
 
 						// Step 1 : Decode all commands
 						file.seekg(offLev + std::streampos(modelHeader.offCommandList));
@@ -1653,33 +1651,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							if (cmd.command == 0xFFFFFFFF)
 								break;
 							else
-							{	
-								commandList.push_back(cmd);
-								if (cmd.unk1 != 0 || cmd.unk2 != 0)
-								{
-									printf("Model %s  header %d invalid command unk1 or unk2 non null\n", modelName.c_str(), j);
-									m_instanceModels[modelName].SetValid(false);
-								}
-								if (j==0)//modelName == "startbanner_JAP")
-								{
-									//printf("Model %s, ", modelName);
-									//printf("header n. %d, ", j);
-									//printf("colorFromScratchpadOrRamFlag:%d, ", cmd.colorFromScratchpadOrRamFlag);
-									//printf("noBackfaceFlag:%d, ", cmd.noBackfaceFlag);
-									//printf("unk1:%d, ", cmd.unk1);
-									//printf("unk2:%d, ", cmd.unk2); 
-									//printf("texCoordIndex:%d, ", cmd.texCoordIndex);
-									//printf("colorCoordIndex:%d, ", cmd.colorCoordIndex);
-									//printf("stackWriteLocationIndex:%d, ", cmd.stackWriteLocationIndex);
-									//printf("readNextVertFromStackIndexFlag:%d, ", cmd.readNextVertFromStackIndexFlag);
-									//printf("normalFlipFlag:%d, ", cmd.normalFlipFlag);
-									//printf("swapFlag:%d, ", cmd.swapFlag);
-									//printf("resetFlag:%d, ", cmd.resetFlag);
-									//printf("\n");
-
-								}
-							}
-									
+								commandList.push_back(cmd);			
 						}
 						int numVerts = 0;
 						for (PSX::InstDrawCommand& command : commandList)
@@ -1689,12 +1661,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 						}
 
 						// Step 2: locate the source of the base / rest vertex data.
-						// Static: modelHeader.offFrameData, as before.
-						// Animated: frame 0 of animation 0. If that animation turns out compressed
-						// (offDeltaArray != 0), we currently have no verified way to decode it at
-						// all -- there's no separate rest frame to fall back on -- so the whole
-						// header is marked invalid rather than guessing.
-
 						PSX::ModelFrame baseFrame{};
 						size_t baseFrameFileOffset = 0;
 						std::vector<PSX::ModelAnim> animHeaders;
@@ -1711,16 +1677,16 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							if (modelHeader.numAnimations == 0) { m_instanceModels[modelName].SetValid(false); continue; }
 							animOffsets.resize(modelHeader.numAnimations);
 							animHeaders.resize(modelHeader.numAnimations);
-							bool ok = true;
+							bool valid = true;
 							for (uint32_t a = 0; a < modelHeader.numAnimations; a++)
 							{
 								file.seekg(offLev + std::streampos(modelHeader.offAnimations + a * sizeof(uint32_t)));
 								Read(file, animOffsets[a]);
-								if (animOffsets[a] == 0) { ok = false; break; }
+								if (animOffsets[a] == 0) { valid = false; break; }
 								file.seekg(offLev + std::streampos(animOffsets[a]));
 								Read(file, animHeaders[a]);
 							}
-							if (!ok || animHeaders[0].offDeltaArray != 0)
+							if (!valid || animHeaders[0].offDeltaArray != 0)
 							{
 								m_instanceModels[modelName].SetValid(false);
 								continue;
@@ -1730,7 +1696,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							Read(file, baseFrame);
 						}
 
-						Vec3 frameOrigin = ConvertPSXVec3(baseFrame.pos, 256);
+						Vec3 frameOrigin = ConvertPSXVec3(baseFrame.pos, 256); // TODO Verify this 256 factor. Came from DataPlus lev viewer
 
 						std::vector<Point> headerVertices;
 						for (int vi = 0; vi < numVerts; vi++)
