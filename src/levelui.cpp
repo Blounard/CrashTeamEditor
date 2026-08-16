@@ -2180,55 +2180,6 @@ void Level::RenderUI(Renderer& renderer)
 
 						if (instModel.RenderUI(m_materialToTexture, [&]() { this->UpdateAnimationRenderData(); }))
 							modelToDelete = modelName;
-						/*if (ImGui::TreeNode("Textures##Model"))
-						{
-							std::unordered_set<std::string> texList;
-							for (InstanceModelHeader& hd : instModel.m_headers)
-							{
-								for (AnimatedFace& af : hd.GetGeometry())
-								{
-									texList.insert(af.tri.texture);
-								}
-								
-							}
-							for (std::string texName : texList)
-							{
-								if (ImGui::TreeNode((texName + "##modelListtexture").c_str()))
-								{
-									m_materialToTexture[texName].RenderUI({}, m_quadblocks, [&]() { this->UpdateAnimationRenderData(); });
-									ImGui::TreePop();
-								}
-							}
-							
-							ImGui::TreePop();
-						
-						}*/
-						//if (ImGui::TreeNode((modelName + "##modelList").c_str()))
-						//{
-						//	
-						//	ImGui::Text("%s", modelName.c_str());
-						//	ImGui::SameLine();
-						//	ImGui::Text("(%zu bytes)", instModel.GetRawData().size());
-						//	ImGui::SameLine(ImGui::GetContentRegionAvail().x - 20);
-						//	if (ImGui::Button("X"))
-						//	{
-						//		modelToDelete = modelName;
-						//	}
-						//	int i = 0;
-						//	for (const InstanceModelHeader& header : instModel.m_headers)
-						//	{
-						//		/*for (const std::string& texName : header.m_texNames)
-						//		{
-						//			if (ImGui::TreeNode((texName + "##modelListtexture" + std::to_string(i)).c_str()))
-						//			{
-						//				m_materialToTexture[texName].RenderUI({}, m_quadblocks, [&]() { this->UpdateAnimationRenderData(); });
-						//				ImGui::TreePop();
-						//			}
-						//			i++;
-						//		}*/
-						//	}					
-						//	ImGui::TreePop();
-						//}
 						ImGui::PopID();
 						
 					}
