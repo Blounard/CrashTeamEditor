@@ -1708,7 +1708,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							pos.x = ((vert.x / 255.0f) + frameOrigin.x) * modelScale.x;
 							pos.y = ((vert.z / 255.0f) + frameOrigin.y) * modelScale.y;
 							pos.z = ((vert.y / 255.0f) + frameOrigin.z) * modelScale.z;
-							pos.x = -pos.x; pos.z = -pos.z;
 							Point p{}; p.pos = pos;
 							headerVertices.push_back(p);
 						}

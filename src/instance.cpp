@@ -302,9 +302,9 @@ namespace
 	// DecodeModelHeaderTriangles' vertex decode in reverse.
 	void EncodeVertexBytes(const Vec3& pos, const Vec3& scale, const Vec3& origin, uint8_t outBytes[3])
 	{
-		float preFlipX = -pos.x;
+		float preFlipX = pos.x;
 		float preFlipY = pos.y;
-		float preFlipZ = -pos.z;
+		float preFlipZ = pos.z;
 
 		outBytes[0] = QuantizeVertexAxis(preFlipX, scale.x, origin.x); // decode reads src[0] -> pos.x
 		outBytes[2] = QuantizeVertexAxis(preFlipY, scale.y, origin.y); // decode reads src[2] -> pos.y
@@ -1550,7 +1550,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 
 	const std::vector<AnimatedFace>& baseFaces = m_animations[0].frames[0];
 	
-	auto PreFlip = [](const Vec3& pos) { return Vec3(-pos.x, pos.y, -pos.z); };
+	auto PreFlip = [](const Vec3& pos) { return Vec3(pos.x, pos.y, pos.z); };
 
 	// --- Keep only animations whose every frame still matches base topology
 	// (face count). m_animations can, in principle, be edited/imported
