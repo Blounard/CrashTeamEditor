@@ -16,18 +16,7 @@
 // TODO IMPORTANT : MAKE MODELS NAME NOT UNIQUE KEYS
 
 
-// Per-InstDef settings for emitting a BSP-leaf collision hitbox at save time.
-// Presets mirror flag/extent combos observed in vanilla levels (proto8).
-struct InstanceHitbox
-{
-	enum Preset : int { PICKUP = 0, SOLID_WALL = 1, STATIC_DECORATION = 2, CUSTOM = 3 };
 
-	bool enabled = false;
-	int preset = Preset::PICKUP;
-	uint32_t flags = 0x000004C0; // vanilla pickup flags (bit 0x80 set = trigger-only)
-	float halfExtent = 1.1875f; // vanilla pickup trigger radius
-	float yOffset = 0; // hitbox center offset above InstDef position
-};
 
 
 
@@ -294,7 +283,6 @@ enum class ModelId : int16_t
 	NUM_TYPES = 0xE2
 };
 
-
 static const std::map<ModelId, const char*> ModelIdLabels = {
 	{ModelId::NOFUNC,             "No Function"},
 	{ModelId::ANIMATE_IF_HIT,     "Animate If Hit"},
@@ -316,22 +304,27 @@ static const std::map<ModelId, const char*> ModelIdLabels = {
 	{ModelId::BLADE,              "Blade"},
 	{ModelId::DYNAMIC_SEAL,       "Seal"},
 	{ModelId::DYNAMIC_ORCA,       "Orca"},
-	{ModelId::DYNAMIC_BARREL,     "Barrel"},
+	{ModelId::DYNAMIC_BARREL,     "Barrel (Sewer)"},
 	{ModelId::DYNAMIC_VONLABASS,  "Von Labass"},
 	{ModelId::DYNAMIC_SKUNK,      "Skunk"},
 	{ModelId::DYNAMIC_TURTLE,     "Turtle"},
 	{ModelId::DYNAMIC_SPIDER,     "Spider"},
 	{ModelId::DYNAMIC_SPIDERSHADOW, "Spider Shadow"},
 	{ModelId::DYNAMIC_FIREBALL,   "Fireball"},
+	{ModelId::DYNAMIC_DRUM,   "Barrel (Labs)"},
 	{ModelId::STATIC_CASTLE_SIGN, "Castle Sign"},
+	{ModelId::STATIC_TIME_CRATE_01, "Relic Crate 1"},
+	{ModelId::STATIC_TIME_CRATE_02, "Relic Crate 2"},
+	{ModelId::STATIC_TIME_CRATE_03, "Relic Crate 3"},
 	{ModelId::STATIC_BANNER,      "Banner"},
 	{ModelId::STATIC_WARPPAD,     "Warp Pad"},
-	{ModelId::STATIC_TEETH,       "Teeth"},
+	{ModelId::STATIC_TEETH,       "TigerTemple Door"},
 	{ModelId::STATIC_STARTTEXT,   "Start Text"},
 	{ModelId::STATIC_SAVEOBJ,     "Save Object"},
 	{ModelId::STATIC_C,           "C Letter"},
 	{ModelId::STATIC_T,           "T Letter"},
 	{ModelId::STATIC_R,           "R Letter"},
+	{ModelId::STATIC_STARTBANNERWAVE,"Start banner"},
 };
 
 struct ModelAnimation
@@ -357,7 +350,6 @@ public:
 	std::vector<Tri>& GetGeometry();
 	bool IsAnimated() const { return m_isAnimated; }
 	
-	void LoadOBJ(const std::filesystem::path& objFilename, std::unordered_map<std::string, Texture>& materialToTexture);
 	bool LoadGLTF(const std::filesystem::path& gltfPath, std::unordered_map<std::string, Texture>& materialToTexture);
 	void ExportOBJ(const std::filesystem::path& modelDir, std::string baseFileName, std::unordered_map<std::string, Texture>& materialToTexture);
 	void ExportGLTF(const std::filesystem::path& modelDir, const std::string& baseFileName, std::unordered_map<std::string, Texture>& materialToTexture) const;
@@ -416,6 +408,23 @@ private:
 	bool m_parsed = false;
 	bool m_valid = true;
 };
+
+
+
+
+// Per-InstDef settings for emitting a BSP-leaf collision hitbox at save time.
+// Presets mirror flag/extent combos observed in vanilla levels (proto8).
+struct InstanceHitbox
+{
+	enum Preset : int { PICKUP = 0, SOLID_WALL = 1, STATIC_DECORATION = 2, CUSTOM = 3 };
+
+	bool enabled = false;
+	int preset = Preset::PICKUP;
+	uint32_t flags = 0x000004C0; // vanilla pickup flags (bit 0x80 set = trigger-only)
+	float halfExtent = 1.1875f; // vanilla pickup trigger radius
+	float yOffset = 0; // hitbox center offset above InstDef position
+};
+
 
 
 class Instance

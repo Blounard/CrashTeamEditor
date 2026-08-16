@@ -16,254 +16,24 @@
 
 
 
-namespace
+// NEED TO CLEAN
+// Ensures 'baseName' doesn't collide with an existing key in materialToTexture,
+// appending a numeric suffix ("wood" -> "wood1") until it's unique.
+std::string MakeUniqueMaterialName(const std::string& baseName, const std::unordered_map<std::string, Texture>& materialToTexture)
 {
-	// --- Parsing helpers, file-local to this translation unit ---
-
-	int ParseIntSafe(const std::string& s)
+	if (!materialToTexture.contains(baseName)) { return baseName; }
+	int suffix = 1;
+	std::string candidate;
+	do
 	{
-		if (s.empty()) { return 0; }
-		try { return std::stoi(s); }
-		catch (...) { return 0; }
-	}
-
-	struct ParsedMaterial
-	{
-		std::string localName;
-		std::string textureFile; // relative filename from map_Kd, empty if none
-	};
-
-	std::vector<ParsedMaterial> ParseMtlFile(const std::filesystem::path& mtlPath)
-	{
-		std::vector<ParsedMaterial> materials;
-		std::ifstream file(mtlPath);
-		if (!file) { return materials; }
-
-		std::string line;
-		while (std::getline(file, line))
-		{
-			std::istringstream iss(line);
-			std::string token;
-			iss >> token;
-
-			if (token == "newmtl")
-			{
-				ParsedMaterial mat;
-				iss >> mat.localName;
-				materials.push_back(mat);
-			}
-			else if (token == "map_Kd" && !materials.empty())
-			{
-				iss >> materials.back().textureFile;
-			}
-		}
-		return materials;
-	}
-
-	struct ParsedOBJVertex
-	{
-		Vec3 pos;
-		Color color = Color(static_cast<unsigned char>(128), 128, 128);
-	};
-
-	struct ParsedFace
-	{
-		int vIdx[3] = { 0, 0, 0 };
-		int vtIdx[3] = { 0, 0, 0 };
-		int vnIdx[3] = { 0, 0, 0 };
-		std::string material; // local material name from the last "usemtl"
-	};
-
-	void ParseFaceVertexToken(const std::string& token, int& v, int& vt, int& vn)
-	{
-		v = 0; vt = 0; vn = 0;
-		size_t firstSlash = token.find('/');
-		if (firstSlash == std::string::npos)
-		{
-			v = ParseIntSafe(token);
-			return;
-		}
-		v = ParseIntSafe(token.substr(0, firstSlash));
-
-		size_t secondSlash = token.find('/', firstSlash + 1);
-		if (secondSlash == std::string::npos)
-		{
-			vt = ParseIntSafe(token.substr(firstSlash + 1));
-			return;
-		}
-		vt = ParseIntSafe(token.substr(firstSlash + 1, secondSlash - firstSlash - 1));
-		vn = ParseIntSafe(token.substr(secondSlash + 1));
-	}
-
-	void ParseObjFile(const std::filesystem::path& objPath,
-		std::vector<ParsedOBJVertex>& outVerts,
-		std::vector<Vec2>& outUVs,
-		std::vector<Vec3>& outNormals,
-		std::vector<ParsedFace>& outFaces)
-	{
-		std::ifstream file(objPath);
-		if (!file) { return; }
-
-		std::string currentMaterial;
-		std::string line;
-		while (std::getline(file, line))
-		{
-			if (line.empty() || line[0] == '#') { continue; }
-			std::istringstream iss(line);
-			std::string token;
-			iss >> token;
-
-			if (token == "v")
-			{
-				ParsedOBJVertex v;
-				float r = 0.5f, g = 0.5f, b = 0.5f;
-				iss >> v.pos.x >> v.pos.y >> v.pos.z;
-				iss >> r >> g >> b; // our exporter always writes these; default gray if absent
-				v.color = Color(
-					static_cast<unsigned char>(std::clamp(r, 0.0f, 1.0f) * 255.0f),
-					static_cast<unsigned char>(std::clamp(g, 0.0f, 1.0f) * 255.0f),
-					static_cast<unsigned char>(std::clamp(b, 0.0f, 1.0f) * 255.0f));
-				outVerts.push_back(v);
-			}
-			else if (token == "vt")
-			{
-				Vec2 uv;
-				iss >> uv.x >> uv.y;
-				outUVs.push_back(uv);
-			}
-			else if (token == "vn")
-			{
-				Vec3 n;
-				iss >> n.x >> n.y >> n.z;
-				outNormals.push_back(n);
-			}
-			else if (token == "usemtl")
-			{
-				iss >> currentMaterial;
-			}
-			else if (token == "f")
-			{
-				ParsedFace face;
-				face.material = currentMaterial;
-				for (int i = 0; i < 3; i++)
-				{
-					std::string vertToken;
-					iss >> vertToken;
-					ParseFaceVertexToken(vertToken, face.vIdx[i], face.vtIdx[i], face.vnIdx[i]);
-				}
-				outFaces.push_back(face);
-			}
-		}
-	}
-
-	// Ensures 'baseName' doesn't collide with an existing key in materialToTexture,
-	// appending a numeric suffix ("wood" -> "wood1") until it's unique.
-	std::string MakeUniqueMaterialName(const std::string& baseName,
-		const std::unordered_map<std::string, Texture>& materialToTexture)
-	{
-		if (!materialToTexture.contains(baseName)) { return baseName; }
-		int suffix = 1;
-		std::string candidate;
-		do
-		{
-			candidate = baseName + std::to_string(suffix);
-			suffix++;
-		} while (materialToTexture.contains(candidate));
-		return candidate;
-	}
-
-	// Loads an .obj + .mtl pair into a flat triangle list, creating a new Texture
-	// object (with a globally-unique material name) for every material that has
-	// a texture, and adding it to materialToTexture.
-	std::vector<Tri> LoadFacesFromObjMtl(const std::filesystem::path& objPath,
-		const std::filesystem::path& mtlPath,
-		std::unordered_map<std::string, Texture>& materialToTexture)
-	{
-		std::vector<Tri> faces;
-
-		std::vector<ParsedMaterial> materials = ParseMtlFile(mtlPath);
-
-		// Local (per-header, as written in the .mtl) material name -> globally-unique name
-		std::unordered_map<std::string, std::string> localToGlobalMaterial;
-		for (const ParsedMaterial& mat : materials)
-		{
-			if (mat.textureFile.empty())
-			{
-				// No texture (e.g. "notex") — nothing to add to the shared map,
-				// so no uniqueness concern; keep the name as-is.
-				localToGlobalMaterial[mat.localName] = mat.localName;
-				continue;
-			}
-
-			std::string globalName = MakeUniqueMaterialName(mat.localName, materialToTexture);
-			std::filesystem::path pngPath = mtlPath.parent_path() / mat.textureFile;
-			materialToTexture.emplace(globalName, Texture(pngPath));
-			localToGlobalMaterial[mat.localName] = globalName;
-		}
-
-		std::vector<ParsedOBJVertex> verts;
-		std::vector<Vec2> uvs;
-		std::vector<Vec3> normals;
-		std::vector<ParsedFace> parsedFaces;
-		ParseObjFile(objPath, verts, uvs, normals, parsedFaces);
-
-		faces.reserve(parsedFaces.size());
-		for (const ParsedFace& pf : parsedFaces)
-		{
-			Point p[3];
-			bool hasNormal[3] = { false, false, false };
-
-			for (int i = 0; i < 3; i++)
-			{
-				int vIndex = pf.vIdx[i] - 1;
-				if (vIndex >= 0 && vIndex < static_cast<int>(verts.size()))
-				{
-					p[i].pos = verts[vIndex].pos;
-					p[i].color = verts[vIndex].color;
-				}
-
-				int vtIndex = pf.vtIdx[i] - 1;
-				if (vtIndex >= 0 && vtIndex < static_cast<int>(uvs.size()))
-				{
-					Vec2 rawUV = uvs[vtIndex]; // as stored in the .obj file (bottom-left origin)
-					if (rawUV.x < 0.0f || rawUV.x > 1.0f || rawUV.y < 0.0f || rawUV.y > 1.0f)
-					{
-						printf("WARNING: UV (%.4f, %.4f) out of [0,1] range in %s, clamping\n",
-							rawUV.x, rawUV.y, objPath.string().c_str());
-						rawUV.x = std::clamp(rawUV.x, 0.0f, 1.0f);
-						rawUV.y = std::clamp(rawUV.y, 0.0f, 1.0f);
-					}
-					// Invert ExportOBJ's `1.0f - v` to get back to top-left origin
-					p[i].uv = Vec2(rawUV.x, 1.0f - rawUV.y);
-				}
-
-				int vnIndex = pf.vnIdx[i] - 1;
-				if (vnIndex >= 0 && vnIndex < static_cast<int>(normals.size()))
-				{
-					p[i].normal = normals[vnIndex];
-					hasNormal[i] = true;
-				}
-			}
-
-			// Fallback: recompute a flat face normal if the .obj didn't provide one
-			if (!hasNormal[0] || !hasNormal[1] || !hasNormal[2])
-			{
-				Vec3 e1 = p[1].pos - p[0].pos;
-				Vec3 e2 = p[2].pos - p[0].pos;
-				Vec3 n = e1.Cross(e2);
-				if (n.LengthSquared() > 0.0001f) { n.Normalize(); }
-				p[0].normal = n; p[1].normal = n; p[2].normal = n;
-			}
-
-			Tri tri(p[0], p[1], p[2]);
-			auto matIt = localToGlobalMaterial.find(pf.material);
-			tri.texture = (matIt != localToGlobalMaterial.end()) ? matIt->second : std::string();
-			faces.push_back(tri);
-		}
-
-		return faces;
-	}
+		candidate = baseName + std::to_string(suffix);
+		suffix++;
+	} while (materialToTexture.contains(candidate));
+	return candidate;
 }
+
+	
+	
 namespace
 {
 	void AppendBytes(std::vector<uint8_t>& buffer, const void* data, size_t size)
@@ -1144,40 +914,26 @@ InstanceModelHeader::InstanceModelHeader(const nlohmann::json& headerJson, const
 		m_hasOrigin = true;
 	}
 	
-
-	//if (headerJson.value("animated", false))
+	
+	std::string gltfFilename = headerJson.value("gltfFile", std::string());
+	printf("filename : %s\n", gltfFilename.c_str());
+	std::filesystem::path gltfPath = modelDir / gltfFilename;
+	std::vector<ModelAnimation> animations;
+	bool isAnimated = false;
+	if (LoadGLTFHeaderData(gltfPath, materialToTexture, animations, isAnimated))
 	{
-		std::string gltfFilename = headerJson.value("gltfFile", std::string());
-		printf("filename : %s\n", gltfFilename.c_str());
-		std::filesystem::path gltfPath = modelDir / gltfFilename;
-		std::vector<ModelAnimation> animations;
-		bool isAnimated = false;
-		if (LoadGLTFHeaderData(gltfPath, materialToTexture, animations, isAnimated))
-		{
-			m_animations = std::move(animations);
-			m_isAnimated = isAnimated;
-		}
-		else
-		{
-			printf("ERROR: failed to import %s -- header will have empty geometry\n", gltfPath.string().c_str());
-			ModelAnimation empty{};
-			empty.frames.push_back({});
-			m_animations.push_back(std::move(empty));
-			m_isAnimated = false;
-		}
+		m_animations = std::move(animations);
+		m_isAnimated = isAnimated;
 	}
-	//else
-	//{
-	//	std::string objFile = headerJson.value("objFile", std::string());
-	//	std::string mtlFile = headerJson.value("mtlFile", std::string());
-	//	std::vector<bool> doubleSided;
-	//	//std::vector<Tri> faces = LoadFacesFromObjMtl(modelDir / objFile, modelDir / mtlFile, materialToTexture, doubleSided);
-	//	ModelAnimation staticAnim{};
-	//	//staticAnim.frames.push_back(WrapFaces(faces, doubleSided));
-	//	m_animations.push_back(std::move(staticAnim));
-	//	m_isAnimated = false;
-	//}
-
+	else
+	{
+		printf("ERROR: failed to import %s -- header will have empty geometry\n", gltfPath.string().c_str());
+		ModelAnimation empty{};
+		empty.frames.push_back({});
+		m_animations.push_back(std::move(empty));
+		m_isAnimated = false;
+	}
+	
 }
 
 
@@ -1203,17 +959,6 @@ const std::string& InstanceModelHeader::GetName() const
 std::vector<Tri>& InstanceModelHeader::GetGeometry()
 {
 	return m_animations[0].frames[0];
-}
-
-void InstanceModelHeader::LoadOBJ(const std::filesystem::path& objFilename, std::unordered_map<std::string, Texture>& materialToTexture)
-{
-	std::filesystem::path mtlFilename = objFilename;
-	mtlFilename.replace_extension(".mtl");
-	//TODO IMPLEMENT
-	//m_faces = LoadFacesFromObjMtl(objFilename, mtlFilename, materialToTexture);
-	//m_faceDoubleSided = std::vector<bool>(m_faces.size(), false); // TODO IMPLEMENT
-	m_hasScale = false;
-	m_hasOrigin = false;
 }
 
 bool InstanceModelHeader::LoadGLTF(const std::filesystem::path& gltfPath, std::unordered_map<std::string, Texture>& materialToTexture)
