@@ -61,7 +61,7 @@ namespace
 	//   value = ((rawByte / 255.0f) + origin) * scale
 	uint8_t QuantizeVertexAxis(float value, float scale, float origin)
 	{
-		if (std::fabs(scale) < 0.0001f) { return 0; } // degenerate (flat) axis
+		if (std::fabs(scale) < EPSILON) { return 0; } // degenerate (flat) axis
 		float normalized = (value / scale) - origin;
 		float raw = std::round(normalized * 255.0f);
 		return static_cast<uint8_t>(std::clamp(raw, 0.0f, 255.0f));
@@ -116,64 +116,7 @@ namespace
 		return index;
 	}
 }
-namespace detail
-{
-	// ---- low-level helpers ----
 
-	template <typename T>
-	void writePOD(std::ostream& os, const T& value)
-	{
-		static_assert(std::is_trivially_copyable<T>::value, "writePOD requires trivially copyable type");
-		os.write(reinterpret_cast<const char*>(&value), sizeof(T));
-	}
-
-	template <typename T>
-	void readPOD(std::istream& is, T& value)
-	{
-		static_assert(std::is_trivially_copyable<T>::value, "readPOD requires trivially copyable type");
-		is.read(reinterpret_cast<char*>(&value), sizeof(T));
-		if (!is)
-			throw std::runtime_error("Unexpected end of file while reading POD value");
-	}
-
-	void writeString(std::ostream& os, const std::string& s)
-	{
-		uint32_t len = static_cast<uint32_t>(s.size());
-		writePOD(os, len);
-		if (len > 0)
-			os.write(s.data(), len);
-	}
-
-	std::string readString(std::istream& is)
-	{
-		uint32_t len = 0;
-		readPOD(is, len);
-		std::string s(len, '\0');
-		if (len > 0)
-		{
-			is.read(&s[0], len);
-			if (!is)
-				throw std::runtime_error("Unexpected end of file while reading string data");
-		}
-		return s;
-	}
-
-	void writeVec3(std::ostream& os, const Vec3& v)
-	{
-		writePOD(os, v.x);
-		writePOD(os, v.y);
-		writePOD(os, v.z);
-	}
-
-	Vec3 readVec3(std::istream& is)
-	{
-		Vec3 v{};
-		readPOD(is, v.x);
-		readPOD(is, v.y);
-		readPOD(is, v.z);
-		return v;
-	}
-}
 
 
 
@@ -846,24 +789,6 @@ namespace
 
 
 
-static size_t Align4(size_t value)
-{
-	return (value + 3) & ~static_cast<size_t>(3);
-}
-
-// Component-wise divide with a guard: an axis with truly zero scale (shouldn't
-// happen after MIN_BOX_SIZE clamping, but a raw m_hasScale override could still
-// supply one) maps to origin 0 rather than producing inf/UB.
-static Vec3 SafeDivide(const Vec3& num, const Vec3& denom)
-{
-	return Vec3(
-		std::fabs(denom.x) < 0.0001f ? 0.0f : num.x / denom.x,
-		std::fabs(denom.y) < 0.0001f ? 0.0f : num.y / denom.y,
-		std::fabs(denom.z) < 0.0001f ? 0.0f : num.z / denom.z
-	);
-}
-
-
 InstanceModelHeader::InstanceModelHeader(PSX::ModelHeader& modelHeader, PSX::ModelFrame& baseFrame, uint32_t colorCount,
 	std::vector<ModelAnimation> animations, bool isAnimated)
 {
@@ -1374,7 +1299,11 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 				}
 			if (pose.empty()) { poseMin = Vec3(0, 0, 0); }
 
-			Vec3 originF = SafeDivide(poseMin, effScale);
+			Vec3 originF;
+			originF.x = std::fabs(effScale.x) < 0.0001f ? 0.0f : poseMin.x / effScale.x;
+			originF.y = std::fabs(effScale.y) < 0.0001f ? 0.0f : poseMin.y / effScale.y;
+			originF.z = std::fabs(effScale.z) < 0.0001f ? 0.0f : poseMin.z / effScale.z;
+
 
 			PSX::ModelFrame frame{};
 			frame.pos = ConvertVec3(originF, FP_ONE_MODEL_ORIGIN);
@@ -1385,7 +1314,6 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 			Vec3 effOrigin = ConvertPSXVec3(frame.pos, FP_ONE_MODEL_ORIGIN);
 
 			std::vector<uint8_t> vertexBytes;
-			vertexBytes.reserve(pose.size() * 9);
 			for (const Tri& tri : pose)
 			{
 				for (int pushOrder = 0; pushOrder < 3; pushOrder++)
@@ -1398,6 +1326,9 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 					vertexBytes.push_back(bytes[2]);
 				}
 			}
+			// Padding to align with 4bytes
+			while (vertexBytes.size() % 4 != 0)
+				vertexBytes.push_back(0);
 			return { frame, std::move(vertexBytes) };
 		};
 
@@ -1502,7 +1433,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 			}
 
 			const size_t payloadBytes = encodedFrames.empty() ? 0 : encodedFrames[0].second.size();
-			const size_t frameStride = Align4(sizeof(PSX::ModelFrame) + payloadBytes);
+			const size_t frameStride = sizeof(PSX::ModelFrame) + payloadBytes;
 			if (frameStride > 0x7FFF)
 			{
 				printf("WARNING: header '%s' animation '%s' frameSize 0x%zx exceeds int16_t range\n",
