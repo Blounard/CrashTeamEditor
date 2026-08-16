@@ -1279,7 +1279,7 @@ void Level::RenderUI(Renderer& renderer)
 									for (size_t j = 0; j < posvec.size() ; j++)
 									{
 
-										size_t quadId = SnapToClosestQuad(m_quadblocks, quadindexes, posvec[j], rotvec[j], Vec3(0.0f, 1.0f, 0.0f),
+										int quadId = SnapToClosestQuad(m_quadblocks, quadindexes, posvec[j], rotvec[j], Vec3(0.0f, 1.0f, 0.0f),
 											m_instPathSettings.negSnapDist, m_instPathSettings.posSnapDist);
 										if (quadId != -1)
 											upvec[j] = m_quadblocks[quadId].GetNormal();

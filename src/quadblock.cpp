@@ -1113,9 +1113,9 @@ void Quadblock::ComputeBoundingBox()
 	m_hasRawNormalData = false;
 }
 
-size_t SnapToClosestQuad(const std::vector<Quadblock>& quadblocks, const std::vector<size_t>quadIndexes, Vec3& outpos, Vec3& outrot, const Vec3& projectDir, float negSnapLimit, float posSnapLimit, float barycentricTolerance)
+int SnapToClosestQuad(const std::vector<Quadblock>& quadblocks, const std::vector<size_t>quadIndexes, Vec3& outpos, Vec3& outrot, const Vec3& projectDir, float negSnapLimit, float posSnapLimit, float barycentricTolerance)
 {
-	size_t quadId = -1;
+	int quadId = -1;
 	float minDist = std::numeric_limits<float>::max();
 	Vec3 pos = outpos;
 	for (size_t i : quadIndexes)
@@ -1130,7 +1130,7 @@ size_t SnapToClosestQuad(const std::vector<Quadblock>& quadblocks, const std::ve
 				if (std::fabs(dist) < minDist)
 				{
 					minDist = std::fabs(dist);
-					quadId = i;
+					quadId = static_cast<int>(i);
 					quad.SnapPoint(outpos, outrot, projectDir, barycentricTolerance);
 				}
 			}
