@@ -649,9 +649,9 @@ bool InstanceModel::RenderUI(std::unordered_map<std::string, Texture>& materialT
 			std::unordered_set<std::string> texList;
 			for (InstanceModelHeader& hd : m_headers)
 			{
-				for (AnimatedFace& af : hd.GetGeometry())
+				for (Tri& tri : hd.GetGeometry())
 				{
-					texList.insert(af.tri.texture);
+					texList.insert(tri.texture);
 				}
 
 			}

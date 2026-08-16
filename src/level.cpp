@@ -1771,7 +1771,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 								tri.p[0].color = temp[3].color; tri.p[1].color = temp[2].color; tri.p[2].color = temp[1].color;
 								tri.p[0].uv = uvs[2]; tri.p[1].uv = uvs[1]; tri.p[2].uv = uvs[0];
 								tri.texture = texName;
-								triDoubleSided.push_back(command.noBackfaceFlag != 1);
+								tri.doubleSided = command.noBackfaceFlag != 1;
 								triList.push_back(tri);
 
 								std::array<int, 3> src = { tempVertexIndex[3], tempVertexIndex[2], tempVertexIndex[1] };
@@ -1786,14 +1786,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 								triSourceVertexIndices.push_back(src);
 							}
 							stripLength++;
-						}
-
-						// --- Wrap the base pose into AnimatedFace form. ---
-						std::vector<AnimatedFace> baseFaces(triList.size());
-						for (size_t t = 0; t < triList.size(); t++)
-						{
-							baseFaces[t].tri = triList[t];
-							baseFaces[t].doubleSided = triDoubleSided[t];
 						}
 
 						// Decodes one frame's raw per-vertex positions from its own file offset.
@@ -1816,15 +1808,15 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 								return raw;
 							};
 
-						// Remaps raw per-vertex positions into a full AnimatedFace list, cloning
+						// Remaps raw per-vertex positions into a full Tri list, cloning
 						// topology/color/uv/texture/doubleSided from baseFaces (constant across
 						// every frame by construction) and substituting only position.
-						auto RemapFrame = [&](const std::vector<Vec3>& rawVerts) -> std::vector<AnimatedFace>
+						auto RemapFrame = [&](const std::vector<Vec3>& rawVerts) -> std::vector<Tri>
 							{
-								std::vector<AnimatedFace> frame = baseFaces;
+								std::vector<Tri> frame = triList;
 								for (size_t t = 0; t < triSourceVertexIndices.size(); t++)
 									for (int c = 0; c < 3; c++)
-										frame[t].tri.p[c].pos = rawVerts[triSourceVertexIndices[t][c]];
+										frame[t].p[c].pos = rawVerts[triSourceVertexIndices[t][c]];
 								return frame;
 							};
 
@@ -1836,7 +1828,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							staticAnim.name = ""; // synthetic: uniform "1 clip, 1 frame" wrapper for a static header, not a real named clip
 							staticAnim.interpolated = false;
 							staticAnim.hasRawNumFrames = false;
-							staticAnim.frames.push_back(baseFaces);
+							staticAnim.frames.push_back(triList);
 							animations.push_back(std::move(staticAnim));
 						}
 						else
@@ -1864,7 +1856,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 										// Identical file bytes to baseFrameFileOffset, already decoded
 										// above -- reuse directly rather than re-reading through a
 										// second path that could silently diverge from this one.
-										animation.frames.push_back(baseFaces);
+										animation.frames.push_back(triList);
 										continue;
 									}
 									size_t offFrame = animOffsets[a] + sizeof(PSX::ModelAnim) + f * anim.frameSize;
@@ -4484,9 +4476,9 @@ bool Level::UpdateVRM()
 		InstanceModel& model = m_instanceModels[inst.GetModelName()];
 		for (InstanceModelHeader& head : model.m_headers)
 		{
-			for (AnimatedFace& face : head.GetGeometry())
+			for (Tri& tri : head.GetGeometry())
 			{
-				usedMaterials.insert(face.tri.texture);
+				usedMaterials.insert(tri.texture);
 			}
 		}
 	}

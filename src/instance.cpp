@@ -779,7 +779,7 @@ namespace
 
 	std::vector<ModelAnimation> BuildAnimationsFromTRS(const tinygltf::Model& model, const std::vector<PrimData>& prims,
 		int meshNodeIdx, const Mat4& ancestorTransform,
-		const std::function<std::vector<AnimatedFace>(const std::function<Vec3(size_t, size_t)>&)>& buildFaces)
+		const std::function<std::vector<Tri>(const std::function<Vec3(size_t, size_t)>&)>& buildFaces)
 	{
 		std::vector<ModelAnimation> out;
 		const tinygltf::Node& restNode = model.nodes[meshNodeIdx];
@@ -955,41 +955,41 @@ namespace
 		if (prims.empty()) { printf("ERROR: no usable triangle primitives in %s\n", gltfPath.string().c_str()); return false; }
 		if (globalNumTargets == SIZE_MAX) { globalNumTargets = 0; }
 
-		auto BuildFaces = [&](const std::function<Vec3(size_t primIdx, size_t corner)>& getPos) -> std::vector<AnimatedFace>
+		auto BuildFaces = [&](const std::function<Vec3(size_t primIdx, size_t corner)>& getPos) -> std::vector<Tri>
 			{
-				std::vector<AnimatedFace> faces;
+				std::vector<Tri> faces;
 				for (size_t p = 0; p < prims.size(); p++)
 				{
 					const PrimData& pd = prims[p];
 					for (size_t c = 0; c + 2 < pd.basePositions.size(); c += 3)
 					{
-						AnimatedFace af;
-						af.doubleSided = pd.doubleSided;
-						af.tri.texture = pd.materialName;
+						Tri tri;
+						tri.doubleSided = pd.doubleSided;
+						tri.texture = pd.materialName;
 						for (int k = 0; k < 3; k++)
 						{
-							af.tri.p[k].pos = getPos(p, c + k);
-							af.tri.p[k].uv = pd.uvs[c + k];
+							tri.p[k].pos = getPos(p, c + k);
+							tri.p[k].uv = pd.uvs[c + k];
 							const Vec3& col = pd.colors[c + k];
-							af.tri.p[k].color = Color(
+							tri.p[k].color = Color(
 								static_cast<unsigned char>(std::clamp(col.x, 0.0f, 1.0f) * 255.0f),
 								static_cast<unsigned char>(std::clamp(col.y, 0.0f, 1.0f) * 255.0f),
 								static_cast<unsigned char>(std::clamp(col.z, 0.0f, 1.0f) * 255.0f));
 						}
-						Vec3 e1 = af.tri.p[1].pos - af.tri.p[0].pos;
-						Vec3 e2 = af.tri.p[2].pos - af.tri.p[0].pos;
+						Vec3 e1 = tri.p[1].pos - tri.p[0].pos;
+						Vec3 e2 = tri.p[2].pos - tri.p[0].pos;
 						Vec3 n = e1.Cross(e2);
 						if (n.LengthSquared() > 0.0001f) { n.Normalize(); }
-						af.tri.p[0].normal = af.tri.p[1].normal = af.tri.p[2].normal = n;
-						faces.push_back(af);
+						tri.p[0].normal = tri.p[1].normal = tri.p[2].normal = n;
+						faces.push_back(tri);
 					}
 				}
 				return faces;
 			};
 
-		std::vector<AnimatedFace> baseFaces = BuildFaces([&](size_t p, size_t c) { return prims[p].basePositions[c]; });
+		std::vector<Tri> baseFaces = BuildFaces([&](size_t p, size_t c) { return prims[p].basePositions[c]; });
 
-		auto BuildBlendedFrame = [&](const float* weights, size_t numWeights) -> std::vector<AnimatedFace>
+		auto BuildBlendedFrame = [&](const float* weights, size_t numWeights) -> std::vector<Tri>
 			{
 				return BuildFaces([&](size_t p, size_t c) -> Vec3
 					{
@@ -1200,7 +1200,7 @@ const std::string& InstanceModelHeader::GetName() const
 { 
 	return m_name; 
 }
-std::vector<AnimatedFace>& InstanceModelHeader::GetGeometry()  
+std::vector<Tri>& InstanceModelHeader::GetGeometry()
 {
 	return m_animations[0].frames[0];
 }
@@ -1233,7 +1233,7 @@ void InstanceModelHeader::ExportOBJ(const std::filesystem::path& modelDir, std::
 {
 	std::unordered_map<std::string, std::vector<size_t>> materialToTris; //material name -> list of triangle index
 	for (size_t i = 0; i < m_animations[0].frames[0].size(); i++)
-		materialToTris[m_animations[0].frames[0][i].tri.texture].push_back(i);
+		materialToTris[m_animations[0].frames[0][i].texture].push_back(i);
 
 	// --- .mtl ---
 	std::ofstream mtl(modelDir / (baseFileName + ".mtl"));
@@ -1268,7 +1268,7 @@ void InstanceModelHeader::ExportOBJ(const std::filesystem::path& modelDir, std::
 		obj << "usemtl " << matName << "\n";
 		for (size_t triIdx : indices)
 		{
-			const Tri& tri = m_animations[0].frames[0][triIdx].tri;
+			const Tri& tri = m_animations[0].frames[0][triIdx];
 
 			Vec3 e1 = tri.p[1].pos - tri.p[0].pos;
 			Vec3 e2 = tri.p[2].pos - tri.p[0].pos;
@@ -1305,14 +1305,14 @@ void InstanceModelHeader::ExportOBJ(const std::filesystem::path& modelDir, std::
 void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, const std::string& baseFileName,
 	std::unordered_map<std::string, Texture>& materialToTexture) const
 {
-	const std::vector<AnimatedFace>& baseFaces = m_animations[0].frames[0];
+	const std::vector<Tri>& baseFaces = m_animations[0].frames[0];
 	std::map<std::pair<std::string, bool>, std::vector<size_t>> groups;
 	for (size_t i = 0; i < baseFaces.size(); i++)
-		groups[{baseFaces[i].tri.texture, baseFaces[i].doubleSided}].push_back(i);
+		groups[{baseFaces[i].texture, baseFaces[i].doubleSided}].push_back(i);
 
 	struct AnimRange { size_t firstTarget; size_t frameCount; };
 	std::vector<AnimRange> animRanges(m_animations.size());
-	std::vector<const std::vector<AnimatedFace>*> targetFrames;
+	std::vector<const std::vector<Tri>*> targetFrames;
 	for (size_t a = 0; a < m_animations.size(); a++)
 	{
 		animRanges[a] = { targetFrames.size(), m_animations[a].frames.size() };
@@ -1322,8 +1322,8 @@ void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, cons
 	const size_t numTargets = targetFrames.size();
 
 	tinygltf::Model model;
-	model.asset.version = "2.0";
-	model.asset.generator = "CTR Instance Model Exporter";
+	model.asset.version = "1.0";
+	model.asset.generator = "CTE Instance Model Exporter";
 
 	std::vector<uint8_t> bin;
 	auto AddAccessor = [&](const float* data, size_t elemCount, int elemFloats, int type, bool withBounds) -> int
@@ -1382,9 +1382,9 @@ void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, cons
 		for (size_t fi : faceIndices)
 			for (int c = 0; c < 3; c++)
 			{
-				positions.push_back(baseFaces[fi].tri.p[c].pos);
-				uvs.push_back(baseFaces[fi].tri.p[c].uv);
-				const Color& col = baseFaces[fi].tri.p[c].color;
+				positions.push_back(baseFaces[fi].p[c].pos);
+				uvs.push_back(baseFaces[fi].p[c].uv);
+				const Color& col = baseFaces[fi].p[c].color;
 				colors.push_back(Vec3(col.r / 255.0f, col.g / 255.0f, col.b / 255.0f));
 			}
 
@@ -1400,7 +1400,7 @@ void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, cons
 			deltas.reserve(faceIndices.size() * 3);
 			for (size_t fi : faceIndices)
 				for (int c = 0; c < 3; c++)
-					deltas.push_back((*targetFrames[t])[fi].tri.p[c].pos - baseFaces[fi].tri.p[c].pos);
+					deltas.push_back((*targetFrames[t])[fi].p[c].pos - baseFaces[fi].p[c].pos);
 			std::map<std::string, int> target;
 			target["POSITION"] = AddAccessor(&deltas[0].x, deltas.size(), 3, TINYGLTF_TYPE_VEC3, true);
 			prim.targets.push_back(target);
@@ -1548,7 +1548,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	header.maybeScaleMaybePadding = m_scaleOrPad;
 	header.offStaticDeltaArray = 0; // compressed static vertices unsupported by this encoder -- intentional
 
-	const std::vector<AnimatedFace>& baseFaces = m_animations[0].frames[0];
+	const std::vector<Tri>& baseFaces = m_animations[0].frames[0];
 	
 	auto PreFlip = [](const Vec3& pos) { return Vec3(pos.x, pos.y, pos.z); };
 
@@ -1594,9 +1594,9 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 		};
 	for (const ModelAnimation* anim : validAnims)
 		for (const auto& frame : anim->frames)
-			for (const AnimatedFace& af : frame)
+			for (const Tri& tri : frame)
 				for (int c = 0; c < 3; c++)
-					ExpandBox(af.tri.p[c].pos);
+					ExpandBox(tri.p[c].pos);
 
 	if (baseFaces.empty()) { preFlipMin = Vec3(0, 0, 0); preFlipMax = Vec3(0, 0, 0); }
 
@@ -1616,13 +1616,13 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	// Encodes one full pose into a tight-fit ModelFrame + vertex bytes,
 	// using the shared effScale (always big enough, since it was sized
 	// from the union of every pose we'll ever call this with).
-	auto EncodePose = [&](const std::vector<AnimatedFace>& pose) -> std::pair<PSX::ModelFrame, std::vector<uint8_t>>
+	auto EncodePose = [&](const std::vector<Tri>& pose) -> std::pair<PSX::ModelFrame, std::vector<uint8_t>>
 		{
 			Vec3 poseMin(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
-			for (const AnimatedFace& af : pose)
+			for (const Tri& tri : pose)
 				for (int c = 0; c < 3; c++)
 				{
-					Vec3 pf = PreFlip(af.tri.p[c].pos);
+					Vec3 pf = PreFlip(tri.p[c].pos);
 					poseMin.x = std::min(poseMin.x, pf.x);
 					poseMin.y = std::min(poseMin.y, pf.y);
 					poseMin.z = std::min(poseMin.z, pf.z);
@@ -1641,13 +1641,13 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 
 			std::vector<uint8_t> vertexBytes;
 			vertexBytes.reserve(pose.size() * 9);
-			for (const AnimatedFace& af : pose)
+			for (const Tri& tri : pose)
 			{
 				for (int pushOrder = 0; pushOrder < 3; pushOrder++)
 				{
 					int cornerIdx = 2 - pushOrder; // matches command push order below
 					uint8_t bytes[3];
-					EncodeVertexBytes(af.tri.p[cornerIdx].pos, effScale, effOrigin, bytes);
+					EncodeVertexBytes(tri.p[cornerIdx].pos, effScale, effOrigin, bytes);
 					vertexBytes.push_back(bytes[0]);
 					vertexBytes.push_back(bytes[1]);
 					vertexBytes.push_back(bytes[2]);
@@ -1665,9 +1665,8 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	bool warnedColorOverflow = false;
 	bool warnedTexOverflow = false;
 
-	for (const AnimatedFace& af : baseFaces)
+	for (const Tri& tri : baseFaces)
 	{
-		const Tri& tri = af.tri;
 		uint32_t colorIdx[3];
 		colorIdx[2] = GetOrAddColorIndex(colorPalette, colorLookup, tri.p[0].color, m_name, warnedColorOverflow);
 		colorIdx[1] = GetOrAddColorIndex(colorPalette, colorLookup, tri.p[1].color, m_name, warnedColorOverflow);
@@ -1709,7 +1708,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 			cmd.colorCoordIndex = colorIdx[cmdSlot];
 			cmd.texCoordIndex = texCoordIndex;
 			cmd.colorFromScratchpadOrRamFlag = static_cast<uint32_t>(materialToTexture[tri.texture].IsEmpty()); // TODO : Verify other spot where texture can be default
-			cmd.noBackfaceFlag = af.doubleSided ? 0 : 1; 
+			cmd.noBackfaceFlag = tri.doubleSided ? 0 : 1; 
 			commands.push_back(cmd);
 		}
 	}

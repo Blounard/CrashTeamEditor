@@ -334,18 +334,13 @@ static const std::map<ModelId, const char*> ModelIdLabels = {
 	{ModelId::STATIC_R,           "R Letter"},
 };
 
-struct AnimatedFace //Rename to ModelFace
-{
-	Tri tri;
-	bool doubleSided = false;
-};
 struct ModelAnimation
 {
 	std::string name;
 	bool interpolated = false;
 	bool hasRawNumFrames = false; // true only when decoded from a real .lev
 	uint16_t rawNumFrames = 0;    // verbatim PSX::ModelAnim::numFrames -- exact round-trip fidelity
-	std::vector<std::vector<AnimatedFace>> frames; // frames[f].size() == frames[0].size() for every f; only .tri.p[*].pos may legitimately differ across frames
+	std::vector<std::vector<Tri>> frames; // frames[f].size() == frames[0].size() for every f; only .tri.p[*].pos may legitimately differ across frames
 };
 
 class InstanceModelHeader
@@ -359,7 +354,7 @@ public:
 
 	void Clear();
 	const std::string& GetName() const;
-	std::vector<AnimatedFace>& GetGeometry();
+	std::vector<Tri>& GetGeometry();
 	bool IsAnimated() const { return m_isAnimated; }
 	
 	void LoadOBJ(const std::filesystem::path& objFilename, std::unordered_map<std::string, Texture>& materialToTexture);

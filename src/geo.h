@@ -228,6 +228,7 @@ struct Primitive
 	std::string texture;
 	Point p[4];
 	unsigned pointCount;
+	bool doubleSided;
 };
 
 struct Tri : public Primitive
