@@ -1802,7 +1802,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 									pos.x = ((vert.x / 255.0f) + origin.x) * modelScale.x;
 									pos.y = ((vert.z / 255.0f) + origin.y) * modelScale.y;
 									pos.z = ((vert.y / 255.0f) + origin.z) * modelScale.z;
-									pos.x = -pos.x; pos.z = -pos.z;
 									raw[vi] = pos;
 								}
 								return raw;
