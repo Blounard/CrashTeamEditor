@@ -1696,27 +1696,20 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							Read(file, baseFrame);
 						}
 
+						// Decode Vertices from base
 						Vec3 frameOrigin = ConvertPSXVec3(baseFrame.pos, FP_ONE_MODEL_ORIGIN); // TODO Verify this 256 factor. Came from DataPlus lev viewer
-
 						std::vector<Point> headerVertices;
 						for (int vi = 0; vi < numVerts; vi++)
 						{
 							file.seekg(offLev + std::streampos(baseFrameFileOffset + baseFrame.vertexOffset + vi * sizeof(PSX::Vec3b)));
 							PSX::Vec3b vert;
 							Read(file, vert);
-							Vec3 pos;
-							pos.x = ((vert.x / 255.0f) + frameOrigin.x) * modelScale.x;
-							pos.y = ((vert.z / 255.0f) + frameOrigin.y) * modelScale.y;
-							pos.z = ((vert.y / 255.0f) + frameOrigin.z) * modelScale.z;
+							Vec3 pos = (ConvertPSXVec3b(vert, 255) + frameOrigin) * modelScale;
 							Point p{}; p.pos = pos;
 							headerVertices.push_back(p);
 						}
 
-						// Topology pass: unchanged in structure from before. Produces triList (this
-						// header's base/rest pose), triDoubleSided (parallel to triList), and
-						// triSourceVertexIndices (parallel to triList; the 3 raw-vertex-array
-						// indices, in corner order, feeding each triangle) -- used below to remap
-						// EVERY frame, including this one, through one uniform path.
+						// Decode topology
 						std::vector<Point> stack(256);
 						std::vector<int> stackVertexIndex(256, -1);
 						int vertexIndex = 0;

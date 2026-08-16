@@ -629,8 +629,12 @@ static constexpr int16_t FP_ONE_MODEL_SCALE = 1024;
 
 static inline int16_t ConvertFloat(float x, int16_t one = FP_ONE) { return static_cast<int16_t>(std::round(x * static_cast<float>(one))); };
 static inline int16_t ConvertAngle(float x, int16_t one = FP_ONE) { return static_cast<int16_t>(std::round((x * static_cast<float>(FP_ONE)) / 360.0f)); }
+static inline float ConvertFP(int32_t fp, int16_t one = FP_ONE) { return static_cast<float>(fp) / static_cast<float>(one); }
+static inline float ConvertFP(uint32_t fp, int16_t one = FP_ONE) { return static_cast<float>(fp) / static_cast<float>(one); }
 static inline float ConvertFP(int16_t fp, int16_t one = FP_ONE) { return static_cast<float>(fp) / static_cast<float>(one); }
-//static inline float ConvertFP(uint8_t fp, int16_t one = FP_ONE) { return static_cast<float>(fp) / static_cast<float>(one); }
+static inline float ConvertFP(uint16_t fp, int16_t one = FP_ONE) { return static_cast<float>(fp) / static_cast<float>(one); }
+static inline float ConvertFP(int8_t fp, int16_t one = FP_ONE) { return static_cast<float>(fp) / static_cast<float>(one); }
+static inline float ConvertFP(uint8_t fp, int16_t one = FP_ONE) { return static_cast<float>(fp) / static_cast<float>(one); }
 static inline float ConvertFPAngle(int16_t fp, int16_t one = FP_ONE) { return (static_cast<float>(fp) * 360.0f) / static_cast<float>(FP_ONE); }
 
 static inline PSX::Vec3 ConvertAngle(const Vec3& v, int16_t one = FP_ONE)
@@ -670,11 +674,11 @@ static inline Vec3 ConvertPSXVec3(const PSX::Vec3& v, int16_t one = FP_ONE)
 }
 
 static inline Vec3 ConvertPSXVec3b(const PSX::Vec3b& v, int16_t one = FP_ONE)
-{
+{ // WARNING : NOT ALIGNED, Y AND Z ARE SWAPPED, USED BY MODELS
 	Vec3 out = {};
 	out.x = ConvertFP(v.x, one);
-	out.y = ConvertFP(v.y, one);
-	out.z = ConvertFP(v.z, one);
+	out.y = ConvertFP(v.z, one);
+	out.z = ConvertFP(v.y, one);
 	return out;
 }
 
