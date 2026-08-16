@@ -43,6 +43,7 @@ struct BotNodeFlags
 struct BotNodeFlags2
 {
     static constexpr uint16_t NONE = 0;
+    static constexpr uint16_t SPECIAL_MASK = 0xF; // if USE_RAMPHYS : id of RamPhys ; if REFLECTION : id of splitline (0 or 1) ; else : transparency
     static constexpr uint16_t USE_RAMPHYS = 1 << 4;
     static constexpr uint16_t REFLECTION = 1 << 5;
     static constexpr uint16_t INSTANCE_COLL = 1 << 6;
@@ -113,6 +114,26 @@ public:
 private:
     Vec3 m_pos = {};
     Vec3 m_rot = {};
+    bool m_TurboPad;
+    bool m_SkidmarkFront;
+    bool m_SkidmarkBack;
+    bool m_TurboPadLow;
+    bool m_MaskGrabSTP;
+    bool m_jump;
+    bool m_driftLeft;
+    bool m_driftRight;
+    bool m_echo;
+    bool m_midAir;
+    bool m_sink;
+    bool m_instanceColl;
+    bool m_lowGrav;
+    bool m_useSplitLine;
+    int m_splitLineID;
+    bool m_useRamPhys;
+    int m_ramPhysID;
+    int m_transparency;
+
+
 
     uint16_t m_flags = 0;
     uint8_t m_terrain = TerrainType::ASPHALT;
