@@ -16,9 +16,6 @@
 
 
 
-// NEED TO CLEAN
-// Ensures 'baseName' doesn't collide with an existing key in materialToTexture,
-// appending a numeric suffix ("wood" -> "wood1") until it's unique.
 std::string MakeUniqueMaterialName(const std::string& baseName, const std::unordered_map<std::string, Texture>& materialToTexture)
 {
 	if (!materialToTexture.contains(baseName)) { return baseName; }
@@ -26,66 +23,11 @@ std::string MakeUniqueMaterialName(const std::string& baseName, const std::unord
 	std::string candidate;
 	do
 	{
-		candidate = baseName + std::to_string(suffix);
+		candidate = baseName + "_" + std::to_string(suffix);
 		suffix++;
 	} while (materialToTexture.contains(candidate));
 	return candidate;
 }
-
-	
-	
-namespace // SerializeInto
-{
-	void AppendBytes(std::vector<uint8_t>& buffer, const void* data, size_t size)
-	{
-		const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data);
-		buffer.insert(buffer.end(), bytes, bytes + size);
-	}
-
-	template <typename T>
-	void AppendValue(std::vector<uint8_t>& buffer, const T& value)
-	{
-		AppendBytes(buffer, &value, sizeof(T));
-	}
-
-	void AppendPadding(std::vector<uint8_t>& buffer, size_t alignment)
-	{
-		size_t remainder = buffer.size() % alignment;
-		if (remainder != 0)
-		{
-			buffer.insert(buffer.end(), alignment - remainder, uint8_t(0));
-		}
-	}
-
-	// Inverse of the decoder's per-axis dequantization:
-	//   value = ((rawByte / 255.0f) + origin) * scale
-	uint8_t QuantizeVertexAxis(float value, float scale, float origin)
-	{
-		if (std::fabs(scale) < EPSILON) { return 0; } // degenerate (flat) axis
-		float normalized = (value / scale) - origin;
-		float raw = std::round(normalized * 255.0f);
-		return static_cast<uint8_t>(std::clamp(raw, 0.0f, 255.0f));
-	}
-
-	// Encodes an engine-space position into the PSX format's byte triple:
-	// axis-shuffled (X,Z,Y storage order) and sign-flipped on X/Z, mirroring
-	// DecodeModelHeaderTriangles' vertex decode in reverse.
-	void EncodeVertexBytes(const Vec3& pos, const Vec3& scale, const Vec3& origin, uint8_t outBytes[3])
-	{
-		float preFlipX = pos.x;
-		float preFlipY = pos.y;
-		float preFlipZ = pos.z;
-
-		outBytes[0] = QuantizeVertexAxis(preFlipX, scale.x, origin.x); // decode reads src[0] -> pos.x
-		outBytes[2] = QuantizeVertexAxis(preFlipY, scale.y, origin.y); // decode reads src[2] -> pos.y
-		outBytes[1] = QuantizeVertexAxis(preFlipZ, scale.z, origin.z); // decode reads src[1] -> pos.z
-	}
-
-}
-
-
-
-
 
 
 
@@ -1053,6 +995,58 @@ nlohmann::json InstanceModelHeader::WriteMetadataJson(const std::string& gltfFil
 	json["bannerWave"] = m_bannerWave;
 	return json;
 }
+
+
+namespace // SerializeInto
+{
+	void AppendBytes(std::vector<uint8_t>& buffer, const void* data, size_t size)
+	{
+		const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data);
+		buffer.insert(buffer.end(), bytes, bytes + size);
+	}
+
+	template <typename T>
+	void AppendValue(std::vector<uint8_t>& buffer, const T& value)
+	{
+		AppendBytes(buffer, &value, sizeof(T));
+	}
+
+	void AppendPadding(std::vector<uint8_t>& buffer, size_t alignment)
+	{
+		size_t remainder = buffer.size() % alignment;
+		if (remainder != 0)
+		{
+			buffer.insert(buffer.end(), alignment - remainder, uint8_t(0));
+		}
+	}
+
+	// Inverse of the decoder's per-axis dequantization:
+	//   value = ((rawByte / 255.0f) + origin) * scale
+	uint8_t QuantizeVertexAxis(float value, float scale, float origin)
+	{
+		if (std::fabs(scale) < EPSILON) { return 0; } // degenerate (flat) axis
+		float normalized = (value / scale) - origin;
+		float raw = std::round(normalized * 255.0f);
+		return static_cast<uint8_t>(std::clamp(raw, 0.0f, 255.0f));
+	}
+
+	// Encodes an engine-space position into the PSX format's byte triple:
+	// axis-shuffled (X,Z,Y storage order) and sign-flipped on X/Z, mirroring
+	// DecodeModelHeaderTriangles' vertex decode in reverse.
+	void EncodeVertexBytes(const Vec3& pos, const Vec3& scale, const Vec3& origin, uint8_t outBytes[3])
+	{
+		float preFlipX = pos.x;
+		float preFlipY = pos.y;
+		float preFlipZ = pos.z;
+
+		outBytes[0] = QuantizeVertexAxis(preFlipX, scale.x, origin.x); // decode reads src[0] -> pos.x
+		outBytes[2] = QuantizeVertexAxis(preFlipY, scale.y, origin.y); // decode reads src[2] -> pos.y
+		outBytes[1] = QuantizeVertexAxis(preFlipZ, scale.z, origin.z); // decode reads src[1] -> pos.z
+	}
+
+}
+
+
 
 void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t modelOffset, size_t headerStructOffset,
 	std::unordered_map<std::string, Texture>& materialToTexture,
