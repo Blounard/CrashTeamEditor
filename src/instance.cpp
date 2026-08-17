@@ -34,7 +34,7 @@ std::string MakeUniqueMaterialName(const std::string& baseName, const std::unord
 
 	
 	
-namespace
+namespace // SerializeInto
 {
 	void AppendBytes(std::vector<uint8_t>& buffer, const void* data, size_t size)
 	{
@@ -121,7 +121,9 @@ namespace
 
 
 
-namespace
+
+
+namespace // Load GLTF
 {
 
 
@@ -193,9 +195,6 @@ namespace
 		return ReadFloatAccessorFlat(model, accessorIdx, 1);
 	}
 
-	// COLOR_0 may be VEC3/VEC4 and FLOAT / normalized UBYTE / normalized
-	// USHORT per spec (Blender commonly exports normalized UBYTE VEC4).
-	// Alpha, if present, is dropped -- we don't track per-vertex alpha.
 	static std::vector<Vec3> ReadColorAccessor(const tinygltf::Model& model, int accessorIdx)
 	{
 		const tinygltf::Accessor& acc = model.accessors[accessorIdx];
@@ -311,8 +310,6 @@ namespace
 		);
 	}
 
-	// Linear part only -- no translation. Used for morph-target deltas, which
-	// are directions, not points.
 	static Vec3 Mat4TransformVector(const Mat4& m, const Vec3& v)
 	{
 		return Vec3(
@@ -348,10 +345,9 @@ namespace
 			if (FindMeshNodeRecursive(model, rootNode, Mat4{}, outMeshIdx, outMeshNodeIdx, outAncestorTransform)) { return true; }
 		return false;
 	}
-}
 
-namespace
-{
+
+
 	struct ChannelSampler
 	{
 		std::vector<float> times;
@@ -361,9 +357,6 @@ namespace
 		bool valid = false;
 	};
 
-	// Evaluates a channel at time t via binary search + STEP/LINEAR
-	// interpolation between the two surrounding real keyframes. Clamps to
-	// the first/last value outside the authored time range.
 	void EvaluateChannel(const ChannelSampler& ch, float t, float* out)
 	{
 		if (!ch.valid || ch.times.empty())
@@ -399,10 +392,6 @@ namespace
 		}
 	}
 
-	// Quaternion lerp+renormalize ("nlerp"), not true slerp. A standard,
-	// widely-used approximation -- adequate at our fixed 30Hz sample rate
-	// for ordinary rotation content; only meaningfully diverges from true
-	// slerp on very large angular deltas between adjacent keyframes.
 	void EvaluateQuatChannel(const ChannelSampler& ch, float t, float outQuat[4])
 	{
 		if (!ch.valid || ch.times.empty()) { outQuat[0] = outQuat[1] = outQuat[2] = 0; outQuat[3] = 1; return; }
@@ -429,18 +418,6 @@ namespace
 
 	std::vector<float> ReadVec4Flat(const tinygltf::Model& model, int accessorIdx)
 	{
-		/*const tinygltf::Accessor& acc = model.accessors[accessorIdx];
-		const tinygltf::BufferView& bv = model.bufferViews[acc.bufferView];
-		const tinygltf::Buffer& buf = model.buffers[bv.buffer];
-		size_t stride = bv.byteStride != 0 ? bv.byteStride : sizeof(float) * 4;
-		const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
-		std::vector<float> out(acc.count * 4);
-		for (size_t i = 0; i < acc.count; i++)
-		{
-			const float* f = reinterpret_cast<const float*>(base + i * stride);
-			for (int c = 0; c < 4; c++) out[i * 4 + c] = f[c];
-		}
-		return out;*/
 		return ReadFloatAccessorFlat(model, accessorIdx, 4);
 	}
 
@@ -459,22 +436,13 @@ namespace
 				return cs; // valid stays false -> caller falls back to the node's static value
 			}
 			cs.times = ReadScalarAccessor(model, sampler.input);
-			cs.values = (numComponents == 4) ? ReadVec4Flat(model, sampler.output) : [&] {
-				std::vector<float> flat;
-				if (numComponents == 3)
-					for (const Vec3& v : ReadVec3Accessor(model, sampler.output)) { flat.push_back(v.x); flat.push_back(v.y); flat.push_back(v.z); }
-				return flat;
-				}();
+			cs.values = ReadFloatAccessorFlat(model, sampler.output, numComponents);
 			cs.interpolation = sampler.interpolation;
 			cs.valid = true;
 			return cs;
 		}
 		return cs;
 	}
-}
-
-namespace
-{
 
 
 	struct PrimData
@@ -572,12 +540,18 @@ namespace
 
 		int meshIdx = -1; 
 		int meshNodeIdx = -1;
-		Mat4 nodeTransform{};
-		if (!FindMeshNode(model, meshIdx, meshNodeIdx, nodeTransform))
+		Mat4 ancestorTransform{};
+		if (!FindMeshNode(model, meshIdx, meshNodeIdx, ancestorTransform))
 		{
 			if (model.meshes.empty()) { printf("ERROR: no mesh in %s\n", gltfPath.string().c_str()); return false; }
 			meshIdx = 0; // no scene graph present -- fall back to the first mesh, identity transform
 		}
+		Mat4 fullTransform = ancestorTransform;
+		if (meshNodeIdx >= 0)
+		{
+			fullTransform = Mat4Multiply(ancestorTransform, Mat4FromNode(model.nodes[meshNodeIdx]));
+		}
+
 		const tinygltf::Mesh& mesh = model.meshes[meshIdx];
 		std::filesystem::path gltfDir = gltfPath.parent_path();
 
@@ -602,8 +576,8 @@ namespace
 			else { pd.cornerToVertex.resize(rawPositions.size()); std::iota(pd.cornerToVertex.begin(), pd.cornerToVertex.end(), 0); }
 
 			pd.basePositions.reserve(pd.cornerToVertex.size());
-			for (uint32_t vi : pd.cornerToVertex)
-				pd.basePositions.push_back(Mat4TransformPoint(nodeTransform, rawPositions[vi]));
+			for (uint32_t vi : pd.cornerToVertex) 
+				pd.basePositions.push_back(Mat4TransformPoint(fullTransform, rawPositions[vi]));
 
 			pd.localPositions.reserve(pd.cornerToVertex.size());
 			for (uint32_t vi : pd.cornerToVertex)
@@ -640,8 +614,15 @@ namespace
 						std::filesystem::path pngPath = gltfDir / filename;
 						std::string baseName = !mat.name.empty() ? mat.name : std::filesystem::path(filename).stem().string();
 						std::string globalName = MakeUniqueMaterialName(baseName, materialToTexture);
-						materialToTexture.emplace(globalName, Texture(pngPath));
-						pd.materialName = globalName;
+						if (!std::filesystem::exists(pngPath))
+						{
+							printf("WARNING: texture file not found: %s\n", pngPath.string().c_str());
+						}
+						else
+						{
+							materialToTexture.emplace(globalName, Texture(pngPath));
+							pd.materialName = globalName;
+						}
 					}
 				}
 			}
@@ -658,7 +639,7 @@ namespace
 				auto tPosIt = target.find("POSITION");
 				std::vector<Vec3> deltas = tPosIt != target.end() ? ReadVec3Accessor(model, tPosIt->second)
 					: std::vector<Vec3>(rawPositions.size(), Vec3(0, 0, 0));
-				for (Vec3& d : deltas) { d = Mat4TransformVector(nodeTransform, d); }
+				for (Vec3& d : deltas) { d = Mat4TransformVector(fullTransform, d); }
 				pd.targetDeltasByVertex.push_back(std::move(deltas));
 			}
 
@@ -766,8 +747,7 @@ namespace
 		{
 			if (meshNodeIdx >= 0 && !model.animations.empty())
 			{
-				// TODO : change the fps setting so 1 frame is blender = 1 frame in game, regardless or blender scene fps
-				std::vector<ModelAnimation> trsAnims = BuildAnimationsFromTRS(model, prims, meshNodeIdx, nodeTransform, BuildFaces);
+				std::vector<ModelAnimation> trsAnims = BuildAnimationsFromTRS(model, prims, meshNodeIdx, ancestorTransform, BuildFaces);
 				if (!trsAnims.empty())
 				{
 					outAnimations = std::move(trsAnims);
@@ -1169,10 +1149,6 @@ void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, cons
 	model.buffers.push_back(buffer);
 
 	tinygltf::TinyGLTF writer;
-	// embedBuffers=false + no buffer.uri set -> tinygltf writes an external
-	// .bin next to the .gltf and fills in the uri itself. embedImages=false
-	// since our Images only ever carry a .uri (the PNG copied above), never
-	// pixel data -- nothing for tinygltf to embed.
 	bool ok = writer.WriteGltfSceneToFile(&model, (modelDir / (baseFileName + ".gltf")).string(),
 		/*embedImages=*/false, /*embedBuffers=*/false,
 		/*prettyPrint=*/true, /*writeBinary=*/false);
@@ -1222,11 +1198,6 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	
 	auto PreFlip = [](const Vec3& pos) { return Vec3(pos.x, pos.y, pos.z); };
 
-	// --- Keep only animations whose every frame still matches base topology
-	// (face count). m_animations can, in principle, be edited/imported
-	// independently per-entry, so a stale one is possible -- drop it with a
-	// warning rather than encode misaligned data. m_animations[0] is always
-	// kept as a guaranteed fallback (it defines "base topology" itself). ---
 	std::vector<const ModelAnimation*> validAnims;
 	for (const ModelAnimation& anim : m_animations)
 	{
