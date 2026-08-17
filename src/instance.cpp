@@ -1214,7 +1214,8 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	std::vector<uint32_t> colorPalette;
 	std::unordered_map<uint32_t, uint32_t> colorLookup;
 	bool warnedColorOverflow = false;
-	bool warnedTexOverflow = false;
+
+	std::unordered_map<PSX::TextureLayout, uint32_t> layoutLookup; // TextureLayout -> index into layouts
 
 	for (const Tri& tri : baseFaces)
 	{
@@ -1222,44 +1223,44 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 		colorIdx[2] = GetOrAddColorIndex(colorPalette, colorLookup, tri.p[0].color, m_name, warnedColorOverflow);
 		colorIdx[1] = GetOrAddColorIndex(colorPalette, colorLookup, tri.p[1].color, m_name, warnedColorOverflow);
 		colorIdx[0] = GetOrAddColorIndex(colorPalette, colorLookup, tri.p[2].color, m_name, warnedColorOverflow);
-
 		uint32_t texCoordIndex = 0;
-		// Todo : Make layout uniques, can be deduped.
-		if (materialToTexture.contains(tri.texture) && !materialToTexture[tri.texture].IsEmpty())
+
+		bool hasTexture = materialToTexture.contains(tri.texture) && !materialToTexture[tri.texture].IsEmpty();
+		if (hasTexture)
 		{
 			Vec2 centroid(
 				(tri.p[0].uv.x + tri.p[1].uv.x + tri.p[2].uv.x) / 3.0f,
 				(tri.p[0].uv.y + tri.p[1].uv.y + tri.p[2].uv.y) / 3.0f
 			);
 			QuadUV quadUV = { tri.p[2].uv, tri.p[1].uv, tri.p[0].uv, centroid };
-			layouts.push_back(materialToTexture[tri.texture].Serialize(quadUV));
+			PSX::TextureLayout layout = materialToTexture[tri.texture].Serialize(quadUV);
 
-			if (layouts.size() > 511)
+			if (!layoutLookup.contains(layout))
 			{
-				if (!warnedTexOverflow)
+				if (layouts.size() >= 511)
 				{
-					printf("WARNING: header '%s' needs more than 511 texture layouts; reusing last one for the rest\n", m_name.c_str());
-					warnedTexOverflow = true;
+					printf("WARNING: header '%s' needs more than 511 unique texture layouts; reusing last one for the rest\n", m_name.c_str());
+					layoutLookup[layout] = static_cast<uint32_t>(511);
 				}
-				layouts.pop_back();
-				texCoordIndex = 511;
+				else
+				{
+					layoutLookup[layout] = static_cast<uint32_t>(layouts.size()) + 1; // 1-index
+					layouts.push_back(layout);
+				}
 			}
-			else
-			{
-				texCoordIndex = static_cast<uint32_t>(layouts.size());
-			}
+			texCoordIndex = layoutLookup[layout];
 		}
 
 		for (int cmdSlot = 0; cmdSlot < 3; cmdSlot++)
 		{
 			PSX::InstDrawCommand cmd{};
-			cmd.stackWriteLocationIndex = 87; // safe: never emits readNextVertFromStackIndexFlag=1, so never read back
+			cmd.stackWriteLocationIndex = 87;
 			cmd.readNextVertFromStackIndexFlag = 0;
 			cmd.resetFlag = (cmdSlot == 0) ? 1 : 0;
 			cmd.colorCoordIndex = colorIdx[cmdSlot];
 			cmd.texCoordIndex = texCoordIndex;
-			cmd.colorFromScratchpadOrRamFlag = static_cast<uint32_t>(materialToTexture[tri.texture].IsEmpty()); // TODO : Verify other spot where texture can be default
-			cmd.noBackfaceFlag = tri.doubleSided ? 0 : 1; 
+			cmd.colorFromScratchpadOrRamFlag = static_cast<uint32_t>(!hasTexture);
+			cmd.noBackfaceFlag = tri.doubleSided ? 0 : 1;
 			commands.push_back(cmd);
 		}
 	}
