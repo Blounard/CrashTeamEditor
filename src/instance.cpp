@@ -879,77 +879,6 @@ bool InstanceModelHeader::LoadGLTF(const std::filesystem::path& gltfPath, std::u
 	return false;
 }
 
-void InstanceModelHeader::ExportOBJ(const std::filesystem::path& modelDir, std::string baseFileName, std::unordered_map<std::string, Texture>& materialToTexture)
-{
-	std::unordered_map<std::string, std::vector<size_t>> materialToTris; //material name -> list of triangle index
-	for (size_t i = 0; i < m_animations[0].frames[0].size(); i++)
-		materialToTris[m_animations[0].frames[0][i].texture].push_back(i);
-
-	// --- .mtl ---
-	std::ofstream mtl(modelDir / (baseFileName + ".mtl"));
-	if (mtl)
-	{
-		for (const auto& [matName, indices] : materialToTris)
-		{
-			if (materialToTexture[matName].IsEmpty()) continue;
-			std::filesystem::path sourcePath = materialToTexture[matName].GetPath();
-			std::filesystem::path destPath = modelDir / sourcePath.filename();
-
-			mtl << "newmtl " << matName << "\nKd 1 1 1\n";
-			mtl << "map_Kd " << sourcePath.filename() << "\n";
-			mtl << "\n";
-
-			// Copy .png to the modelDir aswell. (not directly extracted there, so they are initially extracted once if several quad/models share the same texture)
-			std::filesystem::copy_file(sourcePath, destPath, std::filesystem::copy_options::overwrite_existing);
-		}
-	}
-
-	// --- .obj ---
-	std::ofstream obj(modelDir / (baseFileName + ".obj"));
-	if (!obj) { return; }
-
-	obj << "# Auto-exported from .ctrmodel (triangle soup, no shared vertex indices)\n";
-	obj << "mtllib " << baseFileName << ".mtl\n";
-	obj << "o " << baseFileName << "\n\n";
-
-	size_t runningIndex = 0; // 1-based OBJ v/vt index, advances by 3 per triangle
-	for (const auto& [matName, indices] : materialToTris)
-	{
-		obj << "usemtl " << matName << "\n";
-		for (size_t triIdx : indices)
-		{
-			const Tri& tri = m_animations[0].frames[0][triIdx];
-
-			Vec3 e1 = tri.p[1].pos - tri.p[0].pos;
-			Vec3 e2 = tri.p[2].pos - tri.p[0].pos;
-			Vec3 n = e1.Cross(e2);
-			if (n.LengthSquared() > 0.0001f) { n.Normalize(); }
-
-			for (int i = 0; i < 3; i++)
-			{
-				obj << "v " << tri.p[i].pos.x << " " << tri.p[i].pos.y << " " << tri.p[i].pos.z
-					<< " " << (tri.p[i].color.r / 255.0f) << " " << (tri.p[i].color.g / 255.0f)
-					<< " " << (tri.p[i].color.b / 255.0f) << "\n"; // nonstandard v+rgb extension (Blender/MeshLab)
-			}
-			for (int i = 0; i < 3; i++)
-			{
-				// PNG/PSX v origin is top-left, OBJ vt origin is bottom-left
-				obj << "vt " << tri.p[i].uv.x << " " << (1.0f - tri.p[i].uv.y) << "\n";
-			}
-			obj << "vn " << n.x << " " << n.y << " " << n.z << "\n";
-
-			size_t i0 = runningIndex + 1, i1 = runningIndex + 2, i2 = runningIndex + 3;
-			size_t vn = runningIndex / 3 + 1;
-			obj << "f " << i0 << "/" << i0 << "/" << vn
-				<< " " << i1 << "/" << i1 << "/" << vn
-				<< " " << i2 << "/" << i2 << "/" << vn << "\n";
-			runningIndex += 3;
-		}
-		obj << "\n";
-	}
-}
-
-
 
 
 void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, const std::string& baseFileName,
@@ -1158,13 +1087,11 @@ void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, cons
 	}
 }
 
-nlohmann::json InstanceModelHeader::WriteMetadataJson(const std::string& objFile, const std::string& mtlFile, const std::string& gltfFile) const
+nlohmann::json InstanceModelHeader::WriteMetadataJson(const std::string& gltfFile) const
 {
 	nlohmann::json json;
 	json["name"] = m_name;
 	json["animated"] = m_isAnimated;
-	json["objFile"] = objFile;
-	json["mtlFile"] = mtlFile;
 	json["gltfFile"] = gltfFile;
 	json["triangleCount"] = m_animations[0].frames[0].size();
 	json["maxDistanceLOD"] = m_maxDistLOD;
@@ -1563,18 +1490,13 @@ void InstanceModel::Export(const std::filesystem::path& exportDir, std::unordere
 	std::filesystem::path modelDir = exportDir / m_name;
 	std::filesystem::create_directories(modelDir);
 
-	std::vector<std::string> objFiles(m_headers.size());
-	std::vector<std::string> mtlFiles(m_headers.size());
 	std::vector<std::string> gltfFiles(m_headers.size());
 
 	for (size_t headerID = 0; headerID < m_headers.size(); headerID++)
 	{
 		InstanceModelHeader& header = m_headers[headerID];
 		std::string baseFileName = m_name + "LOD" + std::to_string(headerID);
-		header.ExportOBJ(modelDir, baseFileName, materialToTexture);
 		header.ExportGLTF(modelDir, baseFileName, materialToTexture);
-		objFiles[headerID] = baseFileName + ".obj";
-		mtlFiles[headerID] = baseFileName + ".mtl";
 		gltfFiles[headerID] = baseFileName + ".gltf";
 	}
 
@@ -1586,7 +1508,7 @@ void InstanceModel::Export(const std::filesystem::path& exportDir, std::unordere
 	nlohmann::json headersArray = nlohmann::json::array();
 	for (size_t headerID = 0; headerID < m_headers.size(); headerID++)
 	{
-		headersArray.push_back(m_headers[headerID].WriteMetadataJson(objFiles[headerID], mtlFiles[headerID], gltfFiles[headerID]));
+		headersArray.push_back(m_headers[headerID].WriteMetadataJson(gltfFiles[headerID]));
 	}
 	json["headers"] = headersArray;
 
