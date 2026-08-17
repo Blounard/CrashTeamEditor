@@ -366,9 +366,6 @@ private:
 	bool m_hasScale;
 	Vec3 m_scale;
 	int16_t m_scaleOrPad;
-	bool m_hasOrigin;
-	Vec3 m_origin;
-	int16_t m_originOrPad;
 	std::vector<ModelAnimation> m_animations; // ALWAYS >= 1 entry after construction; entry 0's frame 0 is the rest pose
 	uint32_t m_unk1; // 0x10
 	uint32_t m_colorCount; // At offCommandList, before the 1st command TODO: change to "flag animated" for if >63

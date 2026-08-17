@@ -777,12 +777,9 @@ InstanceModelHeader::InstanceModelHeader(PSX::ModelHeader& modelHeader, PSX::Mod
 	m_flags = modelHeader.flags;
 	m_scale = ConvertPSXVec3(modelHeader.scale, FP_ONE_MODEL_SCALE);
 	m_scaleOrPad = modelHeader.maybeScaleMaybePadding;
-	m_origin = ConvertPSXVec3(baseFrame.pos, FP_ONE_GEO); // TODO VERIFY
-	m_originOrPad = baseFrame.maybePosMaybePadding;
 	m_unk1 = modelHeader.unk1;
 	m_colorCount = colorCount;
 	m_hasScale = true;
-	m_hasOrigin = true;
 	m_animations = std::move(animations);
 	m_isAnimated = isAnimated;
 }
@@ -794,9 +791,7 @@ InstanceModelHeader::InstanceModelHeader(const nlohmann::json& headerJson, const
 	, m_maxDistLOD(headerJson.value("maxDistanceLOD", 0.0f))
 	, m_flags(headerJson.value("flags", static_cast<uint16_t>(0)))
 	, m_scale()
-	, m_origin()
 	, m_scaleOrPad(headerJson.value("scaleOrPad", static_cast<int16_t>(0)))
-	, m_originOrPad(headerJson.value("originOrPad", static_cast<int16_t>(0)))
 	, m_unk1(headerJson.value("unk1", static_cast<uint32_t>(0)))
 	, m_colorCount(headerJson.value("colorCount", static_cast<uint32_t>(0)))
 {
@@ -808,15 +803,6 @@ InstanceModelHeader::InstanceModelHeader(const nlohmann::json& headerJson, const
 		m_scale.y = scaleJson.value("y", 0.0f);
 		m_scale.z = scaleJson.value("z", 0.0f);
 		m_hasScale = true;
-	}
-	m_hasOrigin = false;
-	if (headerJson.contains("m_origin"))
-	{
-		const nlohmann::json& scaleJson = headerJson["m_origin"];
-		m_origin.x = scaleJson.value("x", 0.0f);
-		m_origin.y = scaleJson.value("y", 0.0f);
-		m_origin.z = scaleJson.value("z", 0.0f);
-		m_hasOrigin = true;
 	}
 	
 	
@@ -850,8 +836,6 @@ void InstanceModelHeader::Clear()
 	m_flags = 0;
 	m_hasScale = false;
 	m_scaleOrPad = 0;
-	m_hasOrigin = false;
-	m_originOrPad = 0;
 	m_unk1 = 0;
 	m_colorCount = 0;
 	m_animations.clear();
@@ -1099,9 +1083,6 @@ nlohmann::json InstanceModelHeader::WriteMetadataJson(const std::string& gltfFil
 	if (m_hasScale)
 		json["scale"] = { {"x", m_scale.x}, {"y", m_scale.y}, {"z", m_scale.z} };
 	json["scaleOrPad"] = m_scaleOrPad;
-	if (m_hasOrigin)
-		json["origin"] = { {"x", m_origin.x}, {"y", m_origin.y}, {"z", m_origin.z} };
-	json["originOrPad"] = m_originOrPad;
 	json["unk1"] = m_unk1;
 	json["colorCount"] = m_colorCount;
 	return json;
@@ -1205,7 +1186,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 
 			PSX::ModelFrame frame{};
 			frame.pos = ConvertVec3(originF, FP_ONE_MODEL_ORIGIN);
-			frame.maybePosMaybePadding = m_originOrPad;
+			frame.maybePosMaybePadding = 0;
 			std::memset(frame.unk16, 0, sizeof(frame.unk16));
 			frame.vertexOffset = sizeof(PSX::ModelFrame);
 
