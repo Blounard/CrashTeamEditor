@@ -1409,14 +1409,12 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 
 	//Extract Environment map and minimap (todo)
 	LayoutKey waterkey(m_rawWaterLayout);
-	if (!materialCache.contains(waterkey))
-	{
-		std::string matName = "envMap_" + std::to_string(texCounter++);
-		materialCache[waterkey] = matName;
-	}
-	m_envMapMatName = materialCache[waterkey];
-	RawUV waterRawUV(m_rawWaterLayout);
-	textureToPixelBounds[waterkey].Update(waterRawUV);
+	PixelBounds waterBound{ 0, 0, 63, 63 }; // Always 64x64. Actual UVs in the TextureLayout are irrelevant.
+	m_envMapMatName = "envMap";
+	Texture envMapTex(waterkey, waterBound, vram, m_envMapMatName, tempDir, true);
+	m_materialToTexture[m_envMapMatName] = envMapTex;
+
+
 	
 	// 1st pass : Parse Quadblock, find TextureGroups, and caclulate UV bounds
 	// Take care of all texture group for static quad and animated quads
