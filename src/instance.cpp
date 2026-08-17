@@ -81,36 +81,6 @@ namespace // SerializeInto
 		outBytes[1] = QuantizeVertexAxis(preFlipZ, scale.z, origin.z); // decode reads src[1] -> pos.z
 	}
 
-	// Useless function, must remove to use directly ConvertColor
-	uint32_t PackColor(const Color& c)
-	{
-		PSX::Color psxColor = ConvertColor(c);
-		return (uint32_t(psxColor.r) << 0) | (uint32_t(psxColor.g) << 8) |
-			(uint32_t(psxColor.b) << 16) | (uint32_t(psxColor.a) << 24);
-	}
-
-	uint32_t GetOrAddColorIndex(std::vector<uint32_t>& palette, std::unordered_map<uint32_t, uint32_t>& lookup,
-		const Color& color, const std::string& headerName, bool& warnedOverflow)
-	{
-		uint32_t packed = PackColor(color);
-		auto it = lookup.find(packed);
-		if (it != lookup.end()) { return it->second; }
-
-		if (palette.size() > 63)
-		{
-			if (!warnedOverflow)
-			{
-				printf("WARNING: header '%s' needs more than 63 unique colors; some colors will be approximated\n", headerName.c_str());
-				warnedOverflow = true;
-			}
-			return static_cast<uint32_t>(palette.size() - 1);
-		}
-
-		uint32_t index = static_cast<uint32_t>(palette.size());
-		palette.push_back(packed);
-		lookup[packed] = index;
-		return index;
-	}
 }
 
 
@@ -1207,24 +1177,40 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 			return { frame, std::move(vertexBytes) };
 		};
 
-	// --- Command list: topology/color/texture/doubleSided from baseFaces
-	// only -- identical across every frame of every animation by construction. ---
+	// Command list: topology/color/texture/doubleSided
 	std::vector<PSX::InstDrawCommand> commands;
 	std::vector<PSX::TextureLayout> layouts;
-	std::vector<uint32_t> colorPalette;
-	std::unordered_map<uint32_t, uint32_t> colorLookup;
-	bool warnedColorOverflow = false;
-
 	std::unordered_map<PSX::TextureLayout, uint32_t> layoutLookup; // TextureLayout -> index into layouts
+	std::vector<PSX::Color> colorPalette;
+	std::unordered_map<PSX::Color, uint32_t> colorLookup;
+
+	auto GetColorIndex = [&](const Color col) -> uint32_t
+		{
+			PSX::Color psxCol = ConvertColor(col);
+			if (!colorLookup.contains(psxCol))
+			{
+				if (colorPalette.size() > 63)
+				{
+					printf("WARNING: header '%s' needs more than 63 unique colors; some colors will be approximated\n", m_name.c_str());
+					colorLookup[psxCol] = 63;
+				}
+				else
+				{
+					colorLookup[psxCol] = static_cast<uint32_t>(colorPalette.size());
+					colorPalette.push_back(psxCol);
+				}
+			}
+			return colorLookup[psxCol];
+		};
 
 	for (const Tri& tri : baseFaces)
 	{
 		uint32_t colorIdx[3];
-		colorIdx[2] = GetOrAddColorIndex(colorPalette, colorLookup, tri.p[0].color, m_name, warnedColorOverflow);
-		colorIdx[1] = GetOrAddColorIndex(colorPalette, colorLookup, tri.p[1].color, m_name, warnedColorOverflow);
-		colorIdx[0] = GetOrAddColorIndex(colorPalette, colorLookup, tri.p[2].color, m_name, warnedColorOverflow);
-		uint32_t texCoordIndex = 0;
+		colorIdx[2] = GetColorIndex(tri.p[0].color);
+		colorIdx[1] = GetColorIndex(tri.p[1].color);
+		colorIdx[0] = GetColorIndex(tri.p[2].color);
 
+		uint32_t texCoordIndex = 0;
 		bool hasTexture = materialToTexture.contains(tri.texture) && !materialToTexture[tri.texture].IsEmpty();
 		if (hasTexture)
 		{
@@ -1267,7 +1253,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 
 	if (m_bannerWave)
 	{
-		while (colorPalette.size() < 64) { colorPalette.push_back(0u); }
+		while (colorPalette.size() < 64) { colorPalette.push_back(PSX::Color{}); }
 	}
 
 	const size_t commandListOffset = output.size();
@@ -1397,7 +1383,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	if (!colorPalette.empty())
 	{
 		colorsOffset = output.size();
-		for (uint32_t packed : colorPalette) { AppendValue(output, packed); }
+		for (PSX::Color psxCol : colorPalette) { AppendValue(output, psxCol); }
 	}
 
 	header.offCommandList = static_cast<uint32_t>(modelOffset + commandListOffset);

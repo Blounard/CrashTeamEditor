@@ -30,6 +30,8 @@ namespace PSX
 		uint32_t g : 8;
 		uint32_t b : 8;
 		uint32_t a : 8;
+
+		inline bool operator==(const Color& c) const { return r == c.r && g == c.g && b == c.b && a == c.a;}
 	};
 
 	struct Spawn
@@ -563,6 +565,19 @@ namespace PSX
 	static_assert(sizeof(ModelHeader) == 0x40, "ModelHeader must be 0x40 bytes");
 	static_assert(sizeof(ModelAnim) == 0x18, "ModelAnim must be 0x18 bytes");
 }
+
+template<>
+struct std::hash<PSX::Color>
+{
+	inline std::size_t operator()(const PSX::Color& key) const noexcept
+	{
+		uint32_t value = key.r | (key.g << 8) | (key.b << 16) | (key.a << 24);
+		std::size_t seed = 0;
+		HashCombine(seed, value);
+		return seed;
+	}
+};
+
 
 template<>
 struct std::hash<PSX::TextureLayout>
