@@ -89,10 +89,6 @@ namespace // SerializeInto
 			(uint32_t(psxColor.b) << 16) | (uint32_t(psxColor.a) << 24);
 	}
 
-	// colorCoordIndex is only 7 bits wide (max 128 entries per header), so
-	// colors are deduplicated by exact value. If a header genuinely needs more
-	// than 128 distinct colors, we warn once and reuse the last slot rather
-	// than silently corrupt the index via bitfield truncation.
 	uint32_t GetOrAddColorIndex(std::vector<uint32_t>& palette, std::unordered_map<uint32_t, uint32_t>& lookup,
 		const Color& color, const std::string& headerName, bool& warnedOverflow)
 	{
@@ -100,11 +96,11 @@ namespace // SerializeInto
 		auto it = lookup.find(packed);
 		if (it != lookup.end()) { return it->second; }
 
-		if (palette.size() >= 128)
+		if (palette.size() > 63)
 		{
 			if (!warnedOverflow)
 			{
-				printf("WARNING: header '%s' needs more than 128 unique colors; some colors will be approximated\n", headerName.c_str());
+				printf("WARNING: header '%s' needs more than 63 unique colors; some colors will be approximated\n", headerName.c_str());
 				warnedOverflow = true;
 			}
 			return static_cast<uint32_t>(palette.size() - 1);
@@ -778,7 +774,7 @@ InstanceModelHeader::InstanceModelHeader(PSX::ModelHeader& modelHeader, PSX::Mod
 	m_scale = ConvertPSXVec3(modelHeader.scale, FP_ONE_MODEL_SCALE);
 	m_scaleOrPad = modelHeader.maybeScaleMaybePadding;
 	m_unk1 = modelHeader.unk1;
-	m_colorCount = colorCount;
+	m_bannerWave = colorCount > 63;
 	m_hasScale = true;
 	m_animations = std::move(animations);
 	m_isAnimated = isAnimated;
@@ -793,7 +789,7 @@ InstanceModelHeader::InstanceModelHeader(const nlohmann::json& headerJson, const
 	, m_scale()
 	, m_scaleOrPad(headerJson.value("scaleOrPad", static_cast<int16_t>(0)))
 	, m_unk1(headerJson.value("unk1", static_cast<uint32_t>(0)))
-	, m_colorCount(headerJson.value("colorCount", static_cast<uint32_t>(0)))
+	, m_bannerWave(headerJson.value("bannerWave", false))
 {
 	m_hasScale = false;
 	if (headerJson.contains("scale"))
@@ -837,7 +833,7 @@ void InstanceModelHeader::Clear()
 	m_hasScale = false;
 	m_scaleOrPad = 0;
 	m_unk1 = 0;
-	m_colorCount = 0;
+	m_bannerWave = false;
 	m_animations.clear();
 }
 
@@ -1084,7 +1080,7 @@ nlohmann::json InstanceModelHeader::WriteMetadataJson(const std::string& gltfFil
 		json["scale"] = { {"x", m_scale.x}, {"y", m_scale.y}, {"z", m_scale.z} };
 	json["scaleOrPad"] = m_scaleOrPad;
 	json["unk1"] = m_unk1;
-	json["colorCount"] = m_colorCount;
+	json["bannerWave"] = m_bannerWave;
 	return json;
 }
 
@@ -1268,7 +1264,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 		}
 	}
 
-	if (m_colorCount > 63)
+	if (m_bannerWave)
 	{
 		while (colorPalette.size() < 64) { colorPalette.push_back(0u); }
 	}

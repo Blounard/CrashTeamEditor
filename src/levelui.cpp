@@ -587,6 +587,7 @@ bool InstanceModelHeader::RenderUI(std::unordered_map<std::string, Texture>& mat
 		ImGui::Text("Scale:"); ImGui::SameLine();
 		ImGui::InputFloat3("##scale", m_scale.Data());
 		ImGui::EndDisabled();
+		ImGui::Checkbox("Start Banner Waving", &m_bannerWave);
 		ImGui::Text(("Triangle count: " + std::to_string(m_animations[0].frames[0].size())).c_str());
 		if (m_isAnimated)
 			ImGui::Text(("is animated : yes"));
@@ -599,11 +600,6 @@ bool InstanceModelHeader::RenderUI(std::unordered_map<std::string, Texture>& mat
 			ModelAnimation& anim = m_animations[i];
 			ImGui::Text(("Group: " + std::to_string(i) + ", Frames: " + std::to_string(anim.rawNumFrames) + ", Size: " + std::to_string(anim.frames.size())).c_str());
 		}
-
-
-
-
-
 
 		if (ImGui::Button("Delete LOD"))
 		{

@@ -368,7 +368,7 @@ private:
 	int16_t m_scaleOrPad;
 	std::vector<ModelAnimation> m_animations; // ALWAYS >= 1 entry after construction; entry 0's frame 0 is the rest pose
 	uint32_t m_unk1; // 0x10
-	uint32_t m_colorCount; // At offCommandList, before the 1st command TODO: change to "flag animated" for if >63
+	bool m_bannerWave; // For Banner start flag waving animation, encoded with colorCount > 63
 	bool m_isAnimated = false;
 };
 
