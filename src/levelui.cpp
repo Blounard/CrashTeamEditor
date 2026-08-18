@@ -1177,10 +1177,14 @@ void Level::RenderUI(Renderer& renderer)
 				ImGui::SetNextItemWidth(150.0f);
 				ImGui::DragFloat("Above ground threshold##mip", &m_instPathSettings.posSnapDist, 0.1f, 0.1f, 50.0f, "%.1f");
 				ImGui::EndDisabled();
-				ImGui::DragFloat("Object Radius##mip", &m_instPathSettings.radius, 0.1f, 0.1f, 100.0f, "%.1f");
-				ImGui::SetItemTooltip("Only used for pos + rot");
 				ImGui::Checkbox("Rolling##mip", &m_instPathSettings.rolling);
 				ImGui::SetItemTooltip("Only used for pos + rot");
+				ImGui::BeginDisabled(!m_instPathSettings.rolling);
+				ImGui::SameLine();
+				ImGui::SetNextItemWidth(200.0f);
+				ImGui::DragFloat("Object Radius##mip", &m_instPathSettings.radius, 0.1f, 0.1f, 100.0f, "%.1f");
+				ImGui::SetItemTooltip("Only used for pos + rot");
+				ImGui::EndDisabled();
 				ImGui::Checkbox("Loop##mip", &m_instPathSettings.loop);
 				ImGui::SetItemTooltip("Loop or Point to Point");
 
@@ -1191,7 +1195,8 @@ void Level::RenderUI(Renderer& renderer)
 					
 					if (ImGui::TreeNode(("Path " + std::to_string(i) + "##st2pos").c_str()))
 					{
-						if (ImGui::Button("Load##st2pos"))
+						
+						if (ImGui::Button("Load Path##st2pos"))
 						{
 							auto selection = pfd::open_file("Select Path OBJ", m_parentPath.string(),
 								{ "OBJ Files", "*.obj", "All Files", "*" }).result();
@@ -1222,7 +1227,7 @@ void Level::RenderUI(Renderer& renderer)
 							}		
 						}
 						ImGui::SameLine();
-						if (ImGui::Button("Delete##st2pos"))
+						if (ImGui::Button("Delete Path##st2pos"))
 						{
 							m_spawntypes.erase(m_spawntypes.begin() + i);
 						}
@@ -1235,6 +1240,15 @@ void Level::RenderUI(Renderer& renderer)
 							ImGui::InputFloat3("##pos", m_spawntypes[i][j].Data());
 							ImGui::Separator();
 							ImGui::PopID();
+						}
+						if (ImGui::Button("Add Node##st2pos"))
+						{
+							m_spawntypes[i].emplace_back();
+						}
+						ImGui::SameLine();
+						if (ImGui::Button("Delete Node##st2pos"))
+						{
+							m_spawntypes[i].pop_back();
 						}
 						ImGui::TreePop();
 					}
@@ -1323,6 +1337,15 @@ void Level::RenderUI(Renderer& renderer)
 							ImGui::InputFloat3("##rot", m_spawntypesPosRot[i][j].rot.Data());
 							ImGui::Separator();
 							ImGui::PopID();
+						}
+						if (ImGui::Button("Add Node##st2posRot"))
+						{
+							m_spawntypesPosRot[i].emplace_back();
+						}
+						ImGui::SameLine();
+						if (ImGui::Button("Delete Node##st2posRot"))
+						{
+							m_spawntypesPosRot[i].pop_back();
 						}
 						ImGui::TreePop();
 					}
