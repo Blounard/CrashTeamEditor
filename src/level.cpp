@@ -4380,6 +4380,8 @@ bool Level::HotReload(const std::string& levPath, const std::string& vrmPath, co
 	constexpr uint32_t GAME_PAUSED = 0xF;
 	if (Process::At<uint32_t>(GAMEMODE_ADDR) & GAME_PAUSED) { return false; }
 
+	constexpr size_t HOST_SETTINGS_LOCATION = 0x8000C080;
+	constexpr size_t HOST_SETTINGS_MAGIC = 0x53544553;
 	constexpr size_t VRAM_ADDR = 0x80200000;
 	constexpr size_t RAM_ADDR = 0x80300000;
 	constexpr size_t SIGNAL_ADDR = 0x8000C000;
@@ -4405,6 +4407,18 @@ bool Level::HotReload(const std::string& levPath, const std::string& vrmPath, co
 		std::vector<uint8_t> lev;
 		ReadBinaryFile(lev, levPath);
 		for (size_t i = 0; i < lev.size(); i++) { Process::At<uint8_t>(RAM_ADDR + i) = lev[i]; }
+	}
+
+	{
+		static int32_t hotReloadGlobalSequence = 0;
+		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, sequence)) = hotReloadGlobalSequence++;
+		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, relicSapphire)) = static_cast<int32_t>(m_hotReloadSettings.relicSapphire * 1000.0f);
+		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, relicGold)) = static_cast<int32_t>(m_hotReloadSettings.relicGold * 1000.0f);
+		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, relicPlatinum)) = static_cast<int32_t>(m_hotReloadSettings.relicPlatinum * 1000.0f);
+		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, crystalTime)) = static_cast<int32_t>(m_hotReloadSettings.crystalTime * 1000.0f);
+		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, introCutscene)) = m_hotReloadSettings.introCutscene ? 1 : 0;
+		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, ghost)) = m_hotReloadSettings.ghost ? 1 : 0;
+		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, magic)) = static_cast<int32_t>(HOST_SETTINGS_MAGIC);
 	}
 
 	if (vrmOnly) { Process::At<int32_t>(SIGNAL_ADDR_VRAM_ONLY) = 1; }

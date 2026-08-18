@@ -935,6 +935,16 @@ void Level::RenderUI(Renderer& renderer)
 				auto selection = pfd::open_file("Vrm File", m_parentPath.string(), {"Vrm Files", "*.vrm"}, pfd::opt::force_path).result();
 				if (!selection.empty()) { m_hotReloadVRMPath = selection.front(); }
 			}
+			if (ImGui::TreeNode("Settings##hotreload"))
+			{
+				ImGui::InputFloat("Relic Sapphire time", &m_hotReloadSettings.relicSapphire);
+				ImGui::InputFloat("Relic Gold time", &m_hotReloadSettings.relicGold);
+				ImGui::InputFloat("Relic Platinum time", &m_hotReloadSettings.relicPlatinum);
+				ImGui::InputFloat("Crystal Challenge time", &m_hotReloadSettings.crystalTime);
+				ImGui::Checkbox("Intro Cutscene", &m_hotReloadSettings.introCutscene);
+				ImGui::Checkbox("Ghost", &m_hotReloadSettings.ghost);
+				ImGui::TreePop();
+			}
 
 			const std::string successMessage = "Successfully hot reloaded.";
 			const std::string failMessage = "Failed hot reloading.\nMake sure Duckstation is opened and that the game is unpaused.";

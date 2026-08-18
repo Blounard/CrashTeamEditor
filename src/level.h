@@ -42,6 +42,35 @@ namespace LevelModels
 	static constexpr size_t COUNT = 10;
 };
 
+struct HostSettings // RAW STRUCT TO EMIT FOR HOT RELOAD SETTINGS
+{
+	int32_t magic;          // HOST_SETTINGS_MAGIC once the editor has written here
+	int32_t sequence;       // bumped by the editor on every push
+	int32_t relicSapphire;  // ms
+	int32_t relicGold;      // ms
+	int32_t relicPlatinum;  // ms
+	int32_t crystalTime;    // ms
+	int32_t introCutscene;  // 1 plays the intro cam, 0 skips it
+	int32_t ghost;          // 1 leaves the ghost replay alone, 0 kills its thread
+};
+
+struct HotReloadSettings	// HOT RELOAD PARAMETERS
+{
+	float relicSapphire;	// seconds
+	float relicGold;		// seconds
+	float relicPlatinum;	// seconds
+	float crystalTime;		// seconds
+	bool introCutscene;		// 1 plays the intro cam, 0 skips it
+	bool ghost;				// 1 leaves the ghost replay alone, 0 kills its thread
+	HotReloadSettings() :
+		relicSapphire(60.0f),
+		relicGold(60.0f),
+		relicPlatinum(60.0f),
+		crystalTime(60.0f),
+		introCutscene(false),
+		ghost(false){}
+};
+
 class Level
 {
 public:
@@ -126,6 +155,7 @@ private:
 	bool m_showLogWindow;
 	bool m_showHotReloadWindow;
 	bool m_loaded;
+	HotReloadSettings m_hotReloadSettings;
 	BSPTreeSettings m_bspSettings;
 	VisTreeSettings m_visTreeSettings;
 	BotPathSettings m_botPathSettings;
