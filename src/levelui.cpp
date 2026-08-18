@@ -607,7 +607,7 @@ bool InstanceModelHeader::RenderUI(std::unordered_map<std::string, Texture>& mat
 		}
 		
 
-
+		ImGui::Text("\n");
 		ImGui::TreePop();
 	}
 	return toDel;
@@ -691,6 +691,7 @@ bool InstanceModel::RenderUI(std::unordered_map<std::string, Texture>& materialT
 		{
 			toDel = true;
 		}
+		ImGui::Text("\n");
 		ImGui::TreePop();
 	}
 	return toDel;
