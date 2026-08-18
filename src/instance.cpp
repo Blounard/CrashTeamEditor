@@ -1020,30 +1020,6 @@ namespace // SerializeInto
 		}
 	}
 
-	// Inverse of the decoder's per-axis dequantization:
-	//   value = ((rawByte / 255.0f) + origin) * scale
-	uint8_t QuantizeVertexAxis(float value, float scale, float origin)
-	{
-		if (std::fabs(scale) < EPSILON) { return 0; } // degenerate (flat) axis
-		float normalized = (value / scale) - origin;
-		float raw = std::round(normalized * 255.0f);
-		return static_cast<uint8_t>(std::clamp(raw, 0.0f, 255.0f));
-	}
-
-	// Encodes an engine-space position into the PSX format's byte triple:
-	// axis-shuffled (X,Z,Y storage order) and sign-flipped on X/Z, mirroring
-	// DecodeModelHeaderTriangles' vertex decode in reverse.
-	void EncodeVertexBytes(const Vec3& pos, const Vec3& scale, const Vec3& origin, uint8_t outBytes[3])
-	{
-		float preFlipX = pos.x;
-		float preFlipY = pos.y;
-		float preFlipZ = pos.z;
-
-		outBytes[0] = QuantizeVertexAxis(preFlipX, scale.x, origin.x); // decode reads src[0] -> pos.x
-		outBytes[2] = QuantizeVertexAxis(preFlipY, scale.y, origin.y); // decode reads src[2] -> pos.y
-		outBytes[1] = QuantizeVertexAxis(preFlipZ, scale.z, origin.z); // decode reads src[1] -> pos.z
-	}
-
 }
 
 
@@ -1116,6 +1092,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 		std::max(preFlipMax.z - preFlipMin.z, MIN_BOX_SIZE)
 	);
 
+	// TODO MAKE SURE m_scale IS NEVER 0
 	header.scale = m_hasScale ? ConvertVec3(m_scale, FP_ONE_MODEL_SCALE) : ConvertVec3(boxSize, FP_ONE_MODEL_SCALE);
 	// Recompute float scale FROM the rounded int16 (not from boxSize/m_scale
 	// directly) so quantization below agrees exactly with what the decoder
@@ -1125,7 +1102,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	// Encodes one full pose into a tight-fit ModelFrame + vertex bytes,
 	// using the shared effScale (always big enough, since it was sized
 	// from the union of every pose we'll ever call this with).
-	auto EncodePose = [&](const std::vector<Tri>& pose) -> std::pair<PSX::ModelFrame, std::vector<uint8_t>>
+	auto EncodePose = [&](const std::vector<Tri>& pose) -> std::vector<uint8_t>
 		{
 			Vec3 poseMin(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
 			for (const Tri& tri : pose)
@@ -1143,32 +1120,27 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 			originF.y = std::fabs(effScale.y) < 0.0001f ? 0.0f : poseMin.y / effScale.y;
 			originF.z = std::fabs(effScale.z) < 0.0001f ? 0.0f : poseMin.z / effScale.z;
 
-
+			std::vector<uint8_t> res;
 			PSX::ModelFrame frame{};
 			frame.pos = ConvertVec3(originF, FP_ONE_MODEL_ORIGIN);
 			frame.maybePosMaybePadding = 0;
 			std::memset(frame.unk16, 0, sizeof(frame.unk16));
 			frame.vertexOffset = sizeof(PSX::ModelFrame);
+			AppendValue(res, frame);
 
 			Vec3 effOrigin = ConvertPSXVec3(frame.pos, FP_ONE_MODEL_ORIGIN);
-
-			std::vector<uint8_t> vertexBytes;
 			for (const Tri& tri : pose)
 			{
 				for (int pushOrder = 0; pushOrder < 3; pushOrder++)
 				{
 					int cornerIdx = 2 - pushOrder; // matches command push order below
-					uint8_t bytes[3];
-					EncodeVertexBytes(tri.p[cornerIdx].pos, effScale, effOrigin, bytes);
-					vertexBytes.push_back(bytes[0]);
-					vertexBytes.push_back(bytes[1]);
-					vertexBytes.push_back(bytes[2]);
+					PSX::Vec3b vert = ConvertVec3b((tri.p[cornerIdx].pos / effScale) - effOrigin, 255) ;
+					AppendValue(res, vert);
 				}
 			}
-			// Padding to align with 4bytes
-			while (vertexBytes.size() % 4 != 0)
-				vertexBytes.push_back(0);
-			return { frame, std::move(vertexBytes) };
+			AppendPadding(res, 4);
+
+			return res;
 		};
 
 	// Command list: topology/color/texture/doubleSided
@@ -1260,12 +1232,9 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	// --- Frame data: one static pose, or one ModelAnim block per surviving animation. ---
 	if (!effectivelyAnimated)
 	{
-		auto [frame, vertexBytes] = EncodePose(baseFaces);
 		const size_t frameDataOffset = output.size();
-		AppendValue(output, frame);
-		AppendBytes(output, vertexBytes.data(), vertexBytes.size());
-		AppendPadding(output, 4);
-
+		std::vector<uint8_t> encodedFrame = EncodePose(baseFaces);
+		AppendBytes(output, encodedFrame.data(), encodedFrame.size());
 		header.offFrameData = static_cast<uint32_t>(modelOffset + frameDataOffset);
 		header.numAnimations = 0;
 		header.offAnimations = 0;
@@ -1281,15 +1250,14 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 			const ModelAnimation& anim = *validAnims[a];
 			const size_t numStoredFrames = anim.frames.size();
 
-			std::vector<std::pair<PSX::ModelFrame, std::vector<uint8_t>>> encodedFrames;
+			std::vector<std::vector<uint8_t>> encodedFrames;
 			encodedFrames.reserve(numStoredFrames);
 			for (size_t f = 0; f < numStoredFrames; f++)
 			{
 				encodedFrames.push_back(EncodePose(anim.frames[f]));
 			}
 
-			const size_t payloadBytes = encodedFrames.empty() ? 0 : encodedFrames[0].second.size();
-			const size_t frameStride = sizeof(PSX::ModelFrame) + payloadBytes;
+			const size_t frameStride = encodedFrames.empty() ? 0 : encodedFrames[0].size();
 			if (frameStride > 0x7FFF)
 			{
 				printf("WARNING: header '%s' animation '%s' frameSize 0x%zx exceeds int16_t range\n",
@@ -1336,11 +1304,10 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 
 			const size_t animBlockOffset = output.size();
 			AppendValue(output, animHeader);
-			for (const auto& [frame, vertexBytes] : encodedFrames)
+			for (const std::vector<uint8_t>& encodedFrame: encodedFrames)
 			{
 				const size_t frameStart = output.size();
-				AppendValue(output, frame);
-				AppendBytes(output, vertexBytes.data(), vertexBytes.size());
+				AppendBytes(output, encodedFrame.data(), encodedFrame.size());
 				const size_t written = output.size() - frameStart;
 				if (written < frameStride) { output.insert(output.end(), frameStride - written, uint8_t(0)); }
 			}

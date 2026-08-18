@@ -679,6 +679,15 @@ static inline PSX::Vec3 ConvertVec3(const Vec3& v, int16_t one = FP_ONE)
 	return out;
 }
 
+static inline PSX::Vec3b ConvertVec3b(const Vec3& v, int16_t one = FP_ONE)
+{	// WARNING : NOT ALIGNED, Y AND Z ARE SWAPPED, USED BY MODELS
+	PSX::Vec3b out = {};
+	out.x = static_cast<uint8_t>(Clamp(static_cast<float>(ConvertFloat(v.x, one)),0.0f , 255.0f));
+	out.y = static_cast<uint8_t>(Clamp(static_cast<float>(ConvertFloat(v.z, one)), 0.0f, 255.0f));
+	out.z = static_cast<uint8_t>(Clamp(static_cast<float>(ConvertFloat(v.y, one)), 0.0f, 255.0f));
+	return out;
+}
+
 static inline Vec3 ConvertPSXVec3(const PSX::Vec3& v, int16_t one = FP_ONE)
 {
 	Vec3 out = {};
