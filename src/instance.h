@@ -475,7 +475,8 @@ public:
 	void SetHitbox(const InstanceHitbox& hitbox) { m_hitbox = hitbox; }
 	void SetHitbox(const PSX::InstHitbox& hitbox);
 
-	BoundingBox ComputeBBox();
+	BoundingBox ComputeBBox() const;
+	Vec3 Center() const;
 	bool RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, const std::vector<std::string>& modelNames, Vec3& queryPoint);
 	std::vector<uint8_t> Serialize(uint32_t offModel) const;
 	PSX::InstHitbox SerializeHitbox(uint32_t insatnceOffset) const;

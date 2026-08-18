@@ -57,7 +57,25 @@ Vec3 BoundingBox::Midpoint() const
 	return (max + min) / 2;
 }
 
-BoundingBox BoundingBox::Union(const BoundingBox other) const 
+float BoundingBox::Distance(const Vec3& point) const
+{
+	const Vec3 closest(
+		std::max(min.x, std::min(point.x, max.x)),
+		std::max(min.y, std::min(point.y, max.y)),
+		std::max(min.z, std::min(point.z, max.z))
+	);
+	return (point - closest).Length();
+}
+
+float BoundingBox::Distance(const BoundingBox& other) const
+{
+	const float dx = std::max({ 0.0f, min.x - other.max.x, other.min.x - max.x });
+	const float dy = std::max({ 0.0f, min.y - other.max.y, other.min.y - max.y });
+	const float dz = std::max({ 0.0f, min.z - other.max.z, other.min.z - max.z });
+	return Vec3(dx, dy, dz).Length();
+}
+
+BoundingBox BoundingBox::Union(const BoundingBox& other) const 
 {
 	BoundingBox box{};
 	box.min.x = std::min(min.x, other.min.x); box.max.x = std::max(max.x, other.max.x);

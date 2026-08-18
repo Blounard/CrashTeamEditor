@@ -476,6 +476,41 @@ bool Level::ReOrderBSP()
 	return true;
 }
 
+bool Level::EmplaceInstanceBSP() //Update BSP BBox and InstancesIndexes. One Leaf for each Instance with collision
+{
+	std::vector<BSP*> nodes = m_bsp.GetTree();
+
+	for (size_t i = 0; i < m_instances.size(); i++)
+	{
+		const Instance& inst = m_instances[i];
+		if (!m_instanceModels[inst.GetModelName()].IsValid())
+			continue;
+		const InstanceHitbox& settings = inst.GetHitbox();
+		if (!settings.enabled) 
+			continue; 
+
+		float bestDist = std::numeric_limits<float>::max();
+		BSP* closestLeaf = nullptr;
+		const Vec3 instCenter = inst.Center();
+		for (BSP* node : nodes)
+		{
+			if (node->IsBranch())
+				continue;
+			float dist = node->GetBoundingBox().Distance(instCenter);
+			if (dist < bestDist)
+			{
+				bestDist = dist;
+				closestLeaf = node;
+			}
+		}
+		if (closestLeaf != nullptr)
+		{
+			closestLeaf->UpdateBoundingBox(inst.ComputeBBox());
+			closestLeaf->GetInstanceIndexes().push_back(i);
+		}
+	}
+	return true;
+}
 
 bool Level::GenerateVisTreeOnly(bool simpleVisTree, float distanceNearClip, float distanceFarClip)
 {
@@ -2469,6 +2504,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 
 	if (m_bsp.IsEmpty()) { GenerateBSP(); }
 	ReOrderBSP();
+	EmplaceInstanceBSP();
 
 	std::vector<const BSP*> bspNodes = static_cast<const BSP&>(m_bsp).GetTree();
 	std::set<size_t> bspIds;
@@ -3401,13 +3437,6 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	header.offInstances = (serializedInstDef.size() > 0) ? static_cast<uint32_t>(offInstDefArray) : 0;
 	header.offInstancePtrArray = static_cast<uint32_t>(offInstDefList_ptrArray);
 
-	// Build BSP-leaf instance hitbox lists.
-	// Each BSP leaf whose bbox overlaps an enabled hitbox gets a list of
-	// InstHitbox entries (one per overlapping instance) plus a 4-byte
-	// terminator. The leaf's offHitbox field (already serialized into
-	// serializedBSPs) is patched to point at its list.
-
-	// NOTE : Shouldn't be done here. Must be done within BSP creation, and serialized with BSP.
 	struct LeafHitboxList
 	{
 		size_t leafFileOffset; // file offset of the BSP leaf node
@@ -3415,44 +3444,29 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		std::vector<PSX::InstHitbox> entries;
 	};
 	std::vector<LeafHitboxList> leafHitboxLists;
+
+	size_t nodeFileOffset = offBSP;
+	for (size_t node = 0; node < serializedBSPs.size(); node++)
 	{
-		std::vector<PSX::InstHitbox> enabledHitboxes;
-		for (size_t i = 0; i < m_instances.size(); i++)
+		const size_t currNodeOffset = nodeFileOffset;
+		nodeFileOffset += serializedBSPs[node].size();
+		if (orderedBSPNodes[node]->IsBranch()) { continue; }
+
+		PSX::BSPLeaf* leaf = reinterpret_cast<PSX::BSPLeaf*>(serializedBSPs[node].data());
+		std::vector<PSX::InstHitbox> overlapping;
+		for (size_t instIndex : orderedBSPNodes[node]->GetInstanceIndexes())
 		{
-			if (!m_instanceModels[m_instances[i].GetModelName()].IsValid())
-				continue;
-			const InstanceHitbox& settings = m_instances[i].GetHitbox();
-			if (!settings.enabled) { continue; }
-			enabledHitboxes.push_back(m_instances[i].SerializeHitbox(static_cast<uint32_t>(instDefOffsets[i])));
+			overlapping.push_back(m_instances[instIndex].SerializeHitbox(static_cast<uint32_t>(instDefOffsets[instIndex])));
 		}
+		if (overlapping.empty()) { continue; }
 
-		if (!enabledHitboxes.empty())
-		{
-			size_t nodeFileOffset = offBSP;
-			for (size_t node = 0; node < serializedBSPs.size(); node++)
-			{
-				const size_t currNodeOffset = nodeFileOffset;
-				nodeFileOffset += serializedBSPs[node].size();
-				if (orderedBSPNodes[node]->IsBranch()) { continue; }
-
-				PSX::BSPLeaf* leaf = reinterpret_cast<PSX::BSPLeaf*>(serializedBSPs[node].data());
-				std::vector<PSX::InstHitbox> overlapping;
-				for (const PSX::InstHitbox& hitbox : enabledHitboxes)
-				{
-					if (hitbox.bbox.max.x < leaf->bbox.min.x || leaf->bbox.max.x < hitbox.bbox.min.x ||
-							hitbox.bbox.max.y < leaf->bbox.min.y || leaf->bbox.max.y < hitbox.bbox.min.y ||
-							hitbox.bbox.max.z < leaf->bbox.min.z || leaf->bbox.max.z < hitbox.bbox.min.z) { continue; }
-					overlapping.push_back(hitbox);
-				}
-				if (overlapping.empty()) { continue; }
-
-				leaf->offHitbox = static_cast<uint32_t>(currOffset);
-				//printf("offLeafHitboxList[node %zu] = %zx (%zu entries)\n", node, currOffset, overlapping.size());
-				leafHitboxLists.push_back({currNodeOffset, currOffset, std::move(overlapping)});
-				currOffset += leafHitboxLists.back().entries.size() * sizeof(PSX::InstHitbox) + sizeof(uint32_t); // entries + terminator
-			}
-		}
+		leaf->offHitbox = static_cast<uint32_t>(currOffset);
+		//printf("offLeafHitboxList[node %zu] = %zx (%zu entries)\n", node, currOffset, overlapping.size());
+		leafHitboxLists.push_back({currNodeOffset, currOffset, std::move(overlapping)});
+		currOffset += leafHitboxLists.back().entries.size() * sizeof(PSX::InstHitbox) + sizeof(uint32_t); // entries + terminator
 	}
+	
+	
 	
 
 	size_t paddingSizeForMultOfFour = (4 - (currOffset % 4)) % 4;

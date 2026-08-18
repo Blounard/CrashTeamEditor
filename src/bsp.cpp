@@ -46,6 +46,7 @@ BSP::BSP()
 	m_right = nullptr;
 	m_bbox = BoundingBox();
 	m_quadblockIndexes = std::vector<size_t>();
+	m_instanceIndexes.clear();
 }
 
 BSP::BSP(BSPNode type, const std::vector<size_t>& quadblockIndexes, BSP* parent, const std::vector<Quadblock>& quadblocks)
@@ -67,6 +68,7 @@ BSP::BSP(BSPNode type, const std::vector<size_t>& quadblockIndexes, BSP* parent,
 		for (size_t index : m_quadblockIndexes) { quadblocks[index].SetBSPID(m_id); }
 	}
 	ComputeBoundingBox(quadblocks);
+	m_instanceIndexes.clear();
 }
 
 BSP::~BSP()
@@ -182,7 +184,7 @@ void BSP::SetId(size_t id)
 
 bool BSP::IsEmpty() const
 {
-	return m_quadblockIndexes.empty();
+	return m_quadblockIndexes.empty() && m_instanceIndexes.empty();
 }
 
 bool BSP::IsValid() const
@@ -236,6 +238,17 @@ const std::vector<size_t>& BSP::GetQuadblockIndexes() const
 {
 	return m_quadblockIndexes;
 }
+
+const std::vector<size_t>& BSP::GetInstanceIndexes() const
+{
+	return m_instanceIndexes;
+}
+
+std::vector<size_t>& BSP::GetInstanceIndexes()
+{
+	return m_instanceIndexes;
+}
+
 
 const BSP* BSP::GetLeftChildren() const
 {
@@ -303,6 +316,11 @@ void BSP::SetQuadblockIndexes(const std::vector<size_t>& quadblockIndexes, std::
 	}
 }
 
+void BSP::SetInstanceIndexes(const std::vector<size_t>& instanceIndexes)
+{
+	m_instanceIndexes = instanceIndexes;
+}
+
 void BSP::SetParent(BSP* parent)
 {
 	m_parent = parent;
@@ -325,6 +343,7 @@ void BSP::Clear()
 	m_splitPoint = 0.0f;
 	m_flags = BSPFlags::NONE;
 	m_quadblockIndexes.clear();
+	m_instanceIndexes.clear();
 	//g_id = 1;
 }
 
@@ -578,6 +597,12 @@ void BSP::ComputeBoundingBox(const std::vector<Quadblock>& quadblocks)
 	m_bbox = {min, max};
 }
 
+void BSP::UpdateBoundingBox(const BoundingBox& bbox)
+{
+	m_bbox = m_bbox.Union(bbox);
+	if (m_parent != nullptr)
+		m_parent->UpdateBoundingBox(m_bbox);
+}
 
 
 bool BSP::IsInvisible(const std::vector<Quadblock>& quadblocks)

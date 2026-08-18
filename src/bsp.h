@@ -80,6 +80,8 @@ public:
 	const std::string& GetAxis() const;
 	const BoundingBox& GetBoundingBox() const;
 	const std::vector<size_t>& GetQuadblockIndexes() const;
+	const std::vector<size_t>& GetInstanceIndexes() const;
+	std::vector<size_t>& GetInstanceIndexes();
 	const BSP* GetLeftChildren() const;
 	const BSP* GetRightChildren() const;
 	const BSP* GetParent() const;
@@ -87,7 +89,9 @@ public:
 	std::vector<BSP*> GetTree();
 	std::vector<const BSP*> GetLeaves() const;
 	void SetQuadblockIndexes(const std::vector<size_t>& quadblockIndexes, std::vector<Quadblock>& quadblocks);
+	void SetInstanceIndexes(const std::vector<size_t>& instanceIndexes);
 	void ComputeBoundingBox(const std::vector<Quadblock>& quadblocks);
+	void UpdateBoundingBox(const BoundingBox& bbox);
 	void SetParent(BSP* parent);
 	void Clear();
 	bool SplitLeafGeometry(const std::vector<Quadblock>& quadblocks, const AxisSplit axis, const float midpoint);
@@ -123,6 +127,7 @@ private:
 	BSP* m_parent;
 	BoundingBox m_bbox;
 	std::vector<size_t> m_quadblockIndexes;
+	std::vector<size_t> m_instanceIndexes;
 	uint32_t m_offHitbox = 0;
 };
 void ResetAllBSPID();
