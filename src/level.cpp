@@ -483,7 +483,7 @@ bool Level::EmplaceInstanceBSP() //Update BSP BBox and InstancesIndexes. One Lea
 	for (size_t i = 0; i < m_instances.size(); i++)
 	{
 		const Instance& inst = m_instances[i];
-		if (!m_instanceModels[inst.GetModelName()].IsValid())
+		if (!m_instanceModels[inst.GetModelKey()].IsValid())
 			continue;
 		const InstanceHitbox& settings = inst.GetHitbox();
 		if (!settings.enabled) 
@@ -1542,6 +1542,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		file.seekg(currentPosQuad);
 	}
 
+	std::set<uint32_t> parsedModelOffsets;
 	// 2nd pass : Find TextureLayouts from Instances, fill Layout Keys
 	if (header.offInstances != 0)
 	{
@@ -1556,11 +1557,14 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				file.seekg(offLev + std::streampos(inst.offModel));
 				PSX::Model model{};
 				Read(file, model);
-				std::string modelName(model.name, strnlen(model.name, sizeof(model.name)));
-				if (m_instanceModels.contains(modelName))
-				{	// Model already imported
+				if (parsedModelOffsets.contains(inst.offModel))
+				{
 					file.seekg(currentPosInst);
 					continue;
+				}
+				else
+				{
+					parsedModelOffsets.insert(inst.offModel);
 				}
 				if (model.offHeaders != 0 && model.numHeaders > 0)
 				{
@@ -1629,6 +1633,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	}
 	
 	// 4.1th pass : Create Models/Header with UVs and textures Assign QuadUVs to Models/Headers
+	std::unordered_map<uint32_t, size_t> offsetToModelKey;
 	if (header.offInstances != 0)
 	{
 		for (uint32_t i = 0; i < header.numInstances; i++)
@@ -1642,11 +1647,12 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				PSX::Model model{};
 				Read(file, model);
 				std::string modelName(model.name, strnlen(model.name, sizeof(model.name)));
-				if (m_instanceModels.contains(modelName))
-				{
+				if (offsetToModelKey.contains(inst.offModel))
 					continue;
-				}
-				m_instanceModels[modelName] = InstanceModel(model, modelName);
+					
+				size_t modelKey = GenerateUniqueModelKey();
+				offsetToModelKey[inst.offModel] = modelKey;
+				m_instanceModels[modelKey] = InstanceModel(model);
 				if (model.offHeaders != 0 && model.numHeaders > 0)
 				{
 					for (uint32_t j = 0; j < model.numHeaders; j++)
@@ -1666,7 +1672,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 						{
 							printf("Couldn't import model %s, offAnim 0x%x, numAnim %d, offCommand 0x%x, offAnimTex 0x%x, offColors 0x%x, offSDT 0x%x, offFrameData 0x%x\n",
 								modelName.c_str(), modelHeader.offAnimations, modelHeader.numAnimations, modelHeader.offCommandList, modelHeader.offAnimtex, modelHeader.offColors, modelHeader.offStaticDeltaArray, modelHeader.offFrameData);
-							m_instanceModels[modelName].SetValid(false);
+							m_instanceModels[modelKey].SetValid(false);
 							continue;
 						}
 							
@@ -1707,7 +1713,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 						}
 						else
 						{
-							if (modelHeader.numAnimations == 0) { m_instanceModels[modelName].SetValid(false); continue; }
+							if (modelHeader.numAnimations == 0) { m_instanceModels[modelKey].SetValid(false); continue; }
 							animOffsets.resize(modelHeader.numAnimations);
 							animHeaders.resize(modelHeader.numAnimations);
 							bool valid = true;
@@ -1721,7 +1727,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							}
 							if (!valid || animHeaders[0].offDeltaArray != 0)
 							{
-								m_instanceModels[modelName].SetValid(false);
+								m_instanceModels[modelKey].SetValid(false);
 								continue;
 							}
 							baseFrameFileOffset = animOffsets[0] + sizeof(PSX::ModelAnim);
@@ -1879,29 +1885,33 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							}
 							if (animations.empty())
 							{
-								m_instanceModels[modelName].SetValid(false);
+								m_instanceModels[modelKey].SetValid(false);
 								continue;
 							}
 						}
-						m_instanceModels[modelName].m_headers.emplace_back(modelHeader, baseFrame, colorCount, std::move(animations), isAnimated);
+						m_instanceModels[modelKey].m_headers.emplace_back(modelHeader, baseFrame, colorCount, std::move(animations), isAnimated);
 					}
 				}
 			}
 		}
 	}
 	// Delete invalid models
-	std::vector<std::string> modelToDel;
-	for (auto& [name, model] : m_instanceModels)
+	std::vector<uint32_t> modelToDel;
+	for (auto& [offset, key] : offsetToModelKey)
 	{
-		if (!model.IsValid())
-			modelToDel.push_back(name);
+		if (!m_instanceModels[key].IsValid())
+			modelToDel.push_back(offset);
 	}
-	for (std::string& name : modelToDel)
-		m_instanceModels.erase(name);
+	for (uint32_t& offset : modelToDel)
+	{
+		m_instanceModels.erase(offsetToModelKey[offset]);
+		offsetToModelKey.erase(offset);
+	}
+		
 
 	//Export model to modifiable state 
 	std::filesystem::create_directories(modelCacheDir);
-	for (auto& [name, model] : m_instanceModels)
+	for (auto& [key, model] : m_instanceModels)
 	{
 		model.Export(modelCacheDir, m_materialToTexture);
 	}
@@ -2411,32 +2421,12 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 			file.seekg(offLev + std::streampos(instPtrs[i]));
 			PSX::InstDef psxInst = {};
 			Read(file, psxInst);
-			Instance inst(psxInst);
 
-			// Look up model name from already-loaded models
-			if (psxInst.offModel != 0)
-			{
-				// Read model name from LEV using file stream
-				PSX::Model psxModel;
-				file.seekg(offLev + std::streampos(psxInst.offModel));
-				Read(file, psxModel);
-				std::string modelName(psxModel.name, strnlen(psxModel.name, sizeof(psxModel.name)));
-				if (!modelName.empty())
-				{
-					inst.SetModelName(modelName);
-				}
-				else
-				{
-					inst.SetModelName("LEV_Model_0x" + std::to_string(psxInst.offModel));
-				}
-			}
-			if (!m_instanceModels.contains(inst.GetModelName()))
-			{
-				printf("Can't import instance %s because model %s is not imported\n", inst.GetName().c_str(), inst.GetModelName().c_str());
-				continue;
-			}
+			if (!offsetToModelKey.contains(psxInst.offModel))
+				continue; // invalid model
+			
 			offsetToInstancesID[instPtrs[i]] = m_instances.size();
-			m_instances.push_back(inst);
+			m_instances.emplace_back(psxInst, offsetToModelKey[psxInst.offModel]);
 		}
 	}
 
@@ -3336,38 +3326,33 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	}
 
 	// Count unique models referenced by instances
-	std::unordered_set<std::string> uniqueModelNames;
+	std::unordered_set<size_t> uniqueModelKeys;
 	for (const Instance& inst : m_instances)
 	{
-		if (m_instanceModels[inst.GetModelName()].IsValid())
-			uniqueModelNames.insert(inst.GetModelName());
+		if (m_instanceModels[inst.GetModelKey()].IsValid())
+			uniqueModelKeys.insert(inst.GetModelKey());
 		else
 		{
-			printf("Model %s, valid : %d, header size : %zu\n", 
-				inst.GetModelName().c_str(), m_instanceModels[inst.GetModelName()].IsValid(), m_instanceModels[inst.GetModelName()].m_headers.size());
+			printf("WARNING : Model %s, valid : %d, header size : %zu\n", 
+				m_instanceModels[inst.GetModelKey()].GetName().c_str(), m_instanceModels[inst.GetModelKey()].IsValid(), m_instanceModels[inst.GetModelKey()].m_headers.size());
 		}
 	}
-	header.numModels = static_cast<uint32_t>(uniqueModelNames.size());
+	header.numModels = static_cast<uint32_t>(uniqueModelKeys.size());
 
 
 	// Write Model data for each unique model
-	std::unordered_map<std::string, size_t> modelOffsets;
-	std::vector<std::string> modelOrder(uniqueModelNames.begin(), uniqueModelNames.end());
+	std::unordered_map<size_t, size_t> modelOffsets; // ModelKey -> Serialized ModelOffset
+	std::vector<size_t> modelOrder(uniqueModelKeys.begin(), uniqueModelKeys.end());
 	std::vector<std::vector<uint8_t>> serializedModels(modelOrder.size());
 	std::vector<std::vector<uint32_t>> modelPointerLocations(modelOrder.size());
 
 	for (size_t i = 0; i < modelOrder.size(); i++)
 	{
-		const std::string& modelName = modelOrder[i];
-		if (!m_instanceModels.contains(modelName))
-		{
-			printf("Model : %s not in m_instanceModels\n", modelName.c_str());
-			continue;
-		}
+		const size_t modelKey = modelOrder[i];
 
-		InstanceModel& model = m_instanceModels[modelName];
+		InstanceModel& model = m_instanceModels[modelKey];
 		const uint32_t offModel = static_cast<uint32_t>(currOffset);
-		modelOffsets[modelName] = offModel;
+		modelOffsets[modelKey] = offModel;
 
 		serializedModels[i] = model.Serialize(offModel, m_materialToTexture, modelPointerLocations[i]);
 
@@ -3378,7 +3363,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	// Write Model pointer array (NULL-terminated)
 	const size_t offModelList_ptrArray = currOffset;
 	//printf(nameof(offModelList_ptrArray) " = %zx\n", offModelList_ptrArray);
-	currOffset += (uniqueModelNames.size() + 1) * sizeof(uint32_t);
+	currOffset += (uniqueModelKeys.size() + 1) * sizeof(uint32_t);
 	header.offModels = static_cast<uint32_t>(offModelList_ptrArray);
 
 	
@@ -3390,10 +3375,10 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	std::vector<std::vector<uint8_t>> serializedInstDef;
 	for (size_t i = 0; i < m_instances.size(); i++)
 	{
-		if (!m_instanceModels[m_instances[i].GetModelName()].IsValid())
+		if (!m_instanceModels[m_instances[i].GetModelKey()].IsValid())
 			continue;
 
-		uint32_t offModel = static_cast<uint32_t>(modelOffsets[m_instances[i].GetModelName()]);
+		uint32_t offModel = static_cast<uint32_t>(modelOffsets[m_instances[i].GetModelKey()]);
 		serializedInstDef.push_back(m_instances[i].Serialize(offModel));
 		const size_t offInstDef = currOffset;
 		instDefOffsets.push_back(offInstDef);
@@ -3403,7 +3388,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	header.numInstances = static_cast<uint32_t>(serializedInstDef.size());
 
 	printf("uniqueModelNames: %zu, serializedModels non-empty: %zu, serializedInstDef: %zu (m_instances total: %zu)\n",
-		uniqueModelNames.size(), modelOrder.size(), serializedInstDef.size(), m_instances.size());
+		uniqueModelKeys.size(), modelOrder.size(), serializedInstDef.size(), m_instances.size());
 
 	// Write InstDef pointer array (NULL-terminated)
 	const size_t offInstDefList_ptrArray = currOffset;
@@ -3693,9 +3678,9 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		Write(file, serializedModels[i].data(), serializedModels[i].size());
 	}
 	// Write Model pointer array (NULL-terminated, stored offsets - game adds 4 to get actual position)
-	for (const std::string& modelName : modelOrder)
+	for (const size_t modelKey : modelOrder)
 	{
-		uint32_t ptr = static_cast<uint32_t>(modelOffsets[modelName]);
+		uint32_t ptr = static_cast<uint32_t>(modelOffsets[modelKey]);
 		Write(file, &ptr, sizeof(ptr));
 	}
 	Write(file, &nullTerm, sizeof(nullTerm));
@@ -4461,7 +4446,7 @@ bool Level::UpdateVRM()
 	}
 	for (const Instance& inst : m_instances) // Model textures
 	{
-		InstanceModel& model = m_instanceModels[inst.GetModelName()];
+		InstanceModel& model = m_instanceModels[inst.GetModelKey()];
 		for (InstanceModelHeader& head : model.m_headers)
 		{
 			for (Tri& tri : head.GetGeometry())
@@ -4868,13 +4853,13 @@ void Level::GenerateRenderInstanceData()
 	{
 		const Instance& inst = m_instances[i];
 		const Vec3& pos = inst.GetPos();
-		const std::string& modelName = inst.GetModelName();
+		const size_t modelKey = inst.GetModelKey();
 
 		// Geometry child (always created, ensures stride = 2 per instance)
 		Model* childModel = instanceModel->AddModel();
-		if (!modelName.empty())
+		if (true)
 		{
-			auto it = m_instanceModels.find(modelName);
+			auto it = m_instanceModels.find(modelKey);
 			if (it != m_instanceModels.end())
 			{
 				InstanceModel& instModel = it->second;

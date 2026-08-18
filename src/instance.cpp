@@ -1377,7 +1377,14 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	}
 }
 
-
+InstanceModel::InstanceModel()
+{
+	m_name = "NewModel";
+	m_id = ModelId::NOFUNC;
+	m_parsedGeometry.clear();
+	m_parsed = false;
+	m_valid = true;
+}
 
 InstanceModel::InstanceModel(const std::filesystem::path& jsonPath, std::unordered_map<std::string, Texture>& materialToTexture)
 {
@@ -1400,10 +1407,14 @@ InstanceModel::InstanceModel(const std::filesystem::path& jsonPath, std::unorder
 	}
 }
 
-
-InstanceModel::InstanceModel(PSX::Model model, std::string modelName)
+static size_t global_model_id_count = 0;
+size_t GenerateUniqueModelKey()
 {
-	m_name = modelName;
+	return global_model_id_count++;
+}
+InstanceModel::InstanceModel(PSX::Model model)
+{
+	m_name = std::string(model.name, strnlen(model.name, sizeof(model.name)));
 	m_id = static_cast<ModelId>(model.id);
 	m_valid = true;
 	m_headers.clear();
@@ -1497,7 +1508,7 @@ std::vector<uint8_t> InstanceModel::Serialize(uint32_t modelOffset, std::unorder
 	return output;
 }
 
-Instance::Instance(std::string model)
+Instance::Instance(size_t modelKey)
 {
 	m_name = "NewInstance";
 	m_scale = Vec3(1.0f, 1.0f, 1.0f);
@@ -1505,14 +1516,14 @@ Instance::Instance(std::string model)
 	m_rot = Vec3(0.0f, 0.0f, 0.0f);
 	m_modelID = ModelId::NOFUNC;
 	m_color = Color(0.0f, 0.0f, 0.0f);
-	m_modelName = model;
+	m_modelKey = modelKey;
 	m_flags = 0xB;
 	m_unk24 = 0;
 	m_unk28 = 0;
 	m_hitbox = InstanceHitbox();
 }
 
-Instance::Instance(PSX::InstDef inst)
+Instance::Instance(PSX::InstDef inst, size_t modelKey)
 {
 	m_name = std::string(inst.name, strnlen(inst.name, sizeof(inst.name)));
 	m_scale = ConvertPSXVec3(inst.scale, FP_ONE);
@@ -1524,7 +1535,7 @@ Instance::Instance(PSX::InstDef inst)
 	m_unk24 = inst.unk24;
 	m_unk28 = inst.unk28;
 
-	m_modelName = "";
+	m_modelKey = modelKey;
 	m_hitbox = InstanceHitbox();
 }
 

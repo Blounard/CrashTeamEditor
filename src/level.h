@@ -191,14 +191,12 @@ private:
 	std::vector<size_t> m_rendererSelectedQuadblockIndexes;
 	size_t m_lastAnimTextureCount;
 
-	std::unordered_map<std::string, InstanceModel> m_instanceModels;
-
-	// Model textures placed in VRAM (filled by UpdateVRM, used by SaveLEV)
-	std::vector<ModelTextureForVRM> m_modelTexturesInVRAM;
+	
 
 	// VRAM data parsed from .vrm file (for model texture extraction)
 	std::vector<uint16_t> m_vramData;
 
+	std::unordered_map<size_t, InstanceModel> m_instanceModels; //Not using vector, so model can be deleted without affecting instance's model key.
 	std::vector<Instance> m_instances;
 	std::vector<std::vector<Vec3>> m_spawntypes;
 	std::vector<std::vector<Spawn>> m_spawntypesPosRot;

@@ -372,13 +372,13 @@ private:
 	bool m_isAnimated = false;
 };
 
-
+size_t GenerateUniqueModelKey();
 
 class InstanceModel // group of models ?
 {
 public:
-	InstanceModel() = default;
-	InstanceModel(PSX::Model model, std::string modelName);
+	InstanceModel();
+	InstanceModel(PSX::Model model);
 	InstanceModel(const std::filesystem::path& jsonPath, std::unordered_map<std::string, Texture>& materialToTexture);
 
 	const bool IsValid() const { return (m_valid && !m_headers.empty()); }
@@ -401,8 +401,8 @@ private:
 	std::string m_name;
 	ModelId m_id;
 	std::vector<Primitive> m_parsedGeometry;
-	bool m_parsed = false;
-	bool m_valid = true;
+	bool m_parsed;
+	bool m_valid;
 };
 
 
@@ -426,8 +426,8 @@ struct InstanceHitbox
 class Instance
 {
 public:
-	Instance(std::string model);
-	Instance(PSX::InstDef);
+	Instance(size_t modelKey);
+	Instance(PSX::InstDef, size_t modelKey);
 
 	// Name
 	const std::string& GetName() const { return m_name; }
@@ -453,9 +453,8 @@ public:
 	const Color& GetColor() const { return m_color; }
 	void SetColor(const Color& color) { m_color = color; }
 
-	// Model name
-	std::string GetModelName() const { return m_modelName; }
-	void SetModelName(std::string model) { m_modelName = model; }
+	size_t GetModelKey() const { return m_modelKey; }
+	void SetModelKey(size_t key) { m_modelKey = key; }
 
 	// Flags
 	uint32_t GetFlags() const { return m_flags; }
@@ -477,7 +476,7 @@ public:
 
 	BoundingBox ComputeBBox() const;
 	Vec3 Center() const;
-	bool RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, const std::vector<std::string>& modelNames, Vec3& queryPoint);
+	bool RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, const std::unordered_map<size_t, InstanceModel>& modelInstances, Vec3& queryPoint);
 	std::vector<uint8_t> Serialize(uint32_t offModel) const;
 	PSX::InstHitbox SerializeHitbox(uint32_t insatnceOffset) const;
 private:
@@ -487,7 +486,7 @@ private:
 	Vec3 m_rot;
 	ModelId m_modelID;
 	Color m_color;
-	std::string m_modelName;
+	size_t m_modelKey;
 	uint32_t m_flags;
 	uint32_t m_unk24;
 	uint32_t m_unk28;

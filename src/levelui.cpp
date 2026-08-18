@@ -394,7 +394,7 @@ void BotPath::RenderUI(int pathIndex)
 }
 
 
-bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, const std::vector<std::string>& modelNames, Vec3& queryPoint)
+bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, const std::unordered_map<size_t, InstanceModel>& modelInstances, Vec3& queryPoint)
 {
 	bool modelChanged = false;
 
@@ -402,14 +402,14 @@ bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, co
 	if (ImGui::CollapsingHeader((headerLabel + "###instHeader").c_str()))
 	{
 		// Model selection dropdown
-		if (ImGui::BeginCombo("Model", m_modelName.c_str()))
+		if (ImGui::BeginCombo("Model", modelInstances.at(m_modelKey).GetName().c_str()))
 		{
-			for (const std::string& name : modelNames)
+			for (const auto& [key, model] : modelInstances)
 			{
-				bool isSelected = (m_modelName == name);
-				if (ImGui::Selectable(name.c_str(), isSelected))
+				bool isSelected = (m_modelKey == key);
+				if (ImGui::Selectable(model.GetName().c_str(), isSelected))
 				{
-					m_modelName = name;
+					m_modelKey = key;
 					modelChanged = true;
 				}
 				if (isSelected)
@@ -616,8 +616,9 @@ bool InstanceModelHeader::RenderUI(std::unordered_map<std::string, Texture>& mat
 bool InstanceModel::RenderUI(std::unordered_map<std::string, Texture>& materialToTexture, std::function<void(void)> refreshTextureStores)
 {
 	bool toDel = false;
-	if (ImGui::TreeNode(m_name.c_str()))
+	if (ImGui::TreeNodeEx((void*)this, ImGuiTreeNodeFlags_None, m_name.c_str()))
 	{
+		ImGui::InputText("Name", &m_name, 0x10);
 		ModelIdWidget("Model ID", &m_id);
 
 		//ImGui::Text("List of LOD");
@@ -2176,38 +2177,45 @@ void Level::RenderUI(Renderer& renderer)
 				if (model.IsValid())
 				{
 					importModelButtonMessage = "Successfully imported" + model.GetName();
-					m_instanceModels[model.GetName()] = model;
+					size_t modelKey = GenerateUniqueModelKey();
+					m_instanceModels[modelKey] = model;
 				}
 				else
 					importModelButtonMessage = "Failed to import the model";
 			}
 			ImGui::EndDisabled();
 			if (disabled) { ImGui::SetItemTooltip("You must select a .json file before importing."); }
+			ImGui::SameLine();
+			if (ImGui::Button("New Model"))
+			{
+				InstanceModel model;
+				size_t modelKey = GenerateUniqueModelKey();
+				m_instanceModels[modelKey] = model;
+			}
 
 			// Show list of currently loaded models
 			ImGui::Separator();
-			if (ImGui::TreeNodeEx(("Loaded Models (" + std::to_string(m_instanceModels.size()) + ")##modelsList").c_str(), 0))
+			if (ImGui::TreeNodeEx((void*)this, ImGuiTreeNodeFlags_None, "Loaded models (%zu)", m_instanceModels.size()))
 			{
 				ImGui::Separator();
 
 				if (!m_instanceModels.empty())
 				{
-					std::string modelToDelete;
-					for (auto& [modelName, instModel] : m_instanceModels)
+					std::vector<size_t> modelToDelete;
+					for (auto& [modelKey, instModel] : m_instanceModels)
 					{
-						ImGui::PushID(modelName.c_str());
+						ImGui::PushID(static_cast<int>(modelKey));
 
 						if (instModel.RenderUI(m_materialToTexture, [&]() { this->UpdateAnimationRenderData(); }))
-							modelToDelete = modelName;
+							modelToDelete.push_back(modelKey);
 						ImGui::PopID();
 						
 					}
 
 					// Delete the model after iteration to avoid iterator invalidation
-					if (!modelToDelete.empty())
-					{
-						m_instanceModels.erase(modelToDelete);
-					}
+					for (size_t key : modelToDelete)
+						m_instanceModels.erase(key);
+					modelToDelete.clear();
 				}
 				else
 				{
@@ -2357,9 +2365,7 @@ void Level::RenderUI(Renderer& renderer)
 				ImGui::PushID(static_cast<int>(i));
 				bool shouldDelete = false;
 				bool shouldDuplicate = false;
-				std::vector<std::string> modelNames;
-				for (const auto& [name, _] : m_instanceModels) { modelNames.push_back(name); }
-				if (m_instances[i].RenderUI(shouldDelete, shouldDuplicate, static_cast<int>(i), modelNames, m_rendererQueryPoint))
+				if (m_instances[i].RenderUI(shouldDelete, shouldDuplicate, static_cast<int>(i), m_instanceModels, m_rendererQueryPoint))
 					renderInstanceNeedsUpdate = true;
 				if (shouldDelete)
 					instanceToDelete = static_cast<int>(i);
