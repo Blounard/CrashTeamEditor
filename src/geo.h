@@ -122,6 +122,7 @@ struct BoundingBox
 	Vec3 min;
 	Vec3 max;
 
+	void Expand(const Vec3& pos);
 	float Area() const;
 	float SemiPerimeter() const;
 	float NormL(int power) const;

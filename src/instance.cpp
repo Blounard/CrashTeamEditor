@@ -398,7 +398,6 @@ namespace // Load GLTF
 			ModelAnimation animation{};
 			animation.name = !anim.name.empty() ? anim.name : ("anim_" + std::to_string(out.size()));
 			animation.interpolated = (refCh->interpolation == "LINEAR");
-			animation.hasRawNumFrames = false;
 
 			std::vector<double> restT = restNode.translation, restR = restNode.rotation, restS = restNode.scale;
 
@@ -636,7 +635,6 @@ namespace // Load GLTF
 				ModelAnimation animation{};
 				animation.name = !anim.name.empty() ? anim.name : ("anim_" + std::to_string(outAnimations.size()));
 				animation.interpolated = (sampler.interpolation == "LINEAR");
-				animation.hasRawNumFrames = false;
 
 				for (size_t f = 0; f < times.size(); f++)
 				{
@@ -1036,11 +1034,9 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	else header.maxDistanceLOD = ConvertFloat(m_maxDistLOD, FP_ONE_GEO);
 	header.flags = m_flags;
 	header.maybeScaleMaybePadding = m_scaleOrPad;
-	header.offStaticDeltaArray = 0; // compressed static vertices unsupported by this encoder -- intentional
+	header.offStaticDeltaArray = 0;
 
 	const std::vector<Tri>& baseFaces = m_animations[0].frames[0];
-	
-	auto PreFlip = [](const Vec3& pos) { return Vec3(pos.x, pos.y, pos.z); };
 
 	std::vector<const ModelAnimation*> validAnims;
 	for (const ModelAnimation& anim : m_animations)
@@ -1060,86 +1056,62 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	}
 	if (validAnims.empty()) { validAnims.push_back(&m_animations[0]); }
 
-	// Real motion iff more than one clip survived, or the single surviving
-	// clip has more than one frame -- a single-frame single-clip case is
-	// indistinguishable from "static" and is encoded that way.
 	const bool effectivelyAnimated = m_isAnimated &&
 		(validAnims.size() > 1 || (validAnims.size() == 1 && validAnims[0]->frames.size() > 1));
 
 	// --- Bounding box refit: union of every pose across every surviving
 	// animation, so the single shared `scale` fits all of them. ---
-	Vec3 preFlipMin(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
-	Vec3 preFlipMax(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest());
-	auto ExpandBox = [&](const Vec3& pos)
-		{
-			Vec3 pf = PreFlip(pos);
-			preFlipMin.x = std::min(preFlipMin.x, pf.x); preFlipMax.x = std::max(preFlipMax.x, pf.x);
-			preFlipMin.y = std::min(preFlipMin.y, pf.y); preFlipMax.y = std::max(preFlipMax.y, pf.y);
-			preFlipMin.z = std::min(preFlipMin.z, pf.z); preFlipMax.z = std::max(preFlipMax.z, pf.z);
-		};
+	BoundingBox framesBBox;
+	framesBBox.min = Vec3(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+	framesBBox.max = Vec3(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest());
 	for (const ModelAnimation* anim : validAnims)
 		for (const auto& frame : anim->frames)
 			for (const Tri& tri : frame)
 				for (int c = 0; c < 3; c++)
-					ExpandBox(tri.p[c].pos);
+					framesBBox.Expand(tri.p[c].pos);
 
-	if (baseFaces.empty()) { preFlipMin = Vec3(0, 0, 0); preFlipMax = Vec3(0, 0, 0); }
+	if (baseFaces.empty()) { framesBBox.min = Vec3(0, 0, 0); framesBBox.max = Vec3(0, 0, 0); }
 
-	constexpr float MIN_BOX_SIZE = 1.0f / (2.0f * FP_ONE_MODEL_SCALE); // smallest extent guaranteed nonzero after int16 rounding
-	Vec3 boxSize(
-		std::max(preFlipMax.x - preFlipMin.x, MIN_BOX_SIZE),
-		std::max(preFlipMax.y - preFlipMin.y, MIN_BOX_SIZE),
-		std::max(preFlipMax.z - preFlipMin.z, MIN_BOX_SIZE)
-	);
+	header.scale = m_hasScale ? ConvertVec3(m_scale, FP_ONE_MODEL_SCALE) : ConvertVec3(framesBBox.AxisLength(), FP_ONE_MODEL_SCALE);
+	if (header.scale.x < 1) header.scale.x = 1;
+	if (header.scale.y < 1) header.scale.y = 1;
+	if (header.scale.z < 1) header.scale.z = 1;
 
-	// TODO MAKE SURE m_scale IS NEVER 0
-	header.scale = m_hasScale ? ConvertVec3(m_scale, FP_ONE_MODEL_SCALE) : ConvertVec3(boxSize, FP_ONE_MODEL_SCALE);
-	// Recompute float scale FROM the rounded int16 (not from boxSize/m_scale
-	// directly) so quantization below agrees exactly with what the decoder
-	// reconstructs.
 	Vec3 effScale = ConvertPSXVec3(header.scale, FP_ONE_MODEL_SCALE);
 
-	// Encodes one full pose into a tight-fit ModelFrame + vertex bytes,
-	// using the shared effScale (always big enough, since it was sized
-	// from the union of every pose we'll ever call this with).
-	auto EncodePose = [&](const std::vector<Tri>& pose) -> std::vector<uint8_t>
+	// Encode a ModelFrame + vertices + padding
+	auto EncodeFrame = [&](const std::vector<Tri>& frame) -> std::vector<uint8_t>
 		{
-			Vec3 poseMin(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
-			for (const Tri& tri : pose)
+			Vec3 frameMin(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+			for (const Tri& tri : frame)
 				for (int c = 0; c < 3; c++)
 				{
-					Vec3 pf = PreFlip(tri.p[c].pos);
-					poseMin.x = std::min(poseMin.x, pf.x);
-					poseMin.y = std::min(poseMin.y, pf.y);
-					poseMin.z = std::min(poseMin.z, pf.z);
+					frameMin.x = std::min(frameMin.x, tri.p[c].pos.x);
+					frameMin.y = std::min(frameMin.y, tri.p[c].pos.y);
+					frameMin.z = std::min(frameMin.z, tri.p[c].pos.z);
 				}
-			if (pose.empty()) { poseMin = Vec3(0, 0, 0); }
-
-			Vec3 originF;
-			originF.x = std::fabs(effScale.x) < 0.0001f ? 0.0f : poseMin.x / effScale.x;
-			originF.y = std::fabs(effScale.y) < 0.0001f ? 0.0f : poseMin.y / effScale.y;
-			originF.z = std::fabs(effScale.z) < 0.0001f ? 0.0f : poseMin.z / effScale.z;
+			if (frame.empty()) { frameMin = Vec3(0, 0, 0); }
+			Vec3 origin = frameMin / effScale;
 
 			std::vector<uint8_t> res;
-			PSX::ModelFrame frame{};
-			frame.pos = ConvertVec3(originF, FP_ONE_MODEL_ORIGIN);
-			frame.maybePosMaybePadding = 0;
-			std::memset(frame.unk16, 0, sizeof(frame.unk16));
-			frame.vertexOffset = sizeof(PSX::ModelFrame);
-			AppendValue(res, frame);
+			PSX::ModelFrame modelFrame{};
+			modelFrame.pos = ConvertVec3(origin, FP_ONE_MODEL_ORIGIN);
+			modelFrame.maybePosMaybePadding = 0;
+			std::memset(modelFrame.unk16, 0, sizeof(modelFrame.unk16));
+			modelFrame.vertexOffset = sizeof(PSX::ModelFrame);
+			AppendValue(res, modelFrame);
 
-			Vec3 effOrigin = ConvertPSXVec3(frame.pos, FP_ONE_MODEL_ORIGIN);
-			for (const Tri& tri : pose)
+			Vec3 effOrigin = ConvertPSXVec3(modelFrame.pos, FP_ONE_MODEL_ORIGIN);
+			for (const Tri& tri : frame)
 			{
 				for (int pushOrder = 0; pushOrder < 3; pushOrder++)
 				{
-					int cornerIdx = 2 - pushOrder; // matches command push order below
+					int cornerIdx = 2 - pushOrder; 
 					PSX::Vec3b vert = ConvertVec3b((tri.p[cornerIdx].pos / effScale) - effOrigin, 255) ;
 					AppendValue(res, vert);
 				}
 			}
 			AppendPadding(res, 4);
-
 			return res;
 		};
 
@@ -1233,7 +1205,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	if (!effectivelyAnimated)
 	{
 		const size_t frameDataOffset = output.size();
-		std::vector<uint8_t> encodedFrame = EncodePose(baseFaces);
+		std::vector<uint8_t> encodedFrame = EncodeFrame(baseFaces);
 		AppendBytes(output, encodedFrame.data(), encodedFrame.size());
 		header.offFrameData = static_cast<uint32_t>(modelOffset + frameDataOffset);
 		header.numAnimations = 0;
@@ -1254,7 +1226,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 			encodedFrames.reserve(numStoredFrames);
 			for (size_t f = 0; f < numStoredFrames; f++)
 			{
-				encodedFrames.push_back(EncodePose(anim.frames[f]));
+				encodedFrames.push_back(EncodeFrame(anim.frames[f]));
 			}
 
 			const size_t frameStride = encodedFrames.empty() ? 0 : encodedFrames[0].size();
@@ -1264,43 +1236,17 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 					m_name.c_str(), anim.name.c_str(), frameStride);
 			}
 
-			// Prefer the exact original numFrames bit pattern when it still
-			// describes what we're about to write (round-trips interpolated
-			// parity exactly); recompute only if the data no longer matches
-			// (edited frame count/interpolation, or glTF-authored with no
-			// raw value to begin with).
-			uint16_t numFramesField;
-			bool useRaw = anim.hasRawNumFrames;
-			if (useRaw)
-			{
-				uint16_t storedLogical = anim.rawNumFrames & PSX::ANIM_FRAME_COUNT_MASK;
-				bool storedInterp = (anim.rawNumFrames & PSX::ANIM_INTERPOLATED_BIT) != 0;
-				size_t expectedStoredFrames = storedInterp ? (storedLogical > 0 ? (storedLogical >> 1) + 1 : 0) : storedLogical;
-				if (storedInterp != anim.interpolated || expectedStoredFrames != numStoredFrames)
-				{
-					printf("WARNING: header '%s' animation '%s' no longer matches its original frame metadata -- recomputing numFrames\n",
-						m_name.c_str(), anim.name.c_str());
-					useRaw = false;
-				}
-			}
-			if (useRaw)
-			{
-				numFramesField = anim.rawNumFrames;
-			}
-			else
-			{
-				uint16_t logicalCount = anim.interpolated
-					? static_cast<uint16_t>(numStoredFrames > 0 ? (numStoredFrames - 1) * 2 : 0)
-					: static_cast<uint16_t>(numStoredFrames);
-				numFramesField = logicalCount | (anim.interpolated ? PSX::ANIM_INTERPOLATED_BIT : 0);
-			}
+			uint16_t logicalCount = anim.interpolated
+				? static_cast<uint16_t>(numStoredFrames > 0 ? (numStoredFrames - 1) * 2 : 0)
+				: static_cast<uint16_t>(numStoredFrames);
+			uint16_t numFramesField = logicalCount | (anim.interpolated ? PSX::ANIM_INTERPOLATED_BIT : 0);
 
 			PSX::ModelAnim animHeader{};
 			std::memset(animHeader.name, 0, sizeof(animHeader.name));
 			std::memcpy(animHeader.name, anim.name.data(), std::min(anim.name.size(), sizeof(animHeader.name)));
 			animHeader.numFrames = numFramesField;
 			animHeader.frameSize = static_cast<int16_t>(frameStride);
-			animHeader.offDeltaArray = 0; // uncompressed -- always valid, always decodable
+			animHeader.offDeltaArray = 0;
 
 			const size_t animBlockOffset = output.size();
 			AppendValue(output, animHeader);
@@ -1353,10 +1299,6 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 
 	std::memcpy(output.data() + headerStructOffset, &header, sizeof(PSX::ModelHeader));
 
-	// offFrameData and offAnimations are each legitimately 0 depending on
-	// effectivelyAnimated -- SaveLEV rebases every registered field
-	// unconditionally, so a registered zero would become a bogus non-null
-	// pointer. Guarded, as before.
 	const uint32_t headerAbsoluteOffset = static_cast<uint32_t>(modelOffset + headerStructOffset);
 	outPointerLocations.push_back(CALCULATE_OFFSET(PSX::ModelHeader, offCommandList, headerAbsoluteOffset));
 	if (header.offFrameData != 0)

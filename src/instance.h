@@ -331,8 +331,6 @@ struct ModelAnimation
 {
 	std::string name;
 	bool interpolated = false;
-	bool hasRawNumFrames = false; // true only when decoded from a real .lev
-	uint16_t rawNumFrames = 0;    // verbatim PSX::ModelAnim::numFrames -- exact round-trip fidelity
 	std::vector<std::vector<Tri>> frames; // frames[f].size() == frames[0].size() for every f; only .tri.p[*].pos may legitimately differ across frames
 };
 

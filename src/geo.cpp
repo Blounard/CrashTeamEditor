@@ -23,6 +23,13 @@ Line::Line(const Point& p0, const Point& p1)
 	p[0] = p0; p[1] = p1;
 }
 
+void BoundingBox::Expand(const Vec3& pos)
+{
+	min.x = std::min(min.x, pos.x); max.x = std::max(max.x, pos.x);
+	min.y = std::min(min.y, pos.y); max.y = std::max(max.y, pos.y);
+	min.z = std::min(min.z, pos.z); max.z = std::max(max.z, pos.z);
+}
+
 float BoundingBox::Area() const
 {
 	Vec3 dist = max - min;

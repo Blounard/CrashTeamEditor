@@ -598,7 +598,7 @@ bool InstanceModelHeader::RenderUI(std::unordered_map<std::string, Texture>& mat
 		for (size_t i = 0 ; i < m_animations.size(); i++)
 		{
 			ModelAnimation& anim = m_animations[i];
-			ImGui::Text(("Group: " + std::to_string(i) + ", Frames: " + std::to_string(anim.rawNumFrames) + ", Size: " + std::to_string(anim.frames.size())).c_str());
+			ImGui::Text(("Group: " + std::to_string(i) + ", Frames: " + std::to_string(anim.frames.size())).c_str());
 		}
 
 		if (ImGui::Button("Delete LOD"))

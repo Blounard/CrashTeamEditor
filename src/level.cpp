@@ -1846,7 +1846,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							ModelAnimation staticAnim{};
 							staticAnim.name = ""; 
 							staticAnim.interpolated = false;
-							staticAnim.hasRawNumFrames = false;
 							staticAnim.frames.push_back(triList);
 							animations.push_back(std::move(staticAnim));
 						}
@@ -1865,8 +1864,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 								animation.name = std::string(anim.name, strnlen(anim.name, sizeof(anim.name)));
 								animation.interpolated = (anim.numFrames & PSX::ANIM_INTERPOLATED_BIT) != 0;
 								size_t numStoredFrames = PSX::StoredFrameCount(anim.numFrames);
-								animation.hasRawNumFrames = true;
-								animation.rawNumFrames = anim.numFrames;
 
 								for (size_t f = 0; f < numStoredFrames; f++)
 								{
