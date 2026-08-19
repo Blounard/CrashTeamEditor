@@ -1399,11 +1399,11 @@ void InstanceModel::Export(const std::filesystem::path& exportDir, std::unordere
 
 std::vector<Primitive> InstanceModel::GetGeometry()
 {
-	/*if (!m_headers.empty())
+	if (!m_headers.empty())
 	{
 		std::vector<Tri>& geom = m_headers[0].GetGeometry();
 		return std::vector<Primitive>(geom.begin(), geom.end());
-	}*/
+	}
 		 
 	return {};
 }

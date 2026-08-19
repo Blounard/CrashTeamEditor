@@ -4874,24 +4874,9 @@ void Level::GenerateRenderInstanceData()
 			if (it != m_instanceModels.end())
 			{
 				InstanceModel& instModel = it->second;
-				if (!instModel.IsParsed())
-				{
-					std::string texCacheDir = (std::filesystem::temp_directory_path() / "CTE_tex_cache").string();
-					std::vector<Primitive> primitives = {}; // Need to collect the Tri from models, and convert to Primitive, at low cost
-					/*if (!primitives.empty())
-					{
-						instModel.GetParsedGeometry() = std::move(primitives);
-						instModel.SetParsed(true);
-					}*/
-				}
-
-			/*	if (instModel.IsParsed() && !instModel.GetParsedGeometry().empty())
-				{
-					childModel->GetMesh().SetGeometry(
-						instModel.GetParsedGeometry(),
-						Mesh::RenderFlags::DrawBackfaces | Mesh::RenderFlags::DontOverrideRenderFlags
-					);
-				}*/
+				std::vector<Primitive> primitives = instModel.GetGeometry();
+				childModel->GetMesh().SetGeometry(primitives,
+					Mesh::RenderFlags::DrawBackfaces | Mesh::RenderFlags::DontOverrideRenderFlags);			
 			}
 		}
 		childModel->SetPosition(inst.GetPos());

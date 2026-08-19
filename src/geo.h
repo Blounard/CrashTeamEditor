@@ -224,6 +224,7 @@ struct Primitive
 		, texture()
 		, p()
 		, pointCount(pointCount)
+		, doubleSided(false)
 	{
 	}
 

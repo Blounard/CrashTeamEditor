@@ -13,13 +13,6 @@
 #include <nlohmann/json.hpp>
 
 
-// TODO IMPORTANT : MAKE MODELS NAME NOT UNIQUE KEYS
-
-
-
-
-
-
 enum class InstanceFlag : uint32_t
 {
 	DRAW_INSTANCE = 1,
@@ -314,6 +307,7 @@ static const std::map<ModelId, const char*> ModelIdLabels = {
 	{ModelId::DYNAMIC_DRUM,   "Barrel (Labs)"},
 	{ModelId::STATIC_CASTLE_SIGN, "Castle Sign"},
 	{ModelId::STATIC_TIME_CRATE_01, "Relic Crate 1"},
+	{ModelId::STATIC_CRYSTAL, "Crystal"},
 	{ModelId::STATIC_TIME_CRATE_02, "Relic Crate 2"},
 	{ModelId::STATIC_TIME_CRATE_03, "Relic Crate 3"},
 	{ModelId::STATIC_BANNER,      "Banner"},

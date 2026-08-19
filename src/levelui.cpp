@@ -577,8 +577,9 @@ bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, co
 bool InstanceModelHeader::RenderUI(std::unordered_map<std::string, Texture>& materialToTexture)
 {
 	bool toDel = false;
-	if (ImGui::TreeNode(m_name.c_str()))
+	if (ImGui::TreeNodeEx((void*)this, ImGuiTreeNodeFlags_None, m_name.c_str()))
 	{
+		ImGui::InputText("Name", &m_name, 0x10);
 		ImGui::SetNextItemWidth(200.0f);
 		ImGui::DragFloat("Max visible distance##", &m_maxDistLOD, 0.5f, -1.0f, 1000.0f, "%.1f");
 		ImGui::InputScalar("Flags", ImGuiDataType_U16, &m_flags, nullptr, nullptr, "%04X", ImGuiInputTextFlags_CharsHexadecimal);
@@ -605,7 +606,6 @@ bool InstanceModelHeader::RenderUI(std::unordered_map<std::string, Texture>& mat
 		{
 			toDel = true;
 		}
-		
 
 		ImGui::Text("\n");
 		ImGui::TreePop();
