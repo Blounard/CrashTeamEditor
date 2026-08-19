@@ -228,7 +228,7 @@ Model* Level::GetInstancesModel()
 }
 
 
-bool Level::GenerateSpawn(float colSpacing, float rowSpacing)
+bool Level::GenerateSpawn(float colSpacing, float rowSpacing, float centerOffset)
 {
 	if (m_checkpoints.size() < 2)
 		return false;
@@ -244,6 +244,17 @@ bool Level::GenerateSpawn(float colSpacing, float rowSpacing)
 	forward.Normalize();
 	Vec3 right = forward.Cross(up);
 
+	int lastCkpt = m_checkpoints[0].GetDown();
+	int prevCkpt = m_checkpoints[lastCkpt].GetDown();
+	std::vector<size_t> quadindexes;
+	for (size_t j = 0; j < m_quadblocks.size(); j++)
+	{
+		Quadblock& quad = m_quadblocks[j];
+		if (quad.GetCheckpoint() != lastCkpt && quad.GetCheckpoint() != prevCkpt)
+			continue;
+		quadindexes.push_back(j);
+	}
+
 	for (int row = 0; row < 2; row++)
 	{
 		for (int col = 0; col < 4; col++)
@@ -251,29 +262,14 @@ bool Level::GenerateSpawn(float colSpacing, float rowSpacing)
 			int index = row * 4 + col;
 			float lateralOffset = (col - 1.5f) * colSpacing;
 			float forwardOffset = (row - 0.5f) * rowSpacing;
-			Vec3 pos = center + right * lateralOffset + forward * forwardOffset;
-			float dist;
-			Vec3 norm;
-			bool isInRange = false;
-			int lastCkpt = m_checkpoints[0].GetDown();
-			int prevCkpt = m_checkpoints[lastCkpt].GetDown();
-			for (const Quadblock& quad : m_quadblocks)
-			{
-				if (quad.GetCheckpoint() != lastCkpt && quad.GetCheckpoint() != prevCkpt)
-					continue;
-				if (quad.IntersectRay(pos, up, dist, norm))
-				{
-					pos += up * dist;
-					isInRange = true;
-				}	
-			}
-			if (!isInRange)
+			Vec3 pos = center + right * lateralOffset + forward * forwardOffset + forward * centerOffset;
+			Vec3 rot(0.0f, yaw, 0.0f);
+
+			if (-1 == SnapToClosestQuad(m_quadblocks, quadindexes, pos, rot, Vec3(0.0f, 1.0f, 0.0f), -10.0f, 10.0f))
 				return false;
-			// TODO : USE NORM TO AFFECT PITCH AND ROLL
+
 			m_spawn[index].pos = pos;
-			m_spawn[index].rot.x = 0.0f;
-			m_spawn[index].rot.y = yaw;
-			m_spawn[index].rot.z = 0.0f;
+			m_spawn[index].rot = rot;
 		}
 	}
 	return true;
@@ -361,57 +357,37 @@ bool Level::GenerateInstanceRow(int checkpointIndex, size_t instanceIndex, int n
 	else
 		forward = Vec3(0.0f, 0.0f, 1.0f);
 
-	Vec3 groundNormal;
-	float groundDist;
-	if (QueryGround(center, groundDist, groundNormal))
-	{
-		center.y += groundDist;
-		forward = forward - groundNormal * forward.Dot(groundNormal);
-	}
-	else
-	{
-		forward.y = 0;
-		groundNormal = Vec3(0.0f, 1.0f, 0.0f);
-	}
-
 	float yaw = -std::atan2(forward.z, forward.x) * (180.0f / MATH_PI);
 	yaw = std::fmod(yaw, 360.0f);
 	forward.Normalize();
-	Vec3 right = forward.Cross(groundNormal);
+	Vec3 right = forward.Cross(Vec3(0.0f, 1.0f, 0.0f));
 	right.Normalize();
 
+	Vec3 centerRot(0.0f, yaw, 0.0f);
+
+	std::vector<size_t> quadindexes;
+	for (size_t j = 0; j < m_quadblocks.size(); j++)
+	{
+		if (m_quadblocks[j].GetFlags() & QuadFlags::GROUND)
+			quadindexes.push_back(j);
+	}
+	SnapToClosestQuad(m_quadblocks, quadindexes, center, centerRot, Vec3(0.0f, 1.0f, 0.0f), -10.0f, 10.0f);
 	Instance original = m_instances[instanceIndex];
 	size_t insertPos = instanceIndex + 1;
-
 	for (int col = 0; col < numInstances; col++)
 	{
 		float lateralOffset = (col - (numInstances - 1) * 0.5f) * spacing;
 		Vec3 pos = center + right * lateralOffset;
+		Vec3 rot(0.0f, yaw, 0.0f);
 
 		Instance newInstance = original;
 		newInstance.SetName(GenerateUniqueInstanceName(original.GetName()));
 
-		float instDist;
-		Vec3 instNormal;
-		if (QueryGround(pos, instDist, instNormal))
-		{
-			pos.y += instDist;
-			if (instNormal.y < 0.0f)
-				instNormal = instNormal * -1.0f;
-			float yawRad = yaw * (MATH_PI / 180.0f);
-			float nzLocal = instNormal.x * std::sin(yawRad) + instNormal.z * std::cos(yawRad);
-			float nxLocal = instNormal.x * std::cos(yawRad) - instNormal.z * std::sin(yawRad);
-			float pitch = std::asin(std::min(std::max(nzLocal, -1.0f), 1.0f)) * (180.0f / MATH_PI);
-			float roll = std::atan2(-nxLocal, instNormal.y) * (180.0f / MATH_PI);
-			newInstance.SetPos(pos);
-			newInstance.SetRot(Vec3(pitch, yaw, roll));
-		}
-		else
-		{
-			newInstance.SetPos(pos);
-			newInstance.SetRot(Vec3(0.0f, yaw, 0.0f));
-		}
+		SnapToClosestQuad(m_quadblocks, quadindexes, pos, rot, Vec3(0.0f, 1.0f, 0.0f), -10.0f, 10.0f);
 
+		newInstance.SetPos(pos);
+		newInstance.SetRot(rot);
+		
 		m_instances.insert(m_instances.begin() + insertPos + col, newInstance);
 	}
 

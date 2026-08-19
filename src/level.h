@@ -127,7 +127,7 @@ private:
 	std::vector<uint16_t> ReadRawVRAM(std::filesystem::path vrmPath);
 	bool EmplaceInstanceBSP();
 	void GenerateBotPathChangeCode();
-	bool GenerateSpawn(float colSpacing, float rowSpacing);
+	bool GenerateSpawn(float colSpacing, float rowSpacing, float centerOffset);
 	bool GenerateInstanceRow(int checkpointIndex, size_t instanceIndex, int numInstances, float spacing, bool deleteAfter);
 	bool QueryGround(const Vec3& pos, float& height, Vec3& normal) const;
 	std::string GenerateUniqueInstanceName(const std::string& name) const;

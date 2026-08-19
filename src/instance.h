@@ -468,7 +468,7 @@ public:
 
 	BoundingBox ComputeBBox() const;
 	Vec3 Center() const;
-	bool RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, const std::unordered_map<size_t, InstanceModel>& modelInstances, Vec3& queryPoint);
+	bool RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, const std::unordered_map<size_t, InstanceModel>& modelInstances, Vec3& queryPoint, std::vector<Quadblock>& quadblocks);
 	std::vector<uint8_t> Serialize(uint32_t offModel) const;
 	PSX::InstHitbox SerializeHitbox(uint32_t insatnceOffset) const;
 private:

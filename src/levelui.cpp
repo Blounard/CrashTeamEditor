@@ -394,7 +394,7 @@ void BotPath::RenderUI(int pathIndex)
 }
 
 
-bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, const std::unordered_map<size_t, InstanceModel>& modelInstances, Vec3& queryPoint)
+bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, const std::unordered_map<size_t, InstanceModel>& modelInstances, Vec3& queryPoint, std::vector<Quadblock>& quadblocks)
 {
 	bool modelChanged = false;
 
@@ -465,13 +465,25 @@ bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, co
 			m_pos = queryPoint;
 		}
 
-		ImGui::Text("Rot:"); ImGui::SameLine();
+		ImGui::Text("Rot:"); 
+		ImGui::SameLine();
 		if (ImGui::DragFloat3("##rot", m_rot.Data(), 1.0f, -360.0f, 360.0f))
 		{
 			m_rot.x = Clamp(m_rot.x, -360.0f, 360.0f);
 			m_rot.y = Clamp(m_rot.y, -360.0f, 360.0f);
 			m_rot.z = Clamp(m_rot.z, -360.0f, 360.0f);
 		};
+		ImGui::SameLine();
+		if (ImGui::Button(("Snap to ground##Instance")))
+		{
+			std::vector<size_t> quadindexes;
+			for (size_t j = 0; j < quadblocks.size(); j++)
+			{
+				if (quadblocks[j].GetFlags() & QuadFlags::GROUND)
+					quadindexes.push_back(j);
+			}
+			SnapToClosestQuad(quadblocks, quadindexes, m_pos, m_rot, Vec3(0.0f, 1.0f, 0.0f), -1.0f, 1.0f);
+		}
 
 		ImGui::Text("Scale:");
 		ImGui::SameLine();
@@ -1004,17 +1016,20 @@ void Level::RenderUI(Renderer& renderer)
 		{
 			static std::string spawnButtonMessage;
 			static ButtonUI generateSpawnButton = ButtonUI();
-			static float spawnRowSpacing = 5.0f;
-			static float spawnColSpacing = 5.0f;
+			static float spawnRowSpacing = 3.5f;
+			static float spawnColSpacing = 3.0f;
+			static float centerOffset = 0.0f;
 
 			ImGui::SetNextItemWidth(200.0f);
 			ImGui::DragFloat("Row Spacing##spawnRowSpace", &spawnRowSpacing, 0.1f, 0.1f, 30.0f, "%.1f");
 			ImGui::SetNextItemWidth(200.0f);
 			ImGui::DragFloat("Column Spacing##spawnColSpace", &spawnColSpacing, 0.1f, 0.1f, 30.0f, "%.1f");
+			ImGui::SetNextItemWidth(200.0f);
+			ImGui::DragFloat("Center Offset##spawnColSpace", &centerOffset, 0.1f, -30.0f, 30.0f, "%.1f");
 
 			if (generateSpawnButton.Show("Generate from checkpoint", spawnButtonMessage, false))
 			{
-				if (GenerateSpawn(spawnColSpacing, spawnRowSpacing)) { spawnButtonMessage = "Successfully generated the spawn positions."; }
+				if (GenerateSpawn(spawnColSpacing, spawnRowSpacing, centerOffset)) { spawnButtonMessage = "Successfully generated the spawn positions."; }
 				else { spawnButtonMessage = "Failed generating the spawn position."; }
 				GenerateRenderStartpointData();
 			}
@@ -2376,7 +2391,7 @@ void Level::RenderUI(Renderer& renderer)
 				ImGui::PushID(static_cast<int>(i));
 				bool shouldDelete = false;
 				bool shouldDuplicate = false;
-				if (m_instances[i].RenderUI(shouldDelete, shouldDuplicate, static_cast<int>(i), m_instanceModels, m_rendererQueryPoint))
+				if (m_instances[i].RenderUI(shouldDelete, shouldDuplicate, static_cast<int>(i), m_instanceModels, m_rendererQueryPoint, m_quadblocks))
 					renderInstanceNeedsUpdate = true;
 				if (shouldDelete)
 					instanceToDelete = static_cast<int>(i);
