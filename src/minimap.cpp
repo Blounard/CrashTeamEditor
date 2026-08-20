@@ -81,7 +81,6 @@ void MinimapConfig::LoadTextures()
 		if (hasTopTexture)
 		{
 			topTexture.SetBlendMode(PSX::BlendMode::ADDITIVE);
-			topTexture.EnableColorKeyTransparency();
 		}
 	}
 	if (!bottomTexturePath.empty() && std::filesystem::exists(bottomTexturePath))
@@ -91,7 +90,6 @@ void MinimapConfig::LoadTextures()
 		if (hasBottomTexture)
 		{
 			bottomTexture.SetBlendMode(PSX::BlendMode::ADDITIVE);
-			bottomTexture.EnableColorKeyTransparency();
 		}
 	}
 }
@@ -227,7 +225,6 @@ bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks)
 			if (hasTopTexture)
 			{
 				topTexture.SetBlendMode(PSX::BlendMode::ADDITIVE);
-				topTexture.EnableColorKeyTransparency();
 			}
 		}
 	}
@@ -260,7 +257,6 @@ bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks)
 			if (hasBottomTexture)
 			{
 				bottomTexture.SetBlendMode(PSX::BlendMode::ADDITIVE);
-				bottomTexture.EnableColorKeyTransparency();
 			}
 		}
 	}
