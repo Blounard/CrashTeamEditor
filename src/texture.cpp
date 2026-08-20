@@ -427,7 +427,8 @@ uint16_t Texture::ConvertColor(unsigned char r, unsigned char g, unsigned char b
 	color |= (((g * 249) + 1014) >> 11) & 0x1F;
 	color <<= 5;
 	color |= (((r * 249) + 1014) >> 11) & 0x1F;
-	if (color == 0) { color = 1 << 10; }
+	if (color == 1 << 15) { color = 1 << 15 | 1 << 10 | 1 << 5 | 1; } // Semi transparent black 32bit becomes semi transparent dark grey 16bit because semi transparent black 16bit doesn't exist
+	if (color == 0) { color = 1 << 15; } // Opaque black is encoded with stp = 1, unlike other colors.
 	return color;
 }
 
