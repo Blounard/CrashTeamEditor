@@ -11,6 +11,7 @@
 #include "texture.h"
 #include "ui.h"
 #include "script.h"
+#include "minimap.h"
 
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
@@ -431,8 +432,6 @@ bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, co
 		// Model ID selector (behavior selector)
 		{
 			ModelId prevModelID = m_modelID;
-
-			
 
 			ModelIdWidget("Model ID", &m_modelID);
 
@@ -1407,7 +1406,14 @@ void Level::RenderUI(Renderer& renderer)
 				{
 					m_splitLines[1] = m_rendererQueryPoint.y;
 				}
+			}
 
+			if (ImGui::TreeNode("Minimap"))
+			{
+				if (m_minimapConfig.RenderUI(m_quadblocks, [&]() { this->UpdateAnimationRenderData(); }) && GuiRenderSettings::showMinimapBounds)
+				{
+					GenerateRenderMinimapBoundsData();
+				}
 				ImGui::TreePop();
 			}
 
@@ -1945,7 +1951,10 @@ void Level::RenderUI(Renderer& renderer)
 					if (skyboxRenderChanged & REND_FLAGS_COLUMN_0) { GenerateRenderSkyboxData(); }
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0);
-					ImGui::Checkbox("Show Instances", &GuiRenderSettings::showInstances);
+					unsigned minimapBoundsChanged = checkboxPair("Show Intances", &GuiRenderSettings::showInstances, "Show Minimap Bounds", &GuiRenderSettings::showMinimapBounds);
+
+					if (minimapBoundsChanged & REND_FLAGS_COLUMN_0) { GenerateRenderSkyboxData(); }
+					if (minimapBoundsChanged & REND_FLAGS_COLUMN_1) { GenerateRenderMinimapBoundsData(); }
 
 					ImGui::EndTable();
 				}
