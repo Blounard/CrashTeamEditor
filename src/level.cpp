@@ -1427,10 +1427,38 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	m_rawAnimTex.clear(); // Map : Absolute Offset -> PSX::AnimTex
 	m_rawTextureGroup.clear(); // Map : Absolute Offset ->  PSX::TextureGroup
 	m_rawAnimTexFrames.clear(); // Map : Absolute Offset -> List of Absolute Offset for PSX::TextureGroup
+
+	// WATER
 	if (header.offEnvironmentMap != 0)
 	{
 		file.seekg(offLev + std::streampos(header.offEnvironmentMap));
 		Read(file, m_rawWaterLayout);
+	}
+	//MINIMAP
+	if (header.offIconsLookup != 0)
+	{
+		PSX::LevelIconHeader levelIconHeader{};
+		file.seekg(offLev + std::streampos(header.offIconsLookup));
+		Read(file, levelIconHeader);
+		if (levelIconHeader.offFirstIcon != 0)
+		{
+			for (int32_t iconId = 0; iconId < levelIconHeader.numIcon; iconId++)
+			{
+				file.seekg(offLev + std::streampos(levelIconHeader.offFirstIcon + iconId * sizeof(PSX::Icon)));
+				PSX::Icon icon{};
+				Read(file, icon);
+				PSX::TextureLayout& layout = icon.texLayout;
+				LayoutKey key(layout);
+
+				if (!materialCache.contains(key))
+				{
+					std::string newMatName = "icon_" + std::to_string(texCounter++);
+					materialCache[key] = newMatName;
+				}
+				RawUV rawUV(layout);
+				textureToPixelBounds[key].Update(rawUV);
+			}
+		}
 	}
 
 	std::filesystem::path tempDir = levFile.parent_path() / (levFile.stem().string() + "_textures");
