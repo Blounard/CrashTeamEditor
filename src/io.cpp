@@ -119,8 +119,8 @@ void to_json(nlohmann::json& json, const MinimapConfig& minimap)
 		{"driverDotStartY", minimap.driverDotStartY},
 		{"orientationMode", minimap.orientationMode},
 		{"unk", minimap.unk},
-		{"topTexturePath", minimap.topTexturePath.string()},
-		{"bottomTexturePath", minimap.bottomTexturePath.string()}
+		{"topTexturePath", minimap.topTexture.GetPath()},
+		{"bottomTexturePath", minimap.bottomTexture.GetPath()}
 	};
 }
 
@@ -142,18 +142,15 @@ void from_json(const nlohmann::json& json, MinimapConfig& minimap)
 	{
 		std::string path;
 		json.at("topTexturePath").get_to(path);
-		if (!path.empty()) { minimap.topTexturePath = path; }
+		if (!path.empty()) { minimap.topTexture.UpdateTexture(path); }
 	}
 
 	if (json.contains("bottomTexturePath"))
 	{
 		std::string path;
 		json.at("bottomTexturePath").get_to(path);
-		if (!path.empty()) { minimap.bottomTexturePath = path; }
+		if (!path.empty()) { minimap.bottomTexture.UpdateTexture(path); }
 	}
-
-	// Load textures after setting paths
-	minimap.LoadTextures();
 }
 
 void ReadBinaryFile(std::vector<uint8_t>& v, const std::filesystem::path& path)

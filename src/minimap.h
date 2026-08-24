@@ -35,17 +35,11 @@ struct MinimapConfig
 	// Unknown field - used for drawing, needed for some levels like Crash Cove
 	int16_t unk = 0;
 
-	// Texture paths
-	std::filesystem::path topTexturePath;
-	std::filesystem::path bottomTexturePath;
-
 	// Texture objects
 	Texture topTexture;
 	Texture bottomTexture;
 
 	// State flags
-	bool hasTopTexture = false;
-	bool hasBottomTexture = false;
 	bool enabled = false;
 
 	// Calculate world bounds from all quadblocks in the level
@@ -57,9 +51,6 @@ struct MinimapConfig
 	// Deserialize from PSX Map struct
 	void Deserialize(const PSX::Map& map);
 	
-	// Load textures from paths (call after loading from preset)
-	void LoadTextures();
-	
 	// Check if minimap is ready for export
 	bool IsReady() const;
 	
@@ -68,7 +59,7 @@ struct MinimapConfig
 	
 	// Render the ImGui UI for minimap configuration
 	// Returns true if world bounds were modified (for updating visualization)
-	bool RenderUI(const std::vector<Quadblock>& quadblocks);
+	bool RenderUI(const std::vector<Quadblock>& quadblocks, std::function<void(void)> refreshTextureStores);
 	
 	// Clear all minimap data
 	void Clear();

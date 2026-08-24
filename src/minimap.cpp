@@ -46,8 +46,8 @@ PSX::Map MinimapConfig::Serialize() const
 	map.worldStartX = worldStartX;
 	map.worldStartY = worldStartY;
 	// Icon size is the texture dimensions
-	map.iconSizeX = hasTopTexture ? static_cast<int16_t>(topTexture.GetWidth()) : iconSizeX;
-	map.iconSizeY = hasTopTexture ? static_cast<int16_t>(topTexture.GetHeight()) : iconSizeY;
+	map.iconSizeX = !topTexture.IsEmpty() ? static_cast<int16_t>(topTexture.GetWidth()) : iconSizeX;
+	map.iconSizeY = !topTexture.IsEmpty() ? static_cast<int16_t>(topTexture.GetHeight()) : iconSizeY;
 	map.driverDotStartX = driverDotStartX;
 	map.driverDotStartY = driverDotStartY;
 	map.orientationMode = orientationMode;
@@ -69,41 +69,17 @@ void MinimapConfig::Deserialize(const PSX::Map& map)
 	unk = map.unk;
 }
 
-void MinimapConfig::LoadTextures()
-{
-	if (!topTexturePath.empty() && std::filesystem::exists(topTexturePath))
-	{
-		topTexture = Texture(topTexturePath);
-		hasTopTexture = !topTexture.IsEmpty();
-		// Use additive blending so black pixels become transparent in-game
-		// (PSX rendering: 1.0 x Back + 1.0 x Front, so black adds nothing)
-		// Also enable color-key transparency so black (0x0000) is fully transparent
-		if (hasTopTexture)
-		{
-			topTexture.SetBlendMode(PSX::BlendMode::ADDITIVE);
-		}
-	}
-	if (!bottomTexturePath.empty() && std::filesystem::exists(bottomTexturePath))
-	{
-		bottomTexture = Texture(bottomTexturePath);
-		hasBottomTexture = !bottomTexture.IsEmpty();
-		if (hasBottomTexture)
-		{
-			bottomTexture.SetBlendMode(PSX::BlendMode::ADDITIVE);
-		}
-	}
-}
 
 bool MinimapConfig::IsReady() const
 {
-	return enabled && hasTopTexture && hasBottomTexture;
+	return enabled && !topTexture.IsEmpty() && !bottomTexture.IsEmpty();
 }
 
 std::vector<Texture*> MinimapConfig::GetTextures()
 {
 	std::vector<Texture*> textures;
-	if (hasTopTexture) { textures.push_back(&topTexture); }
-	if (hasBottomTexture) { textures.push_back(&bottomTexture); }
+	if (!topTexture.IsEmpty()) { textures.push_back(&topTexture); }
+	if (!bottomTexture.IsEmpty()) { textures.push_back(&bottomTexture); }
 	return textures;
 }
 
@@ -119,16 +95,12 @@ void MinimapConfig::Clear()
 	driverDotStartY = 180;
 	orientationMode = 0;
 	unk = 0;
-	topTexturePath.clear();
-	bottomTexturePath.clear();
-	topTexture = Texture();
-	bottomTexture = Texture();
-	hasTopTexture = false;
-	hasBottomTexture = false;
+	topTexture.ClearTexture();
+	bottomTexture.ClearTexture();
 	enabled = false;
 }
 
-bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks)
+bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks, std::function<void(void)> refreshTextureStores)
 {
 	bool boundsChanged = false;
 	
@@ -204,69 +176,10 @@ bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks)
 	ImGui::Separator();
 	ImGui::Text("Textures (both halves must have the same dimensions):");
 
-	// Top texture selection
-	std::string topPath = topTexturePath.empty() ? "(none)" : topTexturePath.filename().string();
-	ImGui::Text("Top:"); ImGui::SameLine();
-	ImGui::SetNextItemWidth(200.0f);
-	ImGui::BeginDisabled();
-	ImGui::InputText("##toptex", &topPath, ImGuiInputTextFlags_ReadOnly);
-	ImGui::EndDisabled();
-	ImGui::SameLine();
-	if (ImGui::Button("Browse##selecttop"))
-	{
-		auto selection = pfd::open_file("Select Top Minimap Texture", ".",
-			{"Image Files", "*.png *.bmp *.jpg *.jpeg", "All Files", "*"}).result();
-		if (!selection.empty())
-		{
-			topTexturePath = selection.front();
-			topTexture = Texture(topTexturePath);
-			hasTopTexture = !topTexture.IsEmpty();
-			// Use additive blending and color-key transparency for black pixels
-			if (hasTopTexture)
-			{
-				topTexture.SetBlendMode(PSX::BlendMode::ADDITIVE);
-			}
-		}
-	}
-	ImGui::SameLine();
-	if (ImGui::Button("Clear##cleartop"))
-	{
-		topTexturePath.clear();
-		topTexture = Texture();
-		hasTopTexture = false;
-	}
+	std::vector<Quadblock> dummy;
+	topTexture.RenderUI({}, dummy, refreshTextureStores);
+	bottomTexture.RenderUI({}, dummy, refreshTextureStores);
 
-	// Bottom texture selection
-	std::string bottomPath = bottomTexturePath.empty() ? "(none)" : bottomTexturePath.filename().string();
-	ImGui::Text("Bottom:"); ImGui::SameLine();
-	ImGui::SetNextItemWidth(200.0f);
-	ImGui::BeginDisabled();
-	ImGui::InputText("##bottomtex", &bottomPath, ImGuiInputTextFlags_ReadOnly);
-	ImGui::EndDisabled();
-	ImGui::SameLine();
-	if (ImGui::Button("Browse##selectbottom"))
-	{
-		auto selection = pfd::open_file("Select Bottom Minimap Texture", ".",
-			{"Image Files", "*.png *.bmp *.jpg *.jpeg", "All Files", "*"}).result();
-		if (!selection.empty())
-		{
-			bottomTexturePath = selection.front();
-			bottomTexture = Texture(bottomTexturePath);
-			hasBottomTexture = !bottomTexture.IsEmpty();
-			// Use additive blending and color-key transparency for black pixels
-			if (hasBottomTexture)
-			{
-				bottomTexture.SetBlendMode(PSX::BlendMode::ADDITIVE);
-			}
-		}
-	}
-	ImGui::SameLine();
-	if (ImGui::Button("Clear##clearbottom"))
-	{
-		bottomTexturePath.clear();
-		bottomTexture = Texture();
-		hasBottomTexture = false;
-	}
 
 	// Status display
 	ImGui::Separator();
@@ -285,13 +198,13 @@ bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks)
 			ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "Minimap ready!");
 		}
 	}
-	else if (hasTopTexture || hasBottomTexture)
+	else if (!topTexture.IsEmpty() || !bottomTexture.IsEmpty())
 	{
-		if (hasTopTexture)
+		if (!topTexture.IsEmpty())
 		{
 			ImGui::Text("Top texture: %dx%d pixels", topTexture.GetWidth(), topTexture.GetHeight());
 		}
-		if (hasBottomTexture)
+		if (!bottomTexture.IsEmpty())
 		{
 			ImGui::Text("Bottom texture: %dx%d pixels", bottomTexture.GetWidth(), bottomTexture.GetHeight());
 		}

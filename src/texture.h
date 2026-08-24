@@ -190,6 +190,7 @@ public:
 	Texture(const std::filesystem::path& path);
 	Texture(const LayoutKey& key, const PixelBounds& bounds, const std::vector<uint16_t>& vram, const std::string& newMatName, const std::filesystem::path& tempDir, bool crop = true);
 	void UpdateTexture(const std::filesystem::path& path);
+	void ClearTexture();
 	Texture::BPP GetBPP() const;
 	int GetWidth() const;
 	int GetVRAMWidth() const;
@@ -217,7 +218,6 @@ public:
 
 private:
 	void FillShapes(const std::vector<size_t>& colorIndexes);
-	void ClearTexture();
 	bool CreateTexture();
 	uint16_t ConvertColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a);
 	void ConvertPixels(const std::vector<size_t>& colorIndexes, unsigned indexesPerPixel);
