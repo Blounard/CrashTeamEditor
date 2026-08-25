@@ -113,8 +113,6 @@ void to_json(nlohmann::json& json, const MinimapConfig& minimap)
 		{"worldEndY", minimap.worldEndY},
 		{"worldStartX", minimap.worldStartX},
 		{"worldStartY", minimap.worldStartY},
-		{"iconSizeX", minimap.iconSizeX},
-		{"iconSizeY", minimap.iconSizeY},
 		{"driverDotStartX", minimap.driverDotStartX},
 		{"driverDotStartY", minimap.driverDotStartY},
 		{"orientationMode", minimap.orientationMode},
@@ -131,8 +129,6 @@ void from_json(const nlohmann::json& json, MinimapConfig& minimap)
 	if (json.contains("worldEndY")) { json.at("worldEndY").get_to(minimap.worldEndY); }
 	if (json.contains("worldStartX")) { json.at("worldStartX").get_to(minimap.worldStartX); }
 	if (json.contains("worldStartY")) { json.at("worldStartY").get_to(minimap.worldStartY); }
-	if (json.contains("iconSizeX")) { json.at("iconSizeX").get_to(minimap.iconSizeX); }
-	if (json.contains("iconSizeY")) { json.at("iconSizeY").get_to(minimap.iconSizeY); }
 	if (json.contains("driverDotStartX")) { json.at("driverDotStartX").get_to(minimap.driverDotStartX); }
 	if (json.contains("driverDotStartY")) { json.at("driverDotStartY").get_to(minimap.driverDotStartY); }
 	if (json.contains("orientationMode")) { json.at("orientationMode").get_to(minimap.orientationMode); }

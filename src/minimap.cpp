@@ -46,8 +46,8 @@ PSX::Map MinimapConfig::Serialize() const
 	map.worldStartX = worldStartX;
 	map.worldStartY = worldStartY;
 	// Icon size is the texture dimensions
-	map.iconSizeX = !topTexture.IsEmpty() ? static_cast<int16_t>(topTexture.GetWidth()) : iconSizeX;
-	map.iconSizeY = !topTexture.IsEmpty() ? static_cast<int16_t>(topTexture.GetHeight()) : iconSizeY;
+	map.iconSizeX = static_cast<int16_t>(topTexture.GetWidth());
+	map.iconSizeY = static_cast<int16_t>(topTexture.GetHeight());
 	map.driverDotStartX = driverDotStartX;
 	map.driverDotStartY = driverDotStartY;
 	map.orientationMode = orientationMode;
@@ -61,8 +61,6 @@ void MinimapConfig::Deserialize(const PSX::Map& map)
 	worldEndY = map.worldEndY;
 	worldStartX = map.worldStartX;
 	worldStartY = map.worldStartY;
-	iconSizeX = map.iconSizeX;
-	iconSizeY = map.iconSizeY;
 	driverDotStartX = map.driverDotStartX;
 	driverDotStartY = map.driverDotStartY;
 	orientationMode = map.orientationMode;
@@ -89,8 +87,6 @@ void MinimapConfig::Clear()
 	worldEndY = 0;
 	worldStartX = 0;
 	worldStartY = 0;
-	iconSizeX = 0;
-	iconSizeY = 0;
 	driverDotStartX = 450;
 	driverDotStartY = 180;
 	orientationMode = 0;

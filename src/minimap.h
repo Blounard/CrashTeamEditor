@@ -19,11 +19,6 @@ struct MinimapConfig
 	int16_t worldStartX = 0;
 	int16_t worldStartY = 0;
 
-	// Icon size is automatically calculated from texture dimensions
-	// (stored for serialization, updated when textures are loaded)
-	int16_t iconSizeX = 0;
-	int16_t iconSizeY = 0;
-
 	// Screen position for driver dots (screen size is 512x252)
 	int16_t driverDotStartX = 450;
 	int16_t driverDotStartY = 180;
