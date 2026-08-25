@@ -46,8 +46,8 @@ PSX::Map MinimapConfig::Serialize() const
 	map.worldStartX = worldStartX;
 	map.worldStartY = worldStartY;
 	// Icon size is the texture dimensions
-	map.iconSizeX = static_cast<int16_t>(topTexture.GetWidth());
-	map.iconSizeY = static_cast<int16_t>(topTexture.GetHeight());
+	map.iconSizeX = static_cast<int16_t>(texture.GetWidth());
+	map.iconSizeY = 1 + static_cast<int16_t>(texture.GetHeight()/2);
 	map.driverDotStartX = driverDotStartX;
 	map.driverDotStartY = driverDotStartY;
 	map.orientationMode = orientationMode;
@@ -70,15 +70,7 @@ void MinimapConfig::Deserialize(const PSX::Map& map)
 
 bool MinimapConfig::IsReady() const
 {
-	return enabled && !topTexture.IsEmpty() && !bottomTexture.IsEmpty();
-}
-
-std::vector<Texture*> MinimapConfig::GetTextures()
-{
-	std::vector<Texture*> textures;
-	if (!topTexture.IsEmpty()) { textures.push_back(&topTexture); }
-	if (!bottomTexture.IsEmpty()) { textures.push_back(&bottomTexture); }
-	return textures;
+	return enabled && !texture.IsEmpty() && texture.GetHeight()%2 != 0;
 }
 
 void MinimapConfig::Clear()
@@ -91,8 +83,7 @@ void MinimapConfig::Clear()
 	driverDotStartY = 180;
 	orientationMode = 0;
 	unk = 0;
-	topTexture.ClearTexture();
-	bottomTexture.ClearTexture();
+	texture.ClearTexture();
 	enabled = false;
 }
 
@@ -173,38 +164,19 @@ bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks, std::func
 	ImGui::Text("Textures (both halves must have the same dimensions):");
 
 	std::vector<Quadblock> dummy;
-	topTexture.RenderUI({}, dummy, refreshTextureStores);
-	bottomTexture.RenderUI({}, dummy, refreshTextureStores);
+	texture.RenderUI({}, dummy, refreshTextureStores);
 
 
 	// Status display
 	ImGui::Separator();
+	ImGui::Text("Texture Size: %dx%d pixels", texture.GetWidth(), texture.GetHeight());
 	if (IsReady())
 	{
-		// Show texture dimensions
-		ImGui::Text("Texture Size: %dx%d pixels", topTexture.GetWidth(), topTexture.GetHeight());
-		
-		// Check if dimensions match
-		if (topTexture.GetWidth() != bottomTexture.GetWidth() || topTexture.GetHeight() != bottomTexture.GetHeight())
-		{
-			ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), "Warning: Top and bottom textures have different dimensions!");
-		}
-		else
-		{
-			ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "Minimap ready!");
-		}
+		ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "Minimap ready!");
 	}
-	else if (!topTexture.IsEmpty() || !bottomTexture.IsEmpty())
+	else if (!texture.IsEmpty())
 	{
-		if (!topTexture.IsEmpty())
-		{
-			ImGui::Text("Top texture: %dx%d pixels", topTexture.GetWidth(), topTexture.GetHeight());
-		}
-		if (!bottomTexture.IsEmpty())
-		{
-			ImGui::Text("Bottom texture: %dx%d pixels", bottomTexture.GetWidth(), bottomTexture.GetHeight());
-		}
-		ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Need both top and bottom textures");
+		ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Need an odd texture height");
 	}
 	else
 	{

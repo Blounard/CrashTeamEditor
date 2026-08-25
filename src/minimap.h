@@ -30,10 +30,8 @@ struct MinimapConfig
 	// Unknown field - used for drawing, needed for some levels like Crash Cove
 	int16_t unk = 0;
 
-	// Texture objects
-	Texture topTexture;
-	Texture bottomTexture;
-
+	Texture texture; // MAKE SURE THIS HAD EVEN HEIGHT!
+	 
 	// State flags
 	bool enabled = false;
 
@@ -48,9 +46,6 @@ struct MinimapConfig
 	
 	// Check if minimap is ready for export
 	bool IsReady() const;
-	
-	// Get textures for VRM packing
-	std::vector<Texture*> GetTextures();
 	
 	// Render the ImGui UI for minimap configuration
 	// Returns true if world bounds were modified (for updating visualization)

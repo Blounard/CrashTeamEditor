@@ -1434,6 +1434,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		file.seekg(offLev + std::streampos(header.offEnvironmentMap));
 		Read(file, m_rawWaterLayout);
 	}
+
 	//MINIMAP
 	if (header.offIconsLookup != 0)
 	{
@@ -3321,14 +3322,16 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		// Icon structs (top and bottom minimap textures)
 		offMinimapIcons = currOffset;
 
-		// Create default UV for full texture
-		QuadUV defaultUV = {{Vec2(0.0f, 0.0f), Vec2(1.0f, 0.0f), Vec2(0.0f, 1.0f), Vec2(1.0f, 1.0f)}};
+		// IMPORTANT NOTE : WE NEED TOP AND BOTTOM TEXTURE TO BE THE SAME SIZE, BUT MINIMAP HAVE ODD HEIGHT : 
+		// WHAT ND DID IS ADD 1 ROW OF PIXEL AT THE BOTTOM OF THE TOP TEXTURE 
+		QuadUV topUV = {{Vec2(0.0f, 0.0f), Vec2(1.0f, 0.0f), Vec2(0.0f, 0.5001f), Vec2(1.0f, 0.5001f)}};
+		QuadUV bottomUV = {{Vec2(0.0f, 0.4999f), Vec2(1.0f, 0.4999f), Vec2(0.0f, 1.0f), Vec2(1.0f, 1.0f)}};
 
 		// Top icon
 		PSX::Icon topIcon = {};
 		strncpy_s(topIcon.name, sizeof(topIcon.name), "minimap-top", _TRUNCATE);
 		topIcon.globalIconArrayIndex = PSX::ICON_INDEX_MAP_TOP;
-		topIcon.texLayout = m_minimapConfig.topTexture.Serialize(defaultUV);
+		topIcon.texLayout = m_minimapConfig.texture.Serialize(topUV);
 		size_t topIconOffset = minimapData.size();
 		minimapData.resize(minimapData.size() + sizeof(PSX::Icon));
 		memcpy(&minimapData[topIconOffset], &topIcon, sizeof(PSX::Icon));
@@ -3338,7 +3341,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		PSX::Icon bottomIcon = {};
 		strncpy_s(bottomIcon.name, sizeof(bottomIcon.name), "minimap-bot", _TRUNCATE);
 		bottomIcon.globalIconArrayIndex = PSX::ICON_INDEX_MAP_BOTTOM;
-		bottomIcon.texLayout = m_minimapConfig.bottomTexture.Serialize(defaultUV);
+		bottomIcon.texLayout = m_minimapConfig.texture.Serialize(bottomUV);
 		size_t bottomIconOffset = minimapData.size();
 		minimapData.resize(minimapData.size() + sizeof(PSX::Icon));
 		memcpy(&minimapData[bottomIconOffset], &bottomIcon, sizeof(PSX::Icon));
@@ -4628,22 +4631,19 @@ bool Level::UpdateVRM()
 	// Add minimap textures if enabled
 	if (m_minimapConfig.IsReady())
 	{
-		std::vector<Texture*> minimapTextures = m_minimapConfig.GetTextures();
-		for (Texture* tex : minimapTextures)
+		Texture* tex = &m_minimapConfig.texture;
+		bool foundEqual = false;
+		for (Texture* addedTexture : textures)
 		{
-			bool foundEqual = false;
-			for (Texture* addedTexture : textures)
+			if (*tex == *addedTexture)
 			{
-				if (*tex == *addedTexture)
-				{
-					copyTextureAttributes.push_back({ addedTexture, tex });
-					foundEqual = true;
-					break;
-				}
+				copyTextureAttributes.push_back({ addedTexture, tex });
+				foundEqual = true;
+				break;
 			}
-			if (foundEqual) { continue; }
-			textures.push_back(tex);
 		}
+		if (!foundEqual)
+			textures.push_back(tex);
 	}
 
 	m_vrm = PackVRM(textures);

@@ -117,8 +117,7 @@ void to_json(nlohmann::json& json, const MinimapConfig& minimap)
 		{"driverDotStartY", minimap.driverDotStartY},
 		{"orientationMode", minimap.orientationMode},
 		{"unk", minimap.unk},
-		{"topTexturePath", minimap.topTexture.GetPath()},
-		{"bottomTexturePath", minimap.bottomTexture.GetPath()}
+		{"texturePath", minimap.texture.GetPath()},
 	};
 }
 
@@ -134,18 +133,11 @@ void from_json(const nlohmann::json& json, MinimapConfig& minimap)
 	if (json.contains("orientationMode")) { json.at("orientationMode").get_to(minimap.orientationMode); }
 	if (json.contains("unk")) { json.at("unk").get_to(minimap.unk); }
 
-	if (json.contains("topTexturePath"))
+	if (json.contains("texturePath"))
 	{
 		std::string path;
-		json.at("topTexturePath").get_to(path);
-		if (!path.empty()) { minimap.topTexture.UpdateTexture(path); }
-	}
-
-	if (json.contains("bottomTexturePath"))
-	{
-		std::string path;
-		json.at("bottomTexturePath").get_to(path);
-		if (!path.empty()) { minimap.bottomTexture.UpdateTexture(path); }
+		json.at("texturePath").get_to(path);
+		if (!path.empty()) { minimap.texture.UpdateTexture(path); }
 	}
 }
 
