@@ -5073,20 +5073,14 @@ void Level::GenerateRenderMinimapBoundsData()
 		return;
 	}
 
-	// Convert from fixed-point to world coordinates
-	float minX = static_cast<float>(m_minimapConfig.worldStartX) / static_cast<float>(FP_ONE_GEO);
-	float maxX = static_cast<float>(m_minimapConfig.worldEndX) / static_cast<float>(FP_ONE_GEO);
-	float minZ = static_cast<float>(m_minimapConfig.worldStartY) / static_cast<float>(FP_ONE_GEO);
-	float maxZ = static_cast<float>(m_minimapConfig.worldEndY) / static_cast<float>(FP_ONE_GEO);
-
 	// Add some height to the minimap bounds for better visibility
 	float minY = -10.0f;
 	float maxY = 10.0f;
 
 	// Create bounding box for minimap bounds
 	BoundingBox bbox;
-	bbox.min = Vec3(minX, minY, minZ);
-	bbox.max = Vec3(maxX, maxY, maxZ);
+	bbox.min = Vec3(m_minimapConfig.worldStartX, minY, m_minimapConfig.worldStartZ);
+	bbox.max = Vec3(m_minimapConfig.worldEndX, maxY, m_minimapConfig.worldEndZ);
 
 	// Magenta color for minimap bounds
 	Color c = Color(static_cast<unsigned char>(255), static_cast<unsigned char>(0), static_cast<unsigned char>(255));

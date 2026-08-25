@@ -13,11 +13,10 @@ class Quadblock;
 
 struct MinimapConfig
 {
-	// World coordinate bounds (fixed-point, FP_ONE_GEO = 64)
-	int16_t worldEndX = 0;
-	int16_t worldEndY = 0;
-	int16_t worldStartX = 0;
-	int16_t worldStartY = 0;
+	float worldEndX = 0;
+	float worldEndZ = 0;
+	float worldStartX = 0;
+	float worldStartZ = 0;
 
 	// Screen position for driver dots (screen size is 512x252)
 	int16_t driverDotStartX = 450;

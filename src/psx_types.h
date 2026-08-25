@@ -393,9 +393,9 @@ namespace PSX
 	struct Map
 	{
 		int16_t worldEndX;      // 0x0 - World coordinate bound
-		int16_t worldEndY;      // 0x2
+		int16_t worldEndZ;      // 0x2
 		int16_t worldStartX;    // 0x4
-		int16_t worldStartY;    // 0x6
+		int16_t worldStartZ;    // 0x6
 		int16_t iconSizeX;      // 0x8 - Size in pixels of minimap icon (width)
 		int16_t iconSizeY;      // 0xA - Size in pixels of minimap icon (height)
 		int16_t driverDotStartX; // 0xC - Screen position for driver markers (512x252 screen)

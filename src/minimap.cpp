@@ -11,10 +11,10 @@ void MinimapConfig::CalculateWorldBoundsFromQuadblocks(const std::vector<Quadblo
 {
 	if (quadblocks.empty()) { return; }
 
-	float minX = std::numeric_limits<float>::max();
-	float minZ = std::numeric_limits<float>::max();
-	float maxX = std::numeric_limits<float>::lowest();
-	float maxZ = std::numeric_limits<float>::lowest();
+	worldStartX = std::numeric_limits<float>::max();
+	worldStartZ = std::numeric_limits<float>::max();
+	worldEndX = std::numeric_limits<float>::lowest();
+	worldEndZ = std::numeric_limits<float>::lowest();
 
     bool found = false;
     for (const Quadblock& qb : quadblocks)
@@ -23,28 +23,22 @@ void MinimapConfig::CalculateWorldBoundsFromQuadblocks(const std::vector<Quadblo
         if (qb.GetCheckpoint() >= 0)
         {
             const BoundingBox& bbox = qb.GetBoundingBox();
-            minX = std::min(minX, bbox.min.x);
-            minZ = std::min(minZ, bbox.min.z);
-            maxX = std::max(maxX, bbox.max.x);
-            maxZ = std::max(maxZ, bbox.max.z);
+			worldStartX = std::min(worldStartX, bbox.min.x);
+			worldStartZ = std::min(worldStartZ, bbox.min.z);
+			worldEndX = std::max(worldEndX, bbox.max.x);
+			worldEndZ = std::max(worldEndZ, bbox.max.z);
             found = true;
         }
     }
-
-	// Convert to fixed-point coordinates (FP_ONE_GEO = 64)
-	worldStartX = static_cast<int16_t>(minX * FP_ONE_GEO);
-	worldStartY = static_cast<int16_t>(minZ * FP_ONE_GEO);
-	worldEndX = static_cast<int16_t>(maxX * FP_ONE_GEO);
-	worldEndY = static_cast<int16_t>(maxZ * FP_ONE_GEO);
 }
 
 PSX::Map MinimapConfig::Serialize() const
 {
 	PSX::Map map = {};
-	map.worldEndX = worldEndX;
-	map.worldEndY = worldEndY;
-	map.worldStartX = worldStartX;
-	map.worldStartY = worldStartY;
+	map.worldEndX = ConvertFloat(worldEndX, FP_ONE_GEO);
+	map.worldEndZ = ConvertFloat(worldEndZ, FP_ONE_GEO);
+	map.worldStartX = ConvertFloat(worldStartX, FP_ONE_GEO);
+	map.worldStartZ = ConvertFloat(worldStartZ, FP_ONE_GEO);
 	// Icon size is the texture dimensions
 	map.iconSizeX = static_cast<int16_t>(texture.GetWidth());
 	map.iconSizeY = 1 + static_cast<int16_t>(texture.GetHeight()/2);
@@ -57,10 +51,10 @@ PSX::Map MinimapConfig::Serialize() const
 
 void MinimapConfig::Deserialize(const PSX::Map& map)
 {
-	worldEndX = map.worldEndX;
-	worldEndY = map.worldEndY;
-	worldStartX = map.worldStartX;
-	worldStartY = map.worldStartY;
+	worldEndX = ConvertFP(map.worldEndX, FP_ONE_GEO);
+	worldEndZ = ConvertFP(map.worldEndZ, FP_ONE_GEO);
+	worldStartX = ConvertFP(map.worldStartX, FP_ONE_GEO);
+	worldStartZ = ConvertFP(map.worldStartZ, FP_ONE_GEO);
 	driverDotStartX = map.driverDotStartX;
 	driverDotStartY = map.driverDotStartY;
 	orientationMode = map.orientationMode;
@@ -76,9 +70,9 @@ bool MinimapConfig::IsReady() const
 void MinimapConfig::Clear()
 {
 	worldEndX = 0;
-	worldEndY = 0;
+	worldEndZ = 0;
 	worldStartX = 0;
-	worldStartY = 0;
+	worldStartZ = 0;
 	driverDotStartX = 450;
 	driverDotStartY = 180;
 	orientationMode = 0;
@@ -98,30 +92,20 @@ bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks, std::func
 	ImGui::Separator();
 	ImGui::Text("World Bounds:");
 	
-	// Convert fixed-point to float for display (divide by 64)
-	float startX = static_cast<float>(worldStartX) / static_cast<float>(FP_ONE_GEO);
-	float startY = static_cast<float>(worldStartY) / static_cast<float>(FP_ONE_GEO);
-	float endX = static_cast<float>(worldEndX) / static_cast<float>(FP_ONE_GEO);
-	float endY = static_cast<float>(worldEndY) / static_cast<float>(FP_ONE_GEO);
-	
-	if (ImGui::InputFloat("World Start X", &startX, 1.0f, 10.0f, "%.2f"))
+	if (ImGui::InputFloat("World Start X", &worldStartX, 1.0f, 10.0f, "%.2f"))
 	{
-		worldStartX = static_cast<int16_t>(startX * static_cast<float>(FP_ONE_GEO));
 		boundsChanged = true;
 	}
-	if (ImGui::InputFloat("World Start Y", &startY, 1.0f, 10.0f, "%.2f"))
+	if (ImGui::InputFloat("World Start Y", &worldStartZ, 1.0f, 10.0f, "%.2f"))
 	{
-		worldStartY = static_cast<int16_t>(startY * static_cast<float>(FP_ONE_GEO));
 		boundsChanged = true;
 	}
-	if (ImGui::InputFloat("World End X", &endX, 1.0f, 10.0f, "%.2f"))
+	if (ImGui::InputFloat("World End X", &worldEndX, 1.0f, 10.0f, "%.2f"))
 	{
-		worldEndX = static_cast<int16_t>(endX * static_cast<float>(FP_ONE_GEO));
 		boundsChanged = true;
 	}
-	if (ImGui::InputFloat("World End Y", &endY, 1.0f, 10.0f, "%.2f"))
+	if (ImGui::InputFloat("World End Y", &worldEndZ, 1.0f, 10.0f, "%.2f"))
 	{
-		worldEndY = static_cast<int16_t>(endY * static_cast<float>(FP_ONE_GEO));
 		boundsChanged = true;
 	}
 

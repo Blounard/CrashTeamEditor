@@ -110,9 +110,9 @@ void to_json(nlohmann::json& json, const MinimapConfig& minimap)
 	json = {
 		{"enabled", minimap.enabled},
 		{"worldEndX", minimap.worldEndX},
-		{"worldEndY", minimap.worldEndY},
+		{"worldEndZ", minimap.worldEndZ},
 		{"worldStartX", minimap.worldStartX},
-		{"worldStartY", minimap.worldStartY},
+		{"worldStartZ", minimap.worldStartZ},
 		{"driverDotStartX", minimap.driverDotStartX},
 		{"driverDotStartY", minimap.driverDotStartY},
 		{"orientationMode", minimap.orientationMode},
@@ -125,9 +125,9 @@ void from_json(const nlohmann::json& json, MinimapConfig& minimap)
 {
 	if (json.contains("enabled")) { json.at("enabled").get_to(minimap.enabled); }
 	if (json.contains("worldEndX")) { json.at("worldEndX").get_to(minimap.worldEndX); }
-	if (json.contains("worldEndY")) { json.at("worldEndY").get_to(minimap.worldEndY); }
+	if (json.contains("worldEndZ")) { json.at("worldEndZ").get_to(minimap.worldEndZ); }
 	if (json.contains("worldStartX")) { json.at("worldStartX").get_to(minimap.worldStartX); }
-	if (json.contains("worldStartY")) { json.at("worldStartY").get_to(minimap.worldStartY); }
+	if (json.contains("worldStartZ")) { json.at("worldStartZ").get_to(minimap.worldStartZ); }
 	if (json.contains("driverDotStartX")) { json.at("driverDotStartX").get_to(minimap.driverDotStartX); }
 	if (json.contains("driverDotStartY")) { json.at("driverDotStartY").get_to(minimap.driverDotStartY); }
 	if (json.contains("orientationMode")) { json.at("orientationMode").get_to(minimap.orientationMode); }
