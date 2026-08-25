@@ -426,8 +426,8 @@ namespace PSX
 	static constexpr int32_t ICON_INDEX_MAP_BOTTOM = 4;
 
 	// Screen size
-	static constexpr int32_t SCREEN_WIDTH = 512;
-	static constexpr int32_t SCREEN_HEIGHT = 252;
+	static constexpr int16_t SCREEN_WIDTH = 512;
+	static constexpr int16_t SCREEN_HEIGHT = 252;
 
 	struct Vertex
 	{

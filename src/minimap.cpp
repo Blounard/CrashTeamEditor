@@ -44,12 +44,12 @@ PSX::Map MinimapConfig::Serialize() const
 	map.iconSizeY = 1 + static_cast<int16_t>(texture.GetHeight()/2);
 	map.driverDotStartX = driverDotStartX;
 	map.driverDotStartY = driverDotStartY;
-	map.orientationMode = orientationMode;
+	map.orientationMode = static_cast<int16_t>(orientationMode);
 	map.unk = unk;
 	return map;
 }
 
-void MinimapConfig::Deserialize(const PSX::Map& map)
+MinimapConfig::MinimapConfig(const PSX::Map& map)
 {
 	worldEndX = ConvertFP(map.worldEndX, FP_ONE_GEO);
 	worldEndZ = ConvertFP(map.worldEndZ, FP_ONE_GEO);
@@ -57,7 +57,7 @@ void MinimapConfig::Deserialize(const PSX::Map& map)
 	worldStartZ = ConvertFP(map.worldStartZ, FP_ONE_GEO);
 	driverDotStartX = map.driverDotStartX;
 	driverDotStartY = map.driverDotStartY;
-	orientationMode = map.orientationMode;
+	orientationMode = static_cast<MinimapOrientation>(map.orientationMode);
 	unk = map.unk;
 }
 
@@ -75,7 +75,7 @@ void MinimapConfig::Clear()
 	worldStartZ = 0;
 	driverDotStartX = 450;
 	driverDotStartY = 180;
-	orientationMode = 0;
+	orientationMode = MinimapOrientation::RIGHT;
 	unk = 0;
 	texture.ClearTexture();
 	enabled = false;
@@ -119,12 +119,10 @@ bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks, std::func
 	ImGui::Separator();
 	ImGui::Text("Driver Icon Start Position (screen %d x %d):", PSX::SCREEN_WIDTH, PSX::SCREEN_HEIGHT);
 	if (ImGui::InputScalar("Icon Start X", ImGuiDataType_S16, &driverDotStartX)) {
-		if (driverDotStartX < 0) driverDotStartX = 0;
-		if (driverDotStartX > PSX::SCREEN_WIDTH) driverDotStartX = PSX::SCREEN_WIDTH;
+		Clamp(driverDotStartX, static_cast<int16_t>(0), PSX::SCREEN_WIDTH);
 	}
 	if (ImGui::InputScalar("Icon Start Y", ImGuiDataType_S16, &driverDotStartY)) {
-		if (driverDotStartY < 0) driverDotStartY = 0;
-		if (driverDotStartY > PSX::SCREEN_HEIGHT) driverDotStartY = PSX::SCREEN_HEIGHT;
+		Clamp(driverDotStartY, static_cast<int16_t>(0), PSX::SCREEN_HEIGHT);
 	}
 
 	ImGui::Separator();
@@ -132,11 +130,11 @@ bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks, std::func
 	
 	// Orientation mode dropdown
 	const char* orientationModes[] = { "0°", "90°", "180°", "270°" };
-	int currentOrientation = orientationMode;
+	int currentOrientation = static_cast<int>(orientationMode);
 	if (currentOrientation < 0 || currentOrientation > 3) { currentOrientation = 0; }
 	if (ImGui::Combo("Relative rotation", &currentOrientation, orientationModes, 4))
 	{
-		orientationMode = static_cast<int16_t>(currentOrientation);
+		orientationMode = static_cast<MinimapOrientation>(currentOrientation);
 	}
 	ImGui::SetItemTooltip("Determines minimap clockwise rotation relative to the world\n It doesnt affect texture orientation, it affects how the driver icon moves on the minimap");
 	
