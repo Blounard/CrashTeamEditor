@@ -1211,7 +1211,8 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 
 	//Extract Environment map and minimap (todo)
 	LayoutKey waterkey(m_rawWaterLayout);
-	PixelBounds waterBound{ 0, 0, 63, 63 }; // Always 64x64. Actual UVs in the TextureLayout are irrelevant.
+	PixelBounds waterBound{};
+	waterBound.Update(RawUV(m_rawWaterLayout));
 	m_envMapMatName = "envMap";
 	Texture envMapTex(waterkey, waterBound, vram, m_envMapMatName, tempDir, true);
 	m_materialToTexture[m_envMapMatName] = envMapTex;
