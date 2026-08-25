@@ -1406,6 +1406,7 @@ void Level::RenderUI(Renderer& renderer)
 				{
 					m_splitLines[1] = m_rendererQueryPoint.y;
 				}
+				ImGui::TreePop();
 			}
 
 			if (ImGui::TreeNode("Minimap"))
