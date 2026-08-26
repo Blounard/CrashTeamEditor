@@ -38,6 +38,18 @@ struct MinimapConfig
 	void CalculateWorldBoundsFromQuadblocks(const std::vector<Quadblock>& quadblocks);
 	PSX::Map Serialize() const;
 	bool IsReady() const;
-	bool RenderUI(const std::vector<Quadblock>& quadblocks, std::function<void(void)> refreshTextureStores);
+	bool RenderUI(const std::vector<Quadblock>& quadblocks, std::function<void(void)> refreshTextureStores, const std::filesystem::path& parentDir, const Vec3& spawnPos);
 	void Clear();
+	bool GenerateMinimap(const std::vector<Quadblock>& quadblocks,
+		const std::filesystem::path& outputDir,
+		const std::string& textureName,
+		const Vec3& spawnPos,
+		int targetHeight = 87,
+		float aspectRatio = 1.6f,
+		float rotationDeg = 0.0f,
+		int16_t mapPosX = 500,
+		int16_t mapPosY = 195,
+		int dotRadius = 2,
+		bool flipX = false,
+		bool flipZ = false);
 };

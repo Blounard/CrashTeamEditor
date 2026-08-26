@@ -1,11 +1,22 @@
 #include "minimap.h"
 #include "quadblock.h"
+#include "texture.h"
 
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
 #include <portable-file-dialogs.h>
 #include <algorithm>
 #include <limits>
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <filesystem>
+#include <vector>
+
+#include "stb_image_write.h"
+
+
 
 void MinimapConfig::LoadFromPSX(const PSX::Map& map)
 {
@@ -19,7 +30,6 @@ void MinimapConfig::LoadFromPSX(const PSX::Map& map)
 	unk = map.unk;
 	enabled = true;
 }
-
 
 
 void MinimapConfig::CalculateWorldBoundsFromQuadblocks(const std::vector<Quadblock>& quadblocks)
@@ -86,13 +96,24 @@ void MinimapConfig::Clear()
 	enabled = false;
 }
 
-bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks, std::function<void(void)> refreshTextureStores)
+bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks, std::function<void(void)> refreshTextureStores, const std::filesystem::path& parentDir, const Vec3& spawnPos)
 {
 	bool boundsChanged = false;
 	
 	ImGui::Checkbox("Enable Minimap", &enabled);
 
 	if (!enabled) { return false; }
+
+    ImGui::Separator();
+    static int targetHeightMinimapGeneration = 87;
+    static float aspectRatioMinimapGeneration = 1.6f;
+    
+    ImGui::InputInt("Target Height##minimap", &targetHeightMinimapGeneration);
+    ImGui::InputFloat("Aspect Ratio##minimap", &aspectRatioMinimapGeneration);
+    if (ImGui::Button("AutoGenerate##minimap"))
+    {
+        GenerateMinimap(quadblocks, parentDir, "minimap", spawnPos, targetHeightMinimapGeneration, aspectRatioMinimapGeneration);
+    }
 
 	ImGui::Separator();
 	ImGui::Text("World Bounds:");
@@ -171,4 +192,175 @@ bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks, std::func
 	}
 	
 	return boundsChanged;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+bool MinimapConfig::GenerateMinimap(const std::vector<Quadblock>& quadblocks,
+    const std::filesystem::path& outputDir,
+    const std::string& textureName,
+    const Vec3& spawnPos,
+    int targetHeight,
+    float aspectRatio,
+    float rotationDeg,
+    int16_t mapPosX,
+    int16_t mapPosY,
+    int dotRadius,
+    bool flipX,
+    bool flipZ)
+{
+    Clear();
+
+    if (targetHeight % 2 == 0)
+    {
+        printf("WARNING: MinimapConfig targetHeight (%d) must be odd, using %d instead\n", targetHeight, targetHeight + 1);
+        targetHeight += 1;
+    }
+
+    // --- 1. Gather (x, z) centers of drivable quadblocks only. Height (y) is unused entirely. ---
+    struct Point { float x, z; };
+    std::vector<Point> worldPoints;
+    worldPoints.reserve(quadblocks.size());
+    for (const Quadblock& qb : quadblocks)
+    {
+        if (qb.GetCheckpoint() < 0) { continue; }
+        const Vec3 c = qb.GetCenter();
+        worldPoints.push_back({ c.x, c.z });
+    }
+    if (worldPoints.empty()) { return false; }
+
+    // --- 2. Raw world bounds, BEFORE rotation/stretch/flip. This is what gets stored in the
+    //        config fields - presumably what the game normalizes the live player (x, z) against,
+    //        so it must stay in plain, untouched world space. ---
+    float worldMinX = std::numeric_limits<float>::max(), worldMaxX = std::numeric_limits<float>::lowest();
+    float worldMinZ = std::numeric_limits<float>::max(), worldMaxZ = std::numeric_limits<float>::lowest();
+    for (const Point& p : worldPoints)
+    {
+        worldMinX = std::min(worldMinX, p.x); worldMaxX = std::max(worldMaxX, p.x);
+        worldMinZ = std::min(worldMinZ, p.z); worldMaxZ = std::max(worldMaxZ, p.z);
+    }
+    worldStartX = worldMinX; worldEndX = worldMaxX;
+    worldStartZ = worldMinZ; worldEndZ = worldMaxZ;
+
+    // --- 3. World -> render space: rotate, then stretch X, then optionally flip either axis.
+    //        Applied identically to every track point AND the spawn point below. ---
+    constexpr float kPi = 3.14159265358979323846f;
+    const float rad = rotationDeg * (kPi / 180.0f);
+    const float cosR = std::cos(rad), sinR = std::sin(rad);
+    auto toRenderSpace = [&](float x, float z, float& outX, float& outZ)
+        {
+            float rx = x * cosR - z * sinR;
+            float rz = x * sinR + z * cosR;
+            rx *= aspectRatio;
+            if (flipX) { rx = -rx; }
+            if (flipZ) { rz = -rz; }
+            outX = rx;
+            outZ = rz;
+        };
+
+    std::vector<Point> renderPoints(worldPoints.size());
+    float meshMinX = std::numeric_limits<float>::max(), meshMaxX = std::numeric_limits<float>::lowest();
+    float meshMinZ = std::numeric_limits<float>::max(), meshMaxZ = std::numeric_limits<float>::lowest();
+    for (size_t i = 0; i < worldPoints.size(); i++)
+    {
+        toRenderSpace(worldPoints[i].x, worldPoints[i].z, renderPoints[i].x, renderPoints[i].z);
+        meshMinX = std::min(meshMinX, renderPoints[i].x); meshMaxX = std::max(meshMaxX, renderPoints[i].x);
+        meshMinZ = std::min(meshMinZ, renderPoints[i].z); meshMaxZ = std::max(meshMaxZ, renderPoints[i].z);
+    }
+    const float meshW = meshMaxX - meshMinX;
+    const float meshH = meshMaxZ - meshMinZ;
+    if (meshW <= 0.0f || meshH <= 0.0f) { return false; }
+
+    // --- 4. One scale factor, derived purely from height. Width falls out of it - no fixed
+    //        target box, so no letterboxing/offset math needed; the mesh bounding box maps
+    //        exactly onto the image bounding box. ---
+    const float scaleFactor = static_cast<float>(targetHeight) / meshH;
+    const int targetWidth = std::max(1, static_cast<int>(std::lround(meshW * scaleFactor)));
+
+    // --- 5. Plot each center as a small filled (blocky, non-antialiased) square. ---
+    std::vector<uint8_t> gray(static_cast<size_t>(targetWidth) * targetHeight, 0);
+    auto plot = [&](int px, int py)
+        {
+            for (int dy = -dotRadius; dy <= dotRadius; dy++)
+            {
+                const int y = py + dy;
+                if (y < 0 || y >= targetHeight) { continue; }
+                for (int dx = -dotRadius; dx <= dotRadius; dx++)
+                {
+                    const int x = px + dx;
+                    if (x < 0 || x >= targetWidth) { continue; }
+                    gray[static_cast<size_t>(y) * targetWidth + x] = 255;
+                }
+            }
+        };
+    for (const Point& p : renderPoints)
+    {
+        const int px = static_cast<int>(std::lround((p.x - meshMinX) * scaleFactor));
+        const int py = static_cast<int>(std::lround((p.z - meshMinZ) * scaleFactor));
+        plot(px, py);
+    }
+
+    // --- 6. Pure black / pure white, always fully opaque. Texture::ConvertColor already turns
+    //        opaque (0,0,0,255) into the special "transparent under additive" 16-bit value, so
+    //        nothing special is needed here. ---
+    std::vector<uint8_t> rgba(gray.size() * 4);
+    for (size_t i = 0; i < gray.size(); i++)
+    {
+        const uint8_t v = gray[i];
+        rgba[i * 4 + 0] = v;
+        rgba[i * 4 + 1] = v;
+        rgba[i * 4 + 2] = v;
+        rgba[i * 4 + 3] = 255;
+    }
+
+    std::error_code ec;
+    std::filesystem::create_directories(outputDir, ec);
+    const std::filesystem::path pngPath = outputDir / (textureName + ".png");
+    if (!stbi_write_png(pngPath.string().c_str(), targetWidth, targetHeight, 4, rgba.data(), targetWidth * 4))
+    {
+        printf("ERROR: Failed to write minimap PNG for %s\n", textureName.c_str());
+        return false;
+    }
+
+    texture = Texture(pngPath);
+    if (texture.IsEmpty())
+    {
+        printf("ERROR: Failed to load generated minimap texture %s\n", pngPath.string().c_str());
+        return false;
+    }
+    texture.SetBlendMode(static_cast<uint16_t>(PSX::BlendMode::ADDITIVE_TRANSLUCENT)); // Additive (1)
+
+    // --- 7. Driver dot: push the spawn position through the EXACT same pipeline as the track
+    //        points, then offset by wherever the minimap image is actually drawn on screen. ---
+    float spawnRx, spawnRz;
+    toRenderSpace(spawnPos.x, spawnPos.z, spawnRx, spawnRz);
+    const float spawnPxF = (spawnRx - meshMinX) * scaleFactor;
+    const float spawnPyF = (spawnRz - meshMinZ) * scaleFactor;
+
+    // Assumes mapPosX/mapPosY is the BOTTOM-RIGHT corner of the on-screen minimap (as in the
+    // old python tool). If the dot is off by a constant amount in-game, try top-left instead:
+    //   screenX = mapPosX + spawnPxF;  screenY = mapPosY + spawnPyF;
+    const float screenX = (mapPosX - targetWidth) + spawnPxF;
+    const float screenY = (mapPosY - targetHeight) + spawnPyF;
+    driverDotStartX = static_cast<int16_t>(std::lround(screenX));
+    driverDotStartY = static_cast<int16_t>(std::lround(screenY));
+
+    int rotMode = static_cast<int>(std::lround(rotationDeg)) / 90 % 4;
+    if (rotMode < 0) { rotMode += 4; }
+    orientationMode = static_cast<MinimapOrientation>(rotMode);
+
+    enabled = true;
+    return true;
 }
