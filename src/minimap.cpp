@@ -7,6 +7,21 @@
 #include <algorithm>
 #include <limits>
 
+void MinimapConfig::LoadFromPSX(const PSX::Map& map)
+{
+	worldEndX = ConvertFP(map.worldEndX, FP_ONE_GEO);
+	worldEndZ = ConvertFP(map.worldEndZ, FP_ONE_GEO);
+	worldStartX = ConvertFP(map.worldStartX, FP_ONE_GEO);
+	worldStartZ = ConvertFP(map.worldStartZ, FP_ONE_GEO);
+	driverDotStartX = map.driverDotStartX;
+	driverDotStartY = map.driverDotStartY;
+	orientationMode = static_cast<MinimapOrientation>(map.orientationMode);
+	unk = map.unk;
+	enabled = true;
+}
+
+
+
 void MinimapConfig::CalculateWorldBoundsFromQuadblocks(const std::vector<Quadblock>& quadblocks)
 {
 	if (quadblocks.empty()) { return; }
@@ -49,17 +64,7 @@ PSX::Map MinimapConfig::Serialize() const
 	return map;
 }
 
-MinimapConfig::MinimapConfig(const PSX::Map& map)
-{
-	worldEndX = ConvertFP(map.worldEndX, FP_ONE_GEO);
-	worldEndZ = ConvertFP(map.worldEndZ, FP_ONE_GEO);
-	worldStartX = ConvertFP(map.worldStartX, FP_ONE_GEO);
-	worldStartZ = ConvertFP(map.worldStartZ, FP_ONE_GEO);
-	driverDotStartX = map.driverDotStartX;
-	driverDotStartY = map.driverDotStartY;
-	orientationMode = static_cast<MinimapOrientation>(map.orientationMode);
-	unk = map.unk;
-}
+
 
 
 bool MinimapConfig::IsReady() const

@@ -34,7 +34,7 @@ struct MinimapConfig
 	bool enabled = false;
 
 	MinimapConfig() = default;
-	MinimapConfig(const PSX::Map& map);
+	void LoadFromPSX(const PSX::Map& map);
 	void CalculateWorldBoundsFromQuadblocks(const std::vector<Quadblock>& quadblocks);
 	PSX::Map Serialize() const;
 	bool IsReady() const;

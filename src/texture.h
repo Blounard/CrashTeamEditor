@@ -189,6 +189,7 @@ public:
 	Texture() : m_width(0), m_height(0), m_imageX(0), m_imageY(0), m_clutX(0), m_clutY(0), m_blendMode(0), m_semiTransparent(false) {};
 	Texture(const std::filesystem::path& path);
 	Texture(const LayoutKey& key, const PixelBounds& bounds, const std::vector<uint16_t>& vram, const std::string& newMatName, const std::filesystem::path& tempDir, bool crop = true);
+	Texture(const Texture& top, const Texture& bottom, const std::string& newMatName, const std::filesystem::path& tempDir);
 	void UpdateTexture(const std::filesystem::path& path);
 	void ClearTexture();
 	Texture::BPP GetBPP() const;

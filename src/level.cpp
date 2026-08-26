@@ -1435,7 +1435,8 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		Read(file, m_rawWaterLayout);
 	}
 
-	//MINIMAP
+	//ICONS
+	std::vector<PSX::Icon> levelIcons;
 	if (header.offIconsLookup != 0)
 	{
 		PSX::LevelIconHeader levelIconHeader{};
@@ -1448,7 +1449,8 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				file.seekg(offLev + std::streampos(levelIconHeader.offFirstIcon + iconId * sizeof(PSX::Icon)));
 				PSX::Icon icon{};
 				Read(file, icon);
-				PSX::TextureLayout& layout = icon.texLayout;
+				levelIcons.push_back(icon);
+				/*PSX::TextureLayout& layout = icon.texLayout;
 				LayoutKey key(layout);
 
 				if (!materialCache.contains(key))
@@ -1457,7 +1459,8 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 					materialCache[key] = newMatName;
 				}
 				RawUV rawUV(layout);
-				textureToPixelBounds[key].Update(rawUV);
+				textureToPixelBounds[key].Update(rawUV);*/
+				//printf("Icon %I32u, name :%s, tex:%s, globalArrayId %I32u\n", iconId, icon.name, materialCache[key].c_str(), icon.globalIconArrayIndex);
 			}
 		}
 	}
@@ -1475,6 +1478,32 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	m_envMapMatName = "envMap";
 	Texture envMapTex(waterkey, waterBound, vram, m_envMapMatName, tempDir, true);
 	m_materialToTexture[m_envMapMatName] = envMapTex;
+
+
+	Texture minimapTop; Texture minimapBottom;
+	for (PSX::Icon& icon : levelIcons)
+	{
+		if (icon.globalIconArrayIndex == PSX::ICON_INDEX_MAP_TOP)
+		{
+			LayoutKey mapKey(icon.texLayout);
+			PixelBounds bounds{};
+			bounds.Update(RawUV(icon.texLayout));
+			minimapTop = Texture(mapKey, bounds, vram, "minimap_top", tempDir, true);
+
+		} 
+		if (icon.globalIconArrayIndex == PSX::ICON_INDEX_MAP_BOTTOM)
+		{
+			LayoutKey mapKey(icon.texLayout);
+			PixelBounds bounds{};
+			bounds.Update(RawUV(icon.texLayout));
+			minimapBottom = Texture(mapKey, bounds, vram, "minimap_bottom", tempDir, true);
+		}
+	}
+	if (!minimapTop.IsEmpty() && !minimapBottom.IsEmpty())
+	{
+		m_minimapConfig.texture = Texture(minimapTop, minimapBottom, "minimap", tempDir);
+	}
+
 
 
 	
@@ -2349,6 +2378,15 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 			size_t ghostSize = header.offLevNavTable - extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST];
 			m_oxideGhost.resize(ghostSize);
 			file.read(reinterpret_cast<char*>(m_oxideGhost.data()), ghostSize);
+		}
+
+		// Read minimap
+		if (extraHeader.count > PSX::LevelExtra::MINIMAP && extraHeader.offsets[PSX::LevelExtra::MINIMAP] != 0)
+		{
+			file.seekg(offLev + std::streampos(extraHeader.offsets[PSX::LevelExtra::MINIMAP]));
+			PSX::Map minimap{};
+			Read(file, minimap);
+			m_minimapConfig.LoadFromPSX(minimap);
 		}
 	}
 
