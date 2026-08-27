@@ -113,8 +113,6 @@ void to_json(nlohmann::json& json, const MinimapConfig& minimap)
 		{"worldEndZ", minimap.worldEndZ},
 		{"worldStartX", minimap.worldStartX},
 		{"worldStartZ", minimap.worldStartZ},
-		{"driverDotStartX", minimap.driverDotStartX},
-		{"driverDotStartY", minimap.driverDotStartY},
 		{"orientationMode", minimap.orientationMode},
 		{"unk", minimap.unk},
 		{"texturePath", minimap.texture.GetPath()},
@@ -128,8 +126,6 @@ void from_json(const nlohmann::json& json, MinimapConfig& minimap)
 	if (json.contains("worldEndZ")) { json.at("worldEndZ").get_to(minimap.worldEndZ); }
 	if (json.contains("worldStartX")) { json.at("worldStartX").get_to(minimap.worldStartX); }
 	if (json.contains("worldStartZ")) { json.at("worldStartZ").get_to(minimap.worldStartZ); }
-	if (json.contains("driverDotStartX")) { json.at("driverDotStartX").get_to(minimap.driverDotStartX); }
-	if (json.contains("driverDotStartY")) { json.at("driverDotStartY").get_to(minimap.driverDotStartY); }
 	if (json.contains("orientationMode")) { json.at("orientationMode").get_to(minimap.orientationMode); }
 	if (json.contains("unk")) { json.at("unk").get_to(minimap.unk); }
 

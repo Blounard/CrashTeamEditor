@@ -24,11 +24,45 @@ void MinimapConfig::LoadFromPSX(const PSX::Map& map)
 	worldEndZ = ConvertFP(map.worldEndZ, FP_ONE_GEO);
 	worldStartX = ConvertFP(map.worldStartX, FP_ONE_GEO);
 	worldStartZ = ConvertFP(map.worldStartZ, FP_ONE_GEO);
-	driverDotStartX = map.driverDotStartX;
-	driverDotStartY = map.driverDotStartY;
 	orientationMode = static_cast<MinimapOrientation>(map.orientationMode);
 	unk = map.unk;
 	enabled = true;
+    const int32_t bboxSizeX = static_cast<int32_t>(map.worldEndX) - static_cast<int32_t>(map.worldStartX);
+    const int32_t bboxSizeZ = static_cast<int32_t>(map.worldEndZ) - static_cast<int32_t>(map.worldStartZ);
+    if (bboxSizeX == 0 || bboxSizeZ == 0 || map.iconSizeX == 0 || map.iconSizeY == 0)
+    {
+        printf("MinimapConfig::LoadFromPSX: cannot back-solve anchor (degenerate bounds or icon size)\n");
+        return;
+    }
+
+    const int32_t driverBaseY = static_cast<int32_t>(map.driverDotStartY) - 16;
+    int32_t anchorX = 0;
+    int32_t anchorBaseY = 0;
+    switch (orientationMode)
+    {
+    case MinimapOrientation::RIGHT: // 0 deg
+        anchorX = map.driverDotStartX + (static_cast<int32_t>(map.worldEndX) * map.iconSizeX) / bboxSizeX;
+        anchorBaseY = driverBaseY + (static_cast<int32_t>(map.worldEndZ) * map.iconSizeY * 2) / bboxSizeZ;
+        break;
+    case MinimapOrientation::DOWN: // 90 deg
+        anchorX = map.driverDotStartX - (static_cast<int32_t>(map.worldStartZ) * map.iconSizeX) / bboxSizeZ;
+        anchorBaseY = driverBaseY + (static_cast<int32_t>(map.worldEndX) * map.iconSizeY * 2) / bboxSizeX;
+        break;
+    case MinimapOrientation::LEFT: // 180 deg
+        anchorX = map.driverDotStartX - (static_cast<int32_t>(map.worldStartX) * map.iconSizeX) / bboxSizeX;
+        anchorBaseY = driverBaseY - (static_cast<int32_t>(map.worldStartZ) * map.iconSizeY * 2) / bboxSizeZ;
+        break;
+    case MinimapOrientation::UP: // 270 deg
+        anchorX = map.driverDotStartX + (static_cast<int32_t>(map.worldEndZ) * map.iconSizeX) / bboxSizeZ;
+        anchorBaseY = driverBaseY - (static_cast<int32_t>(map.worldStartX) * map.iconSizeY * 2) / bboxSizeX;
+        break;
+    }
+
+    printf("MinimapConfig::LoadFromPSX: back-solved anchor -> ScreenX=%d, BaseScreenY=%d "
+        "(orientation=%d, iconSize=%dx%d, worldBounds=[%d,%d]-[%d,%d])\n",
+        anchorX, anchorBaseY, static_cast<int>(orientationMode),
+        map.iconSizeX, map.iconSizeY,
+        map.worldStartX, map.worldStartZ, map.worldEndX, map.worldEndZ);
 }
 
 
@@ -67,10 +101,43 @@ PSX::Map MinimapConfig::Serialize() const
 	// Icon size is the texture dimensions
 	map.iconSizeX = static_cast<int16_t>(texture.GetWidth());
 	map.iconSizeY = 1 + static_cast<int16_t>(texture.GetHeight()/2);
-	map.driverDotStartX = driverDotStartX;
-	map.driverDotStartY = driverDotStartY;
-	map.orientationMode = static_cast<int16_t>(orientationMode);
-	map.unk = unk;
+    map.orientationMode = static_cast<int16_t>(orientationMode);
+    map.unk = unk;
+
+
+    const int16_t bboxSizeX = map.worldEndX - map.worldStartX;
+    const int16_t bboxSizeZ = map.worldEndZ - map.worldStartZ;
+    if (bboxSizeX == 0 || bboxSizeZ == 0) { return map; }
+
+
+    constexpr int32_t kMinimapAnchorScreenX = 494;
+    constexpr int32_t kMinimapAnchorBaseScreenY = 191;
+
+
+    int32_t driverX = 0;
+    int32_t driverBaseY = 0;
+    switch (orientationMode)
+    {
+    case MinimapOrientation::RIGHT: // 0 deg
+        driverX = kMinimapAnchorScreenX - (map.worldEndX * map.iconSizeX) / bboxSizeX;
+        driverBaseY = kMinimapAnchorBaseScreenY - (map.worldEndZ * map.iconSizeY * 2) / bboxSizeZ;
+        break;
+    case MinimapOrientation::DOWN: // 90 deg
+        driverX = kMinimapAnchorScreenX + (map.worldStartZ * map.iconSizeX) / bboxSizeZ;
+        driverBaseY = kMinimapAnchorBaseScreenY - (map.worldEndX * map.iconSizeY * 2) / bboxSizeX;
+        break;
+    case MinimapOrientation::LEFT: // 180 deg
+        driverX = kMinimapAnchorScreenX + (map.worldStartX * map.iconSizeX) / bboxSizeX;
+        driverBaseY = kMinimapAnchorBaseScreenY + (map.worldStartZ * map.iconSizeY * 2) / bboxSizeZ;
+        break;
+    case MinimapOrientation::UP: // 270 deg
+        driverX = kMinimapAnchorScreenX - (map.worldEndZ * map.iconSizeX) / bboxSizeZ;
+        driverBaseY = kMinimapAnchorBaseScreenY + (map.worldStartX * map.iconSizeY * 2) / bboxSizeX;
+        break;
+    }
+
+	map.driverDotStartX = static_cast<int16_t>(driverX);
+	map.driverDotStartY = static_cast<int16_t>(driverBaseY + 16);
 	return map;
 }
 
@@ -88,15 +155,13 @@ void MinimapConfig::Clear()
 	worldEndZ = 0;
 	worldStartX = 0;
 	worldStartZ = 0;
-	driverDotStartX = 450;
-	driverDotStartY = 180;
 	orientationMode = MinimapOrientation::RIGHT;
 	unk = 0;
 	texture.ClearTexture();
 	enabled = false;
 }
 
-bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks, std::function<void(void)> refreshTextureStores, const std::filesystem::path& parentDir, const Vec3& spawnPos)
+bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks, std::function<void(void)> refreshTextureStores, const std::filesystem::path& parentDir)
 {
 	bool boundsChanged = false;
 	
@@ -107,12 +172,13 @@ bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks, std::func
     ImGui::Separator();
     static int targetHeightMinimapGeneration = 87;
     static float aspectRatioMinimapGeneration = 1.6f;
+    static MinimapOrientation orientationMiniampGeneration = MinimapOrientation::RIGHT;
     
     ImGui::InputInt("Target Height##minimap", &targetHeightMinimapGeneration);
     ImGui::InputFloat("Aspect Ratio##minimap", &aspectRatioMinimapGeneration);
     if (ImGui::Button("AutoGenerate##minimap"))
     {
-        GenerateMinimap(quadblocks, parentDir, "minimap", spawnPos, targetHeightMinimapGeneration, aspectRatioMinimapGeneration);
+        GenerateMinimap(quadblocks, parentDir, "minimap", targetHeightMinimapGeneration, orientationMiniampGeneration, aspectRatioMinimapGeneration);
     }
 
 	ImGui::Separator();
@@ -141,15 +207,6 @@ bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks, std::func
 		boundsChanged = true;
 	}
 	ImGui::SetItemTooltip("(Experimental) Automatically calculate world bounds from quadblocks with checkpoints");
-
-	ImGui::Separator();
-	ImGui::Text("Driver Icon Start Position (screen %d x %d):", PSX::SCREEN_WIDTH, PSX::SCREEN_HEIGHT);
-	if (ImGui::InputScalar("Icon Start X", ImGuiDataType_S16, &driverDotStartX)) {
-		Clamp(driverDotStartX, static_cast<int16_t>(0), PSX::SCREEN_WIDTH);
-	}
-	if (ImGui::InputScalar("Icon Start Y", ImGuiDataType_S16, &driverDotStartY)) {
-		Clamp(driverDotStartY, static_cast<int16_t>(0), PSX::SCREEN_HEIGHT);
-	}
 
 	ImGui::Separator();
 	ImGui::Text("Minimap Orientation:");
@@ -211,12 +268,9 @@ bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks, std::func
 bool MinimapConfig::GenerateMinimap(const std::vector<Quadblock>& quadblocks,
     const std::filesystem::path& outputDir,
     const std::string& textureName,
-    const Vec3& spawnPos,
     int targetHeight,
+    MinimapOrientation orientation,
     float aspectRatio,
-    float rotationDeg,
-    int16_t mapPosX,
-    int16_t mapPosY,
     int dotRadius,
     bool flipX,
     bool flipZ)
@@ -256,7 +310,8 @@ bool MinimapConfig::GenerateMinimap(const std::vector<Quadblock>& quadblocks,
 
     // --- 3. World -> render space: rotate, then stretch X, then optionally flip either axis.
     //        Applied identically to every track point AND the spawn point below. ---
-    constexpr float kPi = 3.14159265358979323846f;
+    constexpr float kPi = MATH_PI;
+    const float rotationDeg = 90.0f * static_cast<int>(orientation);
     const float rad = rotationDeg * (kPi / 180.0f);
     const float cosR = std::cos(rad), sinR = std::sin(rad);
     auto toRenderSpace = [&](float x, float z, float& outX, float& outZ)
@@ -319,7 +374,7 @@ bool MinimapConfig::GenerateMinimap(const std::vector<Quadblock>& quadblocks,
     for (size_t i = 0; i < gray.size(); i++)
     {
         const uint8_t v = gray[i];
-        rgba[i * 4 + 0] = v;
+        rgba[i * 4 + 0] = 255 ; // was v
         rgba[i * 4 + 1] = v;
         rgba[i * 4 + 2] = v;
         rgba[i * 4 + 3] = 255;
@@ -342,24 +397,8 @@ bool MinimapConfig::GenerateMinimap(const std::vector<Quadblock>& quadblocks,
     }
     texture.SetBlendMode(static_cast<uint16_t>(PSX::BlendMode::ADDITIVE_TRANSLUCENT)); // Additive (1)
 
-    // --- 7. Driver dot: push the spawn position through the EXACT same pipeline as the track
-    //        points, then offset by wherever the minimap image is actually drawn on screen. ---
-    float spawnRx, spawnRz;
-    toRenderSpace(spawnPos.x, spawnPos.z, spawnRx, spawnRz);
-    const float spawnPxF = (spawnRx - meshMinX) * scaleFactor;
-    const float spawnPyF = (spawnRz - meshMinZ) * scaleFactor;
-
-    // Assumes mapPosX/mapPosY is the BOTTOM-RIGHT corner of the on-screen minimap (as in the
-    // old python tool). If the dot is off by a constant amount in-game, try top-left instead:
-    //   screenX = mapPosX + spawnPxF;  screenY = mapPosY + spawnPyF;
-    const float screenX = (mapPosX - targetWidth) + spawnPxF;
-    const float screenY = (mapPosY - targetHeight) + spawnPyF;
-    driverDotStartX = static_cast<int16_t>(std::lround(screenX));
-    driverDotStartY = static_cast<int16_t>(std::lround(screenY));
-
-    int rotMode = static_cast<int>(std::lround(rotationDeg)) / 90 % 4;
-    if (rotMode < 0) { rotMode += 4; }
-    orientationMode = static_cast<MinimapOrientation>(rotMode);
+    //  7 : Orientation
+    orientationMode = orientation;
 
     enabled = true;
     return true;

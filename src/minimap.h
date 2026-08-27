@@ -26,8 +26,6 @@ struct MinimapConfig
 	float worldEndZ = 0;
 	float worldStartX = 0;
 	float worldStartZ = 0;
-	int16_t driverDotStartX = 450;
-	int16_t driverDotStartY = 180;
 	MinimapOrientation orientationMode = MinimapOrientation::RIGHT;
 	int16_t unk = 0;
 	Texture texture;
@@ -38,17 +36,14 @@ struct MinimapConfig
 	void CalculateWorldBoundsFromQuadblocks(const std::vector<Quadblock>& quadblocks);
 	PSX::Map Serialize() const;
 	bool IsReady() const;
-	bool RenderUI(const std::vector<Quadblock>& quadblocks, std::function<void(void)> refreshTextureStores, const std::filesystem::path& parentDir, const Vec3& spawnPos);
+	bool RenderUI(const std::vector<Quadblock>& quadblocks, std::function<void(void)> refreshTextureStores, const std::filesystem::path& parentDir);
 	void Clear();
 	bool GenerateMinimap(const std::vector<Quadblock>& quadblocks,
 		const std::filesystem::path& outputDir,
 		const std::string& textureName,
-		const Vec3& spawnPos,
 		int targetHeight = 87,
+		MinimapOrientation orientation = MinimapOrientation::RIGHT,
 		float aspectRatio = 1.6f,
-		float rotationDeg = 0.0f,
-		int16_t mapPosX = 500,
-		int16_t mapPosY = 195,
 		int dotRadius = 2,
 		bool flipX = false,
 		bool flipZ = false);
