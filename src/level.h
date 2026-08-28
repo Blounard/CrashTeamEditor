@@ -159,12 +159,13 @@ private:
 	bool m_showLogWindow;
 	bool m_showHotReloadWindow;
 	bool m_loaded;
-	HotReloadSettings m_hotReloadSettings;
+	HotReloadSettings m_hotReloadSettings; // TODO : MAKE A SETTINGS FILE, WITH I/O
 	BSPTreeSettings m_bspSettings;
 	VisTreeSettings m_visTreeSettings;
 	BotPathSettings m_botPathSettings;
 	WaterAnimSettings m_waterAnimSettings;
 	InstanceLoadPathSettings m_instPathSettings;
+	MinimapSettings m_minimapSettings;
 
 	std::vector<std::tuple<std::string, std::string>> m_invalidQuadblocks;
 	std::string m_logMessage;

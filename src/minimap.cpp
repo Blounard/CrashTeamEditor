@@ -29,67 +29,10 @@ void MinimapConfig::LoadFromPSX(const PSX::Map& map)
 	enabled = true;
     const int32_t bboxSizeX = static_cast<int32_t>(map.worldEndX) - static_cast<int32_t>(map.worldStartX);
     const int32_t bboxSizeZ = static_cast<int32_t>(map.worldEndZ) - static_cast<int32_t>(map.worldStartZ);
-    if (bboxSizeX == 0 || bboxSizeZ == 0 || map.iconSizeX == 0 || map.iconSizeY == 0)
-    {
-        printf("MinimapConfig::LoadFromPSX: cannot back-solve anchor (degenerate bounds or icon size)\n");
-        return;
-    }
-
-    const int32_t driverBaseY = static_cast<int32_t>(map.driverDotStartY) - 16;
-    int32_t anchorX = 0;
-    int32_t anchorBaseY = 0;
-    switch (orientationMode)
-    {
-    case MinimapOrientation::RIGHT: // 0 deg
-        anchorX = map.driverDotStartX + (static_cast<int32_t>(map.worldEndX) * map.iconSizeX) / bboxSizeX;
-        anchorBaseY = driverBaseY + (static_cast<int32_t>(map.worldEndZ) * map.iconSizeY * 2) / bboxSizeZ;
-        break;
-    case MinimapOrientation::DOWN: // 90 deg
-        anchorX = map.driverDotStartX - (static_cast<int32_t>(map.worldStartZ) * map.iconSizeX) / bboxSizeZ;
-        anchorBaseY = driverBaseY + (static_cast<int32_t>(map.worldEndX) * map.iconSizeY * 2) / bboxSizeX;
-        break;
-    case MinimapOrientation::LEFT: // 180 deg
-        anchorX = map.driverDotStartX - (static_cast<int32_t>(map.worldStartX) * map.iconSizeX) / bboxSizeX;
-        anchorBaseY = driverBaseY - (static_cast<int32_t>(map.worldStartZ) * map.iconSizeY * 2) / bboxSizeZ;
-        break;
-    case MinimapOrientation::UP: // 270 deg
-        anchorX = map.driverDotStartX + (static_cast<int32_t>(map.worldEndZ) * map.iconSizeX) / bboxSizeZ;
-        anchorBaseY = driverBaseY - (static_cast<int32_t>(map.worldStartX) * map.iconSizeY * 2) / bboxSizeX;
-        break;
-    }
-
-    printf("MinimapConfig::LoadFromPSX: back-solved anchor -> ScreenX=%d, BaseScreenY=%d "
-        "(orientation=%d, iconSize=%dx%d, worldBounds=[%d,%d]-[%d,%d])\n",
-        anchorX, anchorBaseY, static_cast<int>(orientationMode),
-        map.iconSizeX, map.iconSizeY,
-        map.worldStartX, map.worldStartZ, map.worldEndX, map.worldEndZ);
 }
 
 
-void MinimapConfig::CalculateWorldBoundsFromQuadblocks(const std::vector<Quadblock>& quadblocks)
-{
-	if (quadblocks.empty()) { return; }
 
-	worldStartX = std::numeric_limits<float>::max();
-	worldStartZ = std::numeric_limits<float>::max();
-	worldEndX = std::numeric_limits<float>::lowest();
-	worldEndZ = std::numeric_limits<float>::lowest();
-
-    bool found = false;
-    for (const Quadblock& qb : quadblocks)
-    {
-        // Only include quadblocks that have a checkpoint assigned
-        if (qb.GetCheckpoint() >= 0)
-        {
-            const BoundingBox& bbox = qb.GetBoundingBox();
-			worldStartX = std::min(worldStartX, bbox.min.x);
-			worldStartZ = std::min(worldStartZ, bbox.min.z);
-			worldEndX = std::max(worldEndX, bbox.max.x);
-			worldEndZ = std::max(worldEndZ, bbox.max.z);
-            found = true;
-        }
-    }
-}
 
 PSX::Map MinimapConfig::Serialize() const
 {
@@ -146,7 +89,7 @@ PSX::Map MinimapConfig::Serialize() const
 
 bool MinimapConfig::IsReady() const
 {
-	return enabled && !texture.IsEmpty() && texture.GetHeight()%2 != 0;
+	return enabled && !texture.IsEmpty();
 }
 
 void MinimapConfig::Clear()
@@ -161,151 +104,9 @@ void MinimapConfig::Clear()
 	enabled = false;
 }
 
-bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks, std::function<void(void)> refreshTextureStores, const std::filesystem::path& parentDir, const std::map<std::string, std::vector<size_t>>& materialMap)
-{
-	bool boundsChanged = false;
-	
-	ImGui::Checkbox("Enable Minimap", &enabled);
-
-	if (!enabled) { return false; }
-
-    ImGui::Separator();
-    static MinimapSettings minimapSettings;
-    
-    ImGui::InputInt("Target Height##minimap", &minimapSettings.textureHeight);
-    ImGui::Checkbox("Use checkpoint quads##minimap", &minimapSettings.checkpointQuads);
-    ImGui::Checkbox("Use checkpoint pathable quads##minimap", &minimapSettings.checkpointPathableQuads);
-    const char* orientationModes[] = { "0°", "90°", "180°", "270°", "Auto"};
-    int selectOrientation = static_cast<int>(minimapSettings.orientation);
-    if (ImGui::Combo("Relative rotation##minimapsettings", &selectOrientation, orientationModes, 5))
-    {
-        minimapSettings.orientation = static_cast<MinimapOrientation>(selectOrientation);
-    }
-    if (ImGui::TreeNode("Materials##minimapsettings"))
-    {
-
-        if (ImGui::BeginCombo("##minimapmatcombo", minimapSettings.previewMatName.c_str()))
-        {
-            for (const auto& [material, indexes] : materialMap)
-            {
-                if (ImGui::Selectable(material.c_str()))
-                {
-                    minimapSettings.previewMatName = material;
-                }
-            }
-            ImGui::EndCombo();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Add Material##minimapsettinbgd"))
-            minimapSettings.materials.insert(minimapSettings.previewMatName);
-
-
-        std::vector<std::string> toDel;
-        for (const std::string& matName : minimapSettings.materials)
-        {
-            ImGui::Text(matName.c_str());
-            ImGui::SameLine();
-            if (ImGui::Button("Delete##minimapsettingsmaterial"))
-                toDel.push_back(matName);
-        }
-        for (const std::string& matName : toDel)
-            minimapSettings.materials.erase(matName);
-        ImGui::TreePop();
-    }
-
-
-    if (ImGui::Button("AutoGenerate##minimap"))
-    {
-        GenerateMinimap(quadblocks, parentDir, "minimap", minimapSettings);
-    }
-
-	ImGui::Separator();
-	ImGui::Text("World Bounds:");
-	
-	if (ImGui::InputFloat("World Start X", &worldStartX, 1.0f, 10.0f, "%.2f"))
-	{
-		boundsChanged = true;
-	}
-	if (ImGui::InputFloat("World Start Y", &worldStartZ, 1.0f, 10.0f, "%.2f"))
-	{
-		boundsChanged = true;
-	}
-	if (ImGui::InputFloat("World End X", &worldEndX, 1.0f, 10.0f, "%.2f"))
-	{
-		boundsChanged = true;
-	}
-	if (ImGui::InputFloat("World End Y", &worldEndZ, 1.0f, 10.0f, "%.2f"))
-	{
-		boundsChanged = true;
-	}
-
-	if (ImGui::Button("Calculate from Quadblocks"))
-	{
-		CalculateWorldBoundsFromQuadblocks(quadblocks);
-		boundsChanged = true;
-	}
-	ImGui::SetItemTooltip("(Experimental) Automatically calculate world bounds from quadblocks with checkpoints");
-
-	ImGui::Separator();
-	ImGui::Text("Minimap Orientation:");
-	
-	// Orientation mode dropdown
-	int currentOrientation = static_cast<int>(orientationMode);
-	if (currentOrientation < 0 || currentOrientation > 3) { currentOrientation = 0; }
-	if (ImGui::Combo("Relative rotation", &currentOrientation, orientationModes, 4))
-	{
-		orientationMode = static_cast<MinimapOrientation>(currentOrientation);
-	}
-	ImGui::SetItemTooltip("Determines minimap clockwise rotation relative to the world\n It doesnt affect texture orientation, it affects how the driver icon moves on the minimap");
-	
-	ImGui::Separator();
-	ImGui::InputScalar("Unknown", ImGuiDataType_S16, &unk);
-	ImGui::SetItemTooltip("???");
-
-	ImGui::Separator();
-	ImGui::Text("Textures (both halves must have the same dimensions):");
-
-	std::vector<Quadblock> dummy;
-	texture.RenderUI({}, dummy, refreshTextureStores);
-
-
-	// Status display
-	ImGui::Separator();
-	ImGui::Text("Texture Size: %dx%d pixels", texture.GetWidth(), texture.GetHeight());
-	if (IsReady())
-	{
-		ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "Minimap ready!");
-	}
-	else if (!texture.IsEmpty())
-	{
-		ImGui::TextColored(ImVec4(1.0f, 1.0f, 0.0f, 1.0f), "Need an odd texture height");
-	}
-	else
-	{
-		ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "No minimap textures loaded");
-	}
-	
-	return boundsChanged;
-}
-
-
-
-
-
-
-
-
-
-
-
-
 
 namespace
 {
-    constexpr float kFullCoverageEpsilon = 0.01f;
-    // "semi-transparent" flag after 16-bit VRAM
-    // conversion - this exact number is arbitrary
-
     // One Sutherland-Hodgman clip pass against a single half-plane.
     template <typename InsideFn, typename IntersectFn>
     void ClipHalfPlane(std::vector<Vec2>& poly, InsideFn inside, IntersectFn intersect)
@@ -361,11 +162,6 @@ bool MinimapConfig::GenerateMinimap(const std::vector<Quadblock>& quadblocks, co
 {
     Clear();
     int targetHeight = settings.textureHeight;
-    if (targetHeight % 2 == 0)
-    {
-        printf("WARNING: MinimapConfig targetHeight (%d) must be odd, using %d instead\n", targetHeight, targetHeight - 1);
-        targetHeight -= 1;
-    }
     if (targetHeight < 3)
     {
         printf("WARNING: MinimapConfig targetHeight (%d) too small once padding is reserved, using 3 instead\n", targetHeight);

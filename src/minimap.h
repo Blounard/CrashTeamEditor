@@ -31,7 +31,6 @@ struct MinimapSettings
 	std::string previewMatName = "";
 	bool checkpointQuads = true;
 	bool checkpointPathableQuads = true;
-
 };
 
 struct MinimapConfig
@@ -48,10 +47,8 @@ struct MinimapConfig
 
 	MinimapConfig() = default;
 	void LoadFromPSX(const PSX::Map& map);
-	void CalculateWorldBoundsFromQuadblocks(const std::vector<Quadblock>& quadblocks);
 	PSX::Map Serialize() const;
 	bool IsReady() const;
-	bool RenderUI(const std::vector<Quadblock>& quadblocks, std::function<void(void)> refreshTextureStores, const std::filesystem::path& parentDir, const std::map<std::string, std::vector<size_t>>& materialMap);
 	void Clear();
 	bool GenerateMinimap(const std::vector<Quadblock>& quadblocks,
 		const std::filesystem::path& outputDir,
