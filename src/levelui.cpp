@@ -1411,7 +1411,7 @@ void Level::RenderUI(Renderer& renderer)
 
 			if (ImGui::TreeNode("Minimap"))
 			{
-				if (m_minimapConfig.RenderUI(m_quadblocks, [&]() { this->UpdateAnimationRenderData(); }, GetParentPath()) && GuiRenderSettings::showMinimapBounds)
+				if (m_minimapConfig.RenderUI(m_quadblocks, [&]() { this->UpdateAnimationRenderData(); }, GetParentPath(), m_materialToQuadblocks) && GuiRenderSettings::showMinimapBounds)
 				{
 					GenerateRenderMinimapBoundsData();
 				}

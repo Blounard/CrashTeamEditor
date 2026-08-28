@@ -8,6 +8,8 @@
 #include <string>
 #include <cstdint>
 #include <vector>
+#include <set>
+#include <map>
 
 class Quadblock;
 
@@ -16,7 +18,20 @@ enum class MinimapOrientation : int
 	RIGHT = 0,
 	DOWN = 1, 
 	LEFT = 2, 
-	UP = 3
+	UP = 3,
+	AUTO = 4
+};
+
+
+struct MinimapSettings
+{
+	int textureHeight = 87;
+	MinimapOrientation orientation = MinimapOrientation::AUTO;
+	std::set<std::string> materials = {};
+	std::string previewMatName = "";
+	bool checkpointQuads = true;
+	bool checkpointPathableQuads = true;
+
 };
 
 struct MinimapConfig
@@ -36,11 +51,11 @@ struct MinimapConfig
 	void CalculateWorldBoundsFromQuadblocks(const std::vector<Quadblock>& quadblocks);
 	PSX::Map Serialize() const;
 	bool IsReady() const;
-	bool RenderUI(const std::vector<Quadblock>& quadblocks, std::function<void(void)> refreshTextureStores, const std::filesystem::path& parentDir);
+	bool RenderUI(const std::vector<Quadblock>& quadblocks, std::function<void(void)> refreshTextureStores, const std::filesystem::path& parentDir, const std::map<std::string, std::vector<size_t>>& materialMap);
 	void Clear();
 	bool GenerateMinimap(const std::vector<Quadblock>& quadblocks,
 		const std::filesystem::path& outputDir,
 		const std::string& textureName,
-		int targetHeight = 87,
-		MinimapOrientation orientation = MinimapOrientation::RIGHT);
+		const MinimapSettings settings);
 };
+

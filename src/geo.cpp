@@ -107,6 +107,15 @@ BoundingBox BoundingBox::Intersect(const BoundingBox& other) const
 	return result;
 }
 
+BoundingBox BoundingBox::Empty()
+{
+	BoundingBox box{};
+	box.min.x = std::numeric_limits<float>::max(); box.max.x = std::numeric_limits<float>::lowest();
+	box.min.y = std::numeric_limits<float>::max(); box.max.y = std::numeric_limits<float>::lowest();
+	box.min.z = std::numeric_limits<float>::max(); box.max.z = std::numeric_limits<float>::lowest();
+	return box;
+}
+
 std::vector<Primitive> BoundingBox::ToGeometry() const
 {
 	constexpr size_t numCorners = 8;
