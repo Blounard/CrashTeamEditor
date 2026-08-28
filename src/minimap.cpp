@@ -110,8 +110,8 @@ PSX::Map MinimapConfig::Serialize() const
     if (bboxSizeX == 0 || bboxSizeZ == 0) { return map; }
 
 
-    constexpr int32_t kMinimapAnchorScreenX = 494;
-    constexpr int32_t kMinimapAnchorBaseScreenY = 191;
+    constexpr int32_t kMinimapAnchorScreenX = 495;
+    constexpr int32_t kMinimapAnchorBaseScreenY = 193;
 
 
     int32_t driverX = 0;
@@ -178,7 +178,7 @@ bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks, std::func
     ImGui::InputFloat("Aspect Ratio##minimap", &aspectRatioMinimapGeneration);
     if (ImGui::Button("AutoGenerate##minimap"))
     {
-        GenerateMinimap(quadblocks, parentDir, "minimap", targetHeightMinimapGeneration, orientationMiniampGeneration, aspectRatioMinimapGeneration);
+        GenerateMinimap(quadblocks, parentDir, "minimap", targetHeightMinimapGeneration, orientationMiniampGeneration);//, aspectRatioMinimapGeneration);
     }
 
 	ImGui::Separator();
@@ -263,17 +263,70 @@ bool MinimapConfig::RenderUI(const std::vector<Quadblock>& quadblocks, std::func
 
 
 
+namespace
+{
+    constexpr float kMinimapStretchX = 1.6f;  // fixed horizontal display compensation
+    constexpr float kFullCoverageEpsilon = 0.01f;
+    // "semi-transparent" flag after 16-bit VRAM
+    // conversion - this exact number is arbitrary
 
+    struct Pt { double x, y; };
+
+    // One Sutherland-Hodgman clip pass against a single half-plane.
+    template <typename InsideFn, typename IntersectFn>
+    void ClipHalfPlane(std::vector<Pt>& poly, InsideFn inside, IntersectFn intersect)
+    {
+        if (poly.empty()) { return; }
+        std::vector<Pt> out;
+        out.reserve(poly.size() + 1);
+        for (size_t i = 0; i < poly.size(); i++)
+        {
+            const Pt& curr = poly[i];
+            const Pt& prev = poly[(i + poly.size() - 1) % poly.size()];
+            const bool currIn = inside(curr);
+            const bool prevIn = inside(prev);
+            if (currIn)
+            {
+                if (!prevIn) { out.push_back(intersect(prev, curr)); }
+                out.push_back(curr);
+            }
+            else if (prevIn)
+            {
+                out.push_back(intersect(prev, curr));
+            }
+        }
+        poly = std::move(out);
+    }
+
+    // Exact area of a triangle clipped against axis-aligned pixel box [x0,x1] x [y0,y1].
+    double ClipTriangleToBoxArea(const Pt tri[3], double x0, double y0, double x1, double y1)
+    {
+        std::vector<Pt> poly = { tri[0], tri[1], tri[2] };
+        ClipHalfPlane(poly, [&](const Pt& p) { return p.x >= x0; },
+            [&](const Pt& a, const Pt& b) { const double t = (x0 - a.x) / (b.x - a.x); return Pt{ x0, a.y + t * (b.y - a.y) }; });
+        ClipHalfPlane(poly, [&](const Pt& p) { return p.x <= x1; },
+            [&](const Pt& a, const Pt& b) { const double t = (x1 - a.x) / (b.x - a.x); return Pt{ x1, a.y + t * (b.y - a.y) }; });
+        ClipHalfPlane(poly, [&](const Pt& p) { return p.y >= y0; },
+            [&](const Pt& a, const Pt& b) { const double t = (y0 - a.y) / (b.y - a.y); return Pt{ a.x + t * (b.x - a.x), y0 }; });
+        ClipHalfPlane(poly, [&](const Pt& p) { return p.y <= y1; },
+            [&](const Pt& a, const Pt& b) { const double t = (y1 - a.y) / (b.y - a.y); return Pt{ a.x + t * (b.x - a.x), y1 }; });
+        if (poly.size() < 3) { return 0.0; }
+        double area2 = 0.0;
+        for (size_t i = 0; i < poly.size(); i++)
+        {
+            const Pt& a = poly[i];
+            const Pt& b = poly[(i + 1) % poly.size()];
+            area2 += (a.x * b.y) - (b.x * a.y);
+        }
+        return std::fabs(area2) * 0.5;
+    }
+}
 
 bool MinimapConfig::GenerateMinimap(const std::vector<Quadblock>& quadblocks,
     const std::filesystem::path& outputDir,
     const std::string& textureName,
     int targetHeight,
-    MinimapOrientation orientation,
-    float aspectRatio,
-    int dotRadius,
-    bool flipX,
-    bool flipZ)
+    MinimapOrientation orientation)
 {
     Clear();
 
@@ -282,102 +335,116 @@ bool MinimapConfig::GenerateMinimap(const std::vector<Quadblock>& quadblocks,
         printf("WARNING: MinimapConfig targetHeight (%d) must be odd, using %d instead\n", targetHeight, targetHeight + 1);
         targetHeight += 1;
     }
+    if (targetHeight <= 0) { return false; }
 
-    // --- 1. Gather (x, z) centers of drivable quadblocks only. Height (y) is unused entirely. ---
-    struct Point { float x, z; };
-    std::vector<Point> worldPoints;
-    worldPoints.reserve(quadblocks.size());
+    // --- 1. Collect triangles (world X/Z only) from drivable quadblocks. ---
+    struct Tri { float x[3], z[3]; };
+    std::vector<Tri> tris;
     for (const Quadblock& qb : quadblocks)
     {
         if (qb.GetCheckpoint() < 0) { continue; }
-        const Vec3 c = qb.GetCenter();
-        worldPoints.push_back({ c.x, c.z });
+        for (const std::array<size_t, 3>&face : qb.GetTriFacesIndexes())
+        {
+            const std::array<Vec3, 3> f = qb.GetTriFace(face[0], face[1], face[2]);
+            Tri t;
+            for (int i = 0; i < 3; i++) { t.x[i] = f[i].x; t.z[i] = f[i].z; }
+            tris.push_back(t);
+        }
     }
-    if (worldPoints.empty()) { return false; }
+    if (tris.empty()) { return false; }
 
-    // --- 2. Raw world bounds, BEFORE rotation/stretch/flip. This is what gets stored in the
-    //        config fields - presumably what the game normalizes the live player (x, z) against,
-    //        so it must stay in plain, untouched world space. ---
+    // --- 2. Raw world bounds (unrotated, unstretched) - what Serialize()'s icon formula uses.
+    //        Computed from FULL triangle vertices (not just centers), so the box tightly matches
+    //        the actual road width, not just its centerline. Note: this is a slightly different
+    //        bounding box than the earlier center-only version used - worth re-checking any
+    //        anchor values derived against a center-based bbox if you compare across versions.
     float worldMinX = std::numeric_limits<float>::max(), worldMaxX = std::numeric_limits<float>::lowest();
     float worldMinZ = std::numeric_limits<float>::max(), worldMaxZ = std::numeric_limits<float>::lowest();
-    for (const Point& p : worldPoints)
+    for (const Tri& t : tris)
     {
-        worldMinX = std::min(worldMinX, p.x); worldMaxX = std::max(worldMaxX, p.x);
-        worldMinZ = std::min(worldMinZ, p.z); worldMaxZ = std::max(worldMaxZ, p.z);
+        for (int i = 0; i < 3; i++)
+        {
+            worldMinX = std::min(worldMinX, t.x[i]); worldMaxX = std::max(worldMaxX, t.x[i]);
+            worldMinZ = std::min(worldMinZ, t.z[i]); worldMaxZ = std::max(worldMaxZ, t.z[i]);
+        }
     }
     worldStartX = worldMinX; worldEndX = worldMaxX;
     worldStartZ = worldMinZ; worldEndZ = worldMaxZ;
+    const float spanX = worldEndX - worldStartX;
+    const float spanZ = worldEndZ - worldStartZ;
+    if (spanX <= 0.0f || spanZ <= 0.0f) { return false; }
 
-    // --- 3. World -> render space: rotate, then stretch X, then optionally flip either axis.
-    //        Applied identically to every track point AND the spawn point below. ---
-    constexpr float kPi = MATH_PI;
-    const float rotationDeg = 90.0f * static_cast<int>(orientation);
-    const float rad = rotationDeg * (kPi / 180.0f);
-    const float cosR = std::cos(rad), sinR = std::sin(rad);
-    auto toRenderSpace = [&](float x, float z, float& outX, float& outZ)
+    if (spanX > spanZ)
+        orientation = MinimapOrientation::UP;
+
+    // --- 3. World -> pixel mapping: exact per-orientation axis remap (see explanation above),
+    //        NOT a generic float rotation - guarantees the image matches the runtime icon math's
+    //        axis convention exactly, with no trig imprecision.
+    const bool swapped = (orientation == MinimapOrientation::DOWN || orientation == MinimapOrientation::UP);
+    const float colSpanWorld = swapped ? spanZ : spanX;
+    const float rowSpanWorld = swapped ? spanX : spanZ;
+    const int targetWidth = std::max(1, static_cast<int>(std::lround(targetHeight * (colSpanWorld * kMinimapStretchX) / rowSpanWorld)));
+
+    auto toPixelSpace = [&](float x, float z, double& outPx, double& outPy)
         {
-            float rx = x * cosR - z * sinR;
-            float rz = x * sinR + z * cosR;
-            rx *= aspectRatio;
-            if (flipX) { rx = -rx; }
-            if (flipZ) { rz = -rz; }
-            outX = rx;
-            outZ = rz;
-        };
-
-    std::vector<Point> renderPoints(worldPoints.size());
-    float meshMinX = std::numeric_limits<float>::max(), meshMaxX = std::numeric_limits<float>::lowest();
-    float meshMinZ = std::numeric_limits<float>::max(), meshMaxZ = std::numeric_limits<float>::lowest();
-    for (size_t i = 0; i < worldPoints.size(); i++)
-    {
-        toRenderSpace(worldPoints[i].x, worldPoints[i].z, renderPoints[i].x, renderPoints[i].z);
-        meshMinX = std::min(meshMinX, renderPoints[i].x); meshMaxX = std::max(meshMaxX, renderPoints[i].x);
-        meshMinZ = std::min(meshMinZ, renderPoints[i].z); meshMaxZ = std::max(meshMaxZ, renderPoints[i].z);
-    }
-    const float meshW = meshMaxX - meshMinX;
-    const float meshH = meshMaxZ - meshMinZ;
-    if (meshW <= 0.0f || meshH <= 0.0f) { return false; }
-
-    // --- 4. One scale factor, derived purely from height. Width falls out of it - no fixed
-    //        target box, so no letterboxing/offset math needed; the mesh bounding box maps
-    //        exactly onto the image bounding box. ---
-    const float scaleFactor = static_cast<float>(targetHeight) / meshH;
-    const int targetWidth = std::max(1, static_cast<int>(std::lround(meshW * scaleFactor)));
-
-    // --- 5. Plot each center as a small filled (blocky, non-antialiased) square. ---
-    std::vector<uint8_t> gray(static_cast<size_t>(targetWidth) * targetHeight, 0);
-    auto plot = [&](int px, int py)
-        {
-            for (int dy = -dotRadius; dy <= dotRadius; dy++)
+            double colFrac = 0.0, rowFrac = 0.0;
+            switch (orientation)
             {
-                const int y = py + dy;
-                if (y < 0 || y >= targetHeight) { continue; }
-                for (int dx = -dotRadius; dx <= dotRadius; dx++)
-                {
-                    const int x = px + dx;
-                    if (x < 0 || x >= targetWidth) { continue; }
-                    gray[static_cast<size_t>(y) * targetWidth + x] = 255;
-                }
+            case MinimapOrientation::RIGHT: colFrac = (x - worldStartX) / spanX; rowFrac = (z - worldStartZ) / spanZ; break;
+            case MinimapOrientation::DOWN:  colFrac = (worldEndZ - z) / spanZ;   rowFrac = (x - worldStartX) / spanX; break;
+            case MinimapOrientation::LEFT:  colFrac = (worldEndX - x) / spanX;   rowFrac = (worldEndZ - z) / spanZ;   break;
+            case MinimapOrientation::UP:    colFrac = (z - worldStartZ) / spanZ; rowFrac = (worldEndX - x) / spanX;   break;
             }
+            outPx = colFrac * targetWidth;
+            outPy = rowFrac * targetHeight;
         };
-    for (const Point& p : renderPoints)
+
+    // --- 4. Transform every triangle into pixel space up front. ---
+    struct PixelTri { Pt v[3]; };
+    std::vector<PixelTri> pixelTris(tris.size());
+    for (size_t i = 0; i < tris.size(); i++)
     {
-        const int px = static_cast<int>(std::lround((p.x - meshMinX) * scaleFactor));
-        const int py = static_cast<int>(std::lround((p.z - meshMinZ) * scaleFactor));
-        plot(px, py);
+        for (int j = 0; j < 3; j++) { toPixelSpace(tris[i].x[j], tris[i].z[j], pixelTris[i].v[j].x, pixelTris[i].v[j].y); }
     }
 
-    // --- 6. Pure black / pure white, always fully opaque. Texture::ConvertColor already turns
-    //        opaque (0,0,0,255) into the special "transparent under additive" 16-bit value, so
-    //        nothing special is needed here. ---
-    std::vector<uint8_t> rgba(gray.size() * 4);
-    for (size_t i = 0; i < gray.size(); i++)
+    // --- 5. Exact per-pixel coverage via polygon clipping. Each pixel box is a 1x1 unit square
+    //        in this space, so the clipped area IS the coverage fraction. Clamped to 100% per
+    //        pixel to handle overlapping quadblocks (see caveat in the message above this code). ---
+    std::vector<double> coverage(static_cast<size_t>(targetWidth) * targetHeight, 0.0);
+    for (const PixelTri& t : pixelTris)
     {
-        const uint8_t v = gray[i];
-        rgba[i * 4 + 0] = 255 ; // was v
-        rgba[i * 4 + 1] = v;
-        rgba[i * 4 + 2] = v;
-        rgba[i * 4 + 3] = 255;
+        const double minXf = std::min({ t.v[0].x, t.v[1].x, t.v[2].x });
+        const double maxXf = std::max({ t.v[0].x, t.v[1].x, t.v[2].x });
+        const double minYf = std::min({ t.v[0].y, t.v[1].y, t.v[2].y });
+        const double maxYf = std::max({ t.v[0].y, t.v[1].y, t.v[2].y });
+        const int pxMin = std::clamp(static_cast<int>(std::floor(minXf)), 0, targetWidth - 1);
+        const int pxMax = std::clamp(static_cast<int>(std::floor(maxXf)), 0, targetWidth - 1);
+        const int pyMin = std::clamp(static_cast<int>(std::floor(minYf)), 0, targetHeight - 1);
+        const int pyMax = std::clamp(static_cast<int>(std::floor(maxYf)), 0, targetHeight - 1);
+        for (int py = pyMin; py <= pyMax; py++)
+        {
+            for (int px = pxMin; px <= pxMax; px++)
+            {
+                const double area = ClipTriangleToBoxArea(t.v, px, py, px + 1, py + 1);
+                if (area > 0.0) { coverage[static_cast<size_t>(py) * targetWidth + px] += area; }
+            }
+        }
+    }
+
+    // --- 6. Coverage fraction -> color: 0% = opaque black, 100% = opaque white, otherwise grey
+    //        (scaled by coverage) at a fixed semi-transparent alpha. ---
+    std::vector<uint8_t> rgba(coverage.size() * 4);
+    for (size_t i = 0; i < coverage.size(); i++)
+    {
+        const double c = std::clamp(coverage[i], 0.0, 1.0);
+        uint8_t r, g, b, a;
+        if (c <= kFullCoverageEpsilon) { r = g = b = 0; a = 255; }
+        else if (c >= 1.0 - kFullCoverageEpsilon) { r = g = b = 255; a = 255; }
+        else { r = g = b = (static_cast<uint8_t>(std::lround(c * 255.0))/32) * 32 ; a = 128; }
+        rgba[i * 4 + 0] = r;
+        rgba[i * 4 + 1] = g;
+        rgba[i * 4 + 2] = b;
+        rgba[i * 4 + 3] = a;
     }
 
     std::error_code ec;
@@ -395,11 +462,9 @@ bool MinimapConfig::GenerateMinimap(const std::vector<Quadblock>& quadblocks,
         printf("ERROR: Failed to load generated minimap texture %s\n", pngPath.string().c_str());
         return false;
     }
-    texture.SetBlendMode(static_cast<uint16_t>(PSX::BlendMode::ADDITIVE_TRANSLUCENT)); // Additive (1)
+    texture.SetBlendMode(static_cast<uint16_t>(PSX::BlendMode::ADDITIVE_TRANSLUCENT));
 
-    //  7 : Orientation
     orientationMode = orientation;
-
     enabled = true;
     return true;
 }

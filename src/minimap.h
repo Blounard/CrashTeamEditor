@@ -42,9 +42,5 @@ struct MinimapConfig
 		const std::filesystem::path& outputDir,
 		const std::string& textureName,
 		int targetHeight = 87,
-		MinimapOrientation orientation = MinimapOrientation::RIGHT,
-		float aspectRatio = 1.6f,
-		int dotRadius = 2,
-		bool flipX = false,
-		bool flipZ = false);
+		MinimapOrientation orientation = MinimapOrientation::RIGHT);
 };
