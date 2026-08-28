@@ -105,13 +105,13 @@ PSX::Map MinimapConfig::Serialize() const
     map.unk = unk;
 
 
-    const int16_t bboxSizeX = map.worldEndX - map.worldStartX;
-    const int16_t bboxSizeZ = map.worldEndZ - map.worldStartZ;
+    const int32_t bboxSizeX = map.worldEndX - map.worldStartX;
+    const int32_t bboxSizeZ = map.worldEndZ - map.worldStartZ;
     if (bboxSizeX == 0 || bboxSizeZ == 0) { return map; }
 
 
-    constexpr int32_t kMinimapAnchorScreenX = 495;
-    constexpr int32_t kMinimapAnchorBaseScreenY = 193;
+    constexpr int32_t MinimapAnchorScreenX = 495;
+    constexpr int32_t MinimapAnchorBaseScreenY = 193;
 
 
     int32_t driverX = 0;
@@ -119,20 +119,20 @@ PSX::Map MinimapConfig::Serialize() const
     switch (orientationMode)
     {
     case MinimapOrientation::RIGHT: // 0 deg
-        driverX = kMinimapAnchorScreenX - (map.worldEndX * map.iconSizeX) / bboxSizeX;
-        driverBaseY = kMinimapAnchorBaseScreenY - (map.worldEndZ * map.iconSizeY * 2) / bboxSizeZ;
+        driverX = MinimapAnchorScreenX - (static_cast<int32_t>(map.worldEndX * map.iconSizeX)) / bboxSizeX;
+        driverBaseY = MinimapAnchorBaseScreenY - static_cast<int32_t>((map.worldEndZ * map.iconSizeY * 2)) / bboxSizeZ;
         break;
     case MinimapOrientation::DOWN: // 90 deg
-        driverX = kMinimapAnchorScreenX + (map.worldStartZ * map.iconSizeX) / bboxSizeZ;
-        driverBaseY = kMinimapAnchorBaseScreenY - (map.worldEndX * map.iconSizeY * 2) / bboxSizeX;
+        driverX = MinimapAnchorScreenX + static_cast<int32_t>((map.worldStartZ * map.iconSizeX)) / bboxSizeZ;
+        driverBaseY = MinimapAnchorBaseScreenY - static_cast<int32_t>((map.worldEndX * map.iconSizeY * 2)) / bboxSizeX;
         break;
     case MinimapOrientation::LEFT: // 180 deg
-        driverX = kMinimapAnchorScreenX + (map.worldStartX * map.iconSizeX) / bboxSizeX;
-        driverBaseY = kMinimapAnchorBaseScreenY + (map.worldStartZ * map.iconSizeY * 2) / bboxSizeZ;
+        driverX = MinimapAnchorScreenX + static_cast<int32_t>((map.worldStartX * map.iconSizeX)) / bboxSizeX;
+        driverBaseY = MinimapAnchorBaseScreenY + static_cast<int32_t>((map.worldStartZ * map.iconSizeY * 2)) / bboxSizeZ;
         break;
     case MinimapOrientation::UP: // 270 deg
-        driverX = kMinimapAnchorScreenX - (map.worldEndZ * map.iconSizeX) / bboxSizeZ;
-        driverBaseY = kMinimapAnchorBaseScreenY + (map.worldStartX * map.iconSizeY * 2) / bboxSizeX;
+        driverX = MinimapAnchorScreenX - static_cast<int32_t>((map.worldEndZ * map.iconSizeX)) / bboxSizeZ;
+        driverBaseY = MinimapAnchorBaseScreenY + static_cast<int32_t>((map.worldStartX * map.iconSizeY * 2)) / bboxSizeX;
         break;
     }
 
@@ -379,7 +379,7 @@ bool MinimapConfig::GenerateMinimap(const std::vector<Quadblock>& quadblocks, co
     {
         if (settings.checkpointQuads && quadblocks[i].GetCheckpoint() != -1)
             usedQuadIds.push_back(i);
-        else if (settings.checkpointPathableQuads && quadblocks[i].GetCheckpointPathable())
+        else if (settings.checkpointPathableQuads && quadblocks[i].GetCheckpointPathable() && quadblocks[i].GetCheckpointStatus())
             usedQuadIds.push_back(i);
         else if (settings.materials.contains(quadblocks[i].GetMaterial()))
             usedQuadIds.push_back(i);
