@@ -114,7 +114,6 @@ public:
 	bool GenerateVisTreeOnly();
 	void GenerateBotPathLeft();
 	bool HasRawTexture() const { return m_hasRawTexture; }
-	MinimapConfig& GetMinimapConfig();
 
 private:
 	void ManageTurbopad(Quadblock& quadblock);
@@ -138,6 +137,7 @@ private:
 	bool GenerateBSP();
 	bool ReOrderBSP();
 	bool GenerateOceanVertices();
+	bool GenerateMinimap();
 	void OpenHotReloadWindow();
 	void RenderUI(Renderer& renderer);
 	void InitModels(Renderer& renderer);

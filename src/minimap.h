@@ -41,18 +41,10 @@ struct MinimapConfig
 	float worldStartX = 0;
 	float worldStartZ = 0;
 	MinimapOrientation orientationMode = MinimapOrientation::RIGHT;
-	int16_t unk = 0;
 	Texture texture;
-	bool enabled = false;
 
 	MinimapConfig() = default;
 	void LoadFromPSX(const PSX::Map& map);
 	PSX::Map Serialize() const;
-	bool IsReady() const;
-	void Clear();
-	bool GenerateMinimap(const std::vector<Quadblock>& quadblocks,
-		const std::filesystem::path& outputDir,
-		const std::string& textureName,
-		const MinimapSettings settings);
 };
 

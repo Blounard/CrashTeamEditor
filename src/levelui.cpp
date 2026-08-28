@@ -1454,7 +1454,7 @@ void Level::RenderUI(Renderer& renderer)
 
 				if (ImGui::Button("AutoGenerate##minimap"))
 				{
-					m_minimapConfig.GenerateMinimap(m_quadblocks, GetParentPath(), "minimap", m_minimapSettings);
+					GenerateMinimap();
 				}
 
 				ImGui::Separator();
