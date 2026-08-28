@@ -366,6 +366,12 @@ bool MinimapConfig::GenerateMinimap(const std::vector<Quadblock>& quadblocks, co
         printf("WARNING: MinimapConfig targetHeight (%d) must be odd, using %d instead\n", targetHeight, targetHeight - 1);
         targetHeight -= 1;
     }
+    if (targetHeight < 3)
+    {
+        printf("WARNING: MinimapConfig targetHeight (%d) too small once padding is reserved, using 3 instead\n", targetHeight);
+        targetHeight = 3;
+    }
+    const int contentHeight = targetHeight - 1;
 
     // Build quad list to use for the minimap 
     std::vector<size_t> usedQuadIds;
@@ -421,9 +427,10 @@ bool MinimapConfig::GenerateMinimap(const std::vector<Quadblock>& quadblocks, co
     const float colSpanWorld = swapped ? spanZ : spanX;
     const float rowSpanWorld = swapped ? spanX : spanZ;
     constexpr float minimapStretchX = 1.6f;
-    const int targetWidth = std::max(1, static_cast<int>(std::lround(targetHeight * (colSpanWorld * minimapStretchX) / rowSpanWorld)));
+    const int contentWidth = std::max(1, static_cast<int>(std::lround(contentHeight * (colSpanWorld * minimapStretchX) / rowSpanWorld)));
+    const int targetWidth = contentWidth + 1; // One extra column reserved the same way as the padding row (see below).
 
-    auto toPixelSpace = [&](const Vec3& worldPos) // Convert Wolrd Pos to Pixel coordinate on the image
+    auto toPixelSpace = [&](const Vec3& worldPos) // Convert World Pos to Pixel coordinate on the image
         {
             float x = worldPos.x, z = worldPos.z;
             float colFrac = 0.0, rowFrac = 0.0;
@@ -434,9 +441,12 @@ bool MinimapConfig::GenerateMinimap(const std::vector<Quadblock>& quadblocks, co
             case MinimapOrientation::LEFT:  colFrac = (worldEndX - x) / spanX;   rowFrac = (worldEndZ - z) / spanZ;   break;
             case MinimapOrientation::UP:    colFrac = (z - worldStartZ) / spanZ; rowFrac = (worldEndX - x) / spanX;   break;
             }
+            // Multiplied by CONTENT dimensions, not the padded targetWidth/targetHeight, so real
+            // geometry only ever lands in [0, contentWidth) x [0, contentHeight) - the last
+            // column/row of the canvas stays architecturally empty, not just empty by luck.
             Vec2 res{};
-            res.x = colFrac * targetWidth;
-            res.y = rowFrac * targetHeight;
+            res.x = colFrac * contentWidth;
+            res.y = rowFrac * contentHeight;
             return res;
         };
 
@@ -448,10 +458,10 @@ bool MinimapConfig::GenerateMinimap(const std::vector<Quadblock>& quadblocks, co
         Vec2 p1 = toPixelSpace(t.p[1].pos);
         Vec2 p2 = toPixelSpace(t.p[2].pos);
 
-        const int pxMin = Clamp(static_cast<int>(std::floor(std::min({ p0.x, p1.x, p2.x }))), 0, targetWidth - 1);
-        const int pxMax = Clamp(static_cast<int>(std::floor(std::max({ p0.x, p1.x, p2.x }))), 0, targetWidth - 1);
-        const int pyMin = Clamp(static_cast<int>(std::floor(std::min({ p0.y, p1.y, p2.y }))), 0, targetHeight - 1);
-        const int pyMax = Clamp(static_cast<int>(std::floor(std::max({ p0.y, p1.y, p2.y }))), 0, targetHeight - 1);
+        const int pxMin = Clamp(static_cast<int>(std::floor(std::min({ p0.x, p1.x, p2.x }))), 0, contentWidth - 1);
+        const int pxMax = Clamp(static_cast<int>(std::floor(std::max({ p0.x, p1.x, p2.x }))), 0, contentWidth - 1);
+        const int pyMin = Clamp(static_cast<int>(std::floor(std::min({ p0.y, p1.y, p2.y }))), 0, contentHeight - 1);
+        const int pyMax = Clamp(static_cast<int>(std::floor(std::max({ p0.y, p1.y, p2.y }))), 0, contentHeight - 1);
         for (int py = pyMin; py <= pyMax; py++)
         {
             for (int px = pxMin; px <= pxMax; px++)
@@ -460,6 +470,16 @@ bool MinimapConfig::GenerateMinimap(const std::vector<Quadblock>& quadblocks, co
                 if (area > 0.0) { coverage[static_cast<size_t>(py) * targetWidth + px] += area; } // This assume quads don't overlap for the formula to be correct.
             }
         }
+    }
+
+    const float extCol = colSpanWorld / static_cast<float>(contentWidth);
+    const float extRow = rowSpanWorld / static_cast<float>(contentHeight);
+    switch (orientationMode)
+    {
+    case MinimapOrientation::RIGHT: worldEndX += extCol; worldEndZ += extRow; break;
+    case MinimapOrientation::DOWN:  worldStartZ -= extCol; worldEndX += extRow; break;
+    case MinimapOrientation::LEFT:  worldStartX -= extCol; worldStartZ -= extRow; break;
+    case MinimapOrientation::UP:    worldEndZ += extCol; worldStartX -= extRow; break;
     }
 
     // Colors
