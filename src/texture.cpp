@@ -406,7 +406,11 @@ bool Texture::CreateTexture()
 {
 	int channels;
 	stbi_uc* image = stbi_load(m_path.string().c_str(), &m_width, &m_height, &channels, 0);
-	if (image == nullptr) { return false; }
+	if (image == nullptr) 
+	{ 
+		printf("ERROR : CAN'T LOAD IMAGE AT %s\n", m_path.string().c_str());
+		return false; 
+	}
 	bool alphaImage = channels == 4;
 	int semiTransparentPx = 0;
 	std::vector<size_t> colorIndexes;
@@ -434,6 +438,7 @@ bool Texture::CreateTexture()
 	Texture::BPP bpp = GetBPP();
 	if (GetVRAMWidth() > TEXPAGE_WIDTH || GetHeight() > TEXPAGE_HEIGHT)
 	{
+		printf("ERROR : TEXTURE TOO BIG\n");
 		stbi_image_free(image);
 		return false;
 	}
