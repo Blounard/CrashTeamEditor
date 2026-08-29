@@ -114,7 +114,8 @@ void Level::Clear(bool clearErrors)
 	{
 		if (model) { model->Clear(model != m_models[LevelModels::LEVEL]); }
 	}
-	m_envMapMatName.clear();
+	m_envMapTex.ClearTexture();
+	m_rawWaterLayout = {};
 }
 
 
@@ -1485,8 +1486,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	PSX::LevHeader header = {};
 	Read(file, header);
 
-
-	printf("NumSpwanType2 : %d at offset 0x%x\n", header.numSpawnType_2, header.offSpawnType_2);
 	if (header.offSpawnType_2 != 0)
 	{	
 		for (uint32_t i = 0; i < header.numSpawnType_2; i++)
@@ -1495,7 +1494,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 			file.seekg(offLev + std::streampos(header.offSpawnType_2 + i * sizeof(PSX::SpawnType2)));
 			PSX::SpawnType2 st2{};
 			Read(file, st2);
-			printf("SpawnType2 ID %d, numCoord : %d, offCoord : 0x%x\n", i, st2.numCoord, st2.offPos);
 			if (st2.offPos != 0)
 			{
 				for (uint32_t j = 0; j < st2.numCoord; j++)
@@ -1512,7 +1510,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		}
 	}
 
-	printf("NumSpwanType2 PosRot: %d at offset 0x%x\n", header.numSpawnType_2_posRot, header.offSpawnType_2_posRot);
 	if (header.offSpawnType_2_posRot != 0)
 	{
 		for (uint32_t i = 0; i < header.numSpawnType_2_posRot; i++)
@@ -1521,7 +1518,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 			file.seekg(offLev + std::streampos(header.offSpawnType_2_posRot + i * sizeof(PSX::SpawnType2)));
 			PSX::SpawnType2 st2{};
 			Read(file, st2);
-			printf("SpawnType2 ID %d, numCoord : %d, offCoord : 0x%x\n", i, st2.numCoord, st2.offPos);
 			if (st2.offPos != 0)
 			{
 				for (uint32_t j = 0; j < st2.numCoord; j++)
@@ -1669,10 +1665,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	LayoutKey waterkey(m_rawWaterLayout);
 	PixelBounds waterBound{};
 	waterBound.Update(RawUV(m_rawWaterLayout));
-	m_envMapMatName = "envMap";
-	Texture envMapTex(waterkey, waterBound, vram, m_envMapMatName, tempDir, true);
-	m_materialToTexture[m_envMapMatName] = envMapTex;
-
+	m_envMapTex = Texture(waterkey, waterBound, vram, "envMap", tempDir, true);
 
 	Texture minimapTop; Texture minimapBottom; Texture minimapMerged;
 	for (PSX::Icon& icon : levelIcons)
@@ -2399,9 +2392,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	else { m_bsp.Clear(); }
 	std::set<size_t> validID;
 	
-	printf("BSP ARRAY SIZE : %zu\n", bspArray.size());
 	std::vector<const BSP*> tree = static_cast<const BSP&>(m_bsp).GetTree();
-	printf("BSP TREE SIZE : %zu\n", tree.size());
 	for (const BSP* bsp : tree) { validID.insert(bsp->GetId()); }
 	for (BSP* bsp : bspArray) { if (!validID.contains(bsp->GetId())) { printf("ID %zu isn't in tree\n", bsp->GetId()); } }
 	
@@ -3080,10 +3071,9 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		envMapLayout = m_rawWaterLayout;
 	else
 	{
-		Texture& tex = m_materialToTexture[m_envMapMatName];
-		if (!tex.IsEmpty())
+		if (!m_envMapTex.IsEmpty())
 		{
-			envMapLayout = tex.Serialize(QuadUV{});
+			envMapLayout = m_envMapTex.Serialize(QuadUV{ {Vec2(0.0f, 0.0f), Vec2(1.0f, 0.0f), Vec2(0.0f, 1.0f), Vec2(1.0f, 1.0f)} });
 		}
 	}
 	const size_t offEnvMapLayout = currOffset;
@@ -3251,8 +3241,6 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		uniqueVisQuads.push_back(visibleQuadsAll);
 		currOffset += visibleQuadsAll.size() * sizeof(uint32_t);
 	}
-	printf("visibleNodesOffsetMapSize %zu\n", visNodesOffsetMap.size());
-	printf("visibleQuadsOffsetMapSize %zu\n", visQuadsOffsetMap.size());
 
 	std::vector<uint32_t> visibleInstancesDummy;
 	visibleInstancesDummy.push_back(0xFFFFFFFF);
@@ -3392,7 +3380,6 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	constexpr size_t SPAWN_META_ENTRY_COUNT = 20; // covers plant's metaArray[digit * 2 + 1] for digits 0-9
 	const std::vector<int16_t> spawnMeta(SPAWN_META_ENTRY_COUNT, 0);
 	const size_t offSpawnMeta = currOffset;
-	printf(nameof(offSpawnMeta) " = %zx\n", offSpawnMeta);
 	currOffset += spawnMeta.size() * sizeof(int16_t);
 
 
@@ -3719,9 +3706,6 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		currOffset += sizeof(PSX::InstDef);
 	}
 	header.numInstances = static_cast<uint32_t>(serializedInstDef.size());
-
-	printf("uniqueModelNames: %zu, serializedModels non-empty: %zu, serializedInstDef: %zu (m_instances total: %zu)\n",
-		uniqueModelKeys.size(), modelOrder.size(), serializedInstDef.size(), m_instances.size());
 
 	// Write InstDef pointer array (NULL-terminated)
 	const size_t offInstDefList_ptrArray = currOffset;
@@ -4818,7 +4802,6 @@ bool Level::UpdateVRM()
 			}
 		}
 	}
-	usedMaterials.insert(m_envMapMatName); // Water texture
 
 	for (std::string material : usedMaterials)
 	{
@@ -4865,6 +4848,24 @@ bool Level::UpdateVRM()
 	if (!m_minimap.texture.IsEmpty())
 	{
 		Texture* tex = &m_minimap.texture;
+		bool foundEqual = false;
+		for (Texture* addedTexture : textures)
+		{
+			if (*tex == *addedTexture)
+			{
+				copyTextureAttributes.push_back({ addedTexture, tex });
+				foundEqual = true;
+				break;
+			}
+		}
+		if (!foundEqual)
+			textures.push_back(tex);
+	}
+
+	// Add water texture
+	if (!m_envMapTex.IsEmpty())
+	{
+		Texture* tex = &m_envMapTex;
 		bool foundEqual = false;
 		for (Texture* addedTexture : textures)
 		{

@@ -1529,7 +1529,7 @@ void Level::RenderUI(Renderer& renderer)
 
 					ImGui::TreePop();
 				}
-				m_materialToTexture[m_envMapMatName].RenderUI({}, m_quadblocks, [&]() { this->UpdateAnimationRenderData(); });
+				m_envMapTex.RenderUI({}, m_quadblocks, [&]() { this->UpdateAnimationRenderData(); });
 				static std::string buttonMessage;
 				static ButtonUI generateWaterButton = ButtonUI();
 				if (generateWaterButton.Show("Generate Water Animations", buttonMessage, false))

@@ -197,7 +197,7 @@ private:
 	Minimap m_minimap;
 	Skybox m_skybox;
 	BotPath m_botPaths[3];
-	std::string m_envMapMatName; // TODO STORE TEXTURE NOT MATERIAL
+	Texture m_envMapTex;
 
 	bool m_hasRawTexture;
 	std::unordered_map<uint32_t, PSX::TextureGroup> m_rawTextureGroup;
