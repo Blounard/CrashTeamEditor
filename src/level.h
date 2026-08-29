@@ -12,6 +12,7 @@
 #include "animtexture.h"
 #include "model.h"
 #include "vistree.h"
+#include "minimap.h"
 #include "skybox.h"
 #include "bots.h"
 #include "instance.h"
@@ -39,7 +40,8 @@ namespace LevelModels
 	static constexpr size_t SKYBOX = 7;
 	static constexpr size_t BOT = 8;
 	static constexpr size_t INSTANCES = 9;
-	static constexpr size_t COUNT = 10;
+	static constexpr size_t MINIMAP_BOUNDS = 10;
+	static constexpr size_t COUNT = 11;
 };
 
 struct HostSettings // RAW STRUCT TO EMIT FOR HOT RELOAD SETTINGS
@@ -135,6 +137,7 @@ private:
 	bool GenerateBSP();
 	bool ReOrderBSP();
 	bool GenerateOceanVertices();
+	bool GenerateMinimap();
 	void OpenHotReloadWindow();
 	void RenderUI(Renderer& renderer);
 	void InitModels(Renderer& renderer);
@@ -143,6 +146,7 @@ private:
 	void GenerateRenderBspData();
 	void GenerateRenderInstanceData();
 	void GenerateRenderStartpointData();
+	void GenerateRenderMinimapBoundsData();
 	void GenerateRenderSkyboxData();
 	void GenerateRenderSelectedBlockData(const Quadblock& quadblock, const Vec3& queryPoint);
 	bool UpdateAnimTextures(float deltaTime);
@@ -155,12 +159,13 @@ private:
 	bool m_showLogWindow;
 	bool m_showHotReloadWindow;
 	bool m_loaded;
-	HotReloadSettings m_hotReloadSettings;
+	HotReloadSettings m_hotReloadSettings; // TODO : MAKE A SETTINGS FILE, WITH I/O
 	BSPTreeSettings m_bspSettings;
 	VisTreeSettings m_visTreeSettings;
 	BotPathSettings m_botPathSettings;
 	WaterAnimSettings m_waterAnimSettings;
 	InstanceLoadPathSettings m_instPathSettings;
+	MinimapSettings m_minimapSettings;
 
 	std::vector<std::tuple<std::string, std::string>> m_invalidQuadblocks;
 	std::string m_logMessage;
@@ -189,9 +194,10 @@ private:
 	std::vector<AnimTexture> m_animTextures;
 	BitMatrix m_bspVis;
 	std::vector<uint8_t> m_vrm;
+	Minimap m_minimap;
 	Skybox m_skybox;
 	BotPath m_botPaths[3];
-	std::string m_envMapMatName;
+	std::string m_envMapMatName; // TODO STORE TEXTURE NOT MATERIAL
 
 	bool m_hasRawTexture;
 	std::unordered_map<uint32_t, PSX::TextureGroup> m_rawTextureGroup;

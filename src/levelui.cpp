@@ -11,6 +11,7 @@
 #include "texture.h"
 #include "ui.h"
 #include "script.h"
+#include "minimap.h"
 
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
@@ -431,8 +432,6 @@ bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, co
 		// Model ID selector (behavior selector)
 		{
 			ModelId prevModelID = m_modelID;
-
-			
 
 			ModelIdWidget("Model ID", &m_modelID);
 
@@ -1407,7 +1406,78 @@ void Level::RenderUI(Renderer& renderer)
 				{
 					m_splitLines[1] = m_rendererQueryPoint.y;
 				}
+				ImGui::TreePop();
+			}
 
+			if (ImGui::TreeNode("Minimap"))
+			{
+				bool boundsChanged = false;
+
+				ImGui::InputInt("Target Height##minimap", &m_minimapSettings.textureHeight);
+				ImGui::Checkbox("Use checkpoint quads##minimap", &m_minimapSettings.checkpointQuads);
+				ImGui::Checkbox("Use checkpoint pathable quads##minimap", &m_minimapSettings.checkpointPathableQuads);
+				const char* orientationModes[] = { "0°", "90°", "180°", "270°", "Auto" };
+				int selectOrientation = static_cast<int>(m_minimapSettings.orientation);
+				if (ImGui::Combo("Relative rotation##minimapsettings", &selectOrientation, orientationModes, 5))
+				{
+					m_minimapSettings.orientation = static_cast<MinimapOrientation>(selectOrientation);
+				}
+				if (ImGui::TreeNode("Materials##minimapsettings"))
+				{
+					if (ImGui::BeginCombo("##minimapmatcombo", m_minimapSettings.previewMatName.c_str()))
+					{
+						for (const auto& [material, indexes] : m_materialToQuadblocks)
+						{
+							if (ImGui::Selectable(material.c_str()))
+							{
+								m_minimapSettings.previewMatName = material;
+							}
+						}
+						ImGui::EndCombo();
+					}
+					ImGui::SameLine();
+					if (ImGui::Button("Add Material##minimapsettinbgd"))
+						m_minimapSettings.materials.insert(m_minimapSettings.previewMatName);
+					std::vector<std::string> toDel;
+					for (const std::string& matName : m_minimapSettings.materials)
+					{
+						ImGui::Text(matName.c_str());
+						ImGui::SameLine();
+						if (ImGui::Button(("Delete##minimapsettingsmaterial" + matName).c_str()))
+							toDel.push_back(matName);
+					}
+					for (const std::string& matName : toDel)
+						m_minimapSettings.materials.erase(matName);
+					ImGui::TreePop();
+				}
+
+
+				if (ImGui::Button("AutoGenerate##minimap"))
+				{
+					GenerateMinimap();
+				}
+
+				ImGui::Separator();
+				ImGui::Text("World Bounds:");
+				if (ImGui::InputFloat("World Start X", &m_minimap.worldBox.min.x, 1.0f, 10.0f, "%.2f")) boundsChanged = true;
+				if (ImGui::InputFloat("World Start Y", &m_minimap.worldBox.min.z, 1.0f, 10.0f, "%.2f")) boundsChanged = true;
+				if (ImGui::InputFloat("World End X", &m_minimap.worldBox.max.x, 1.0f, 10.0f, "%.2f")) boundsChanged = true;
+				if (ImGui::InputFloat("World End Y", &m_minimap.worldBox.max.z, 1.0f, 10.0f, "%.2f")) boundsChanged = true;
+				ImGui::Separator();
+				int currentOrientation = static_cast<int>(m_minimap.orientationMode);
+				if (ImGui::Combo("Relative rotation", &currentOrientation, orientationModes, 4))
+				{
+					m_minimap.orientationMode = static_cast<MinimapOrientation>(currentOrientation);
+				}
+				ImGui::SetItemTooltip("Determines minimap clockwise rotation relative to the world\n It doesnt affect texture orientation, it affects how the driver icon moves on the minimap");
+
+				std::vector<Quadblock> dummy;
+				m_minimap.texture.RenderUI({}, dummy, [&]() { this->UpdateAnimationRenderData(); });
+
+				if (boundsChanged && GuiRenderSettings::showMinimapBounds)
+				{
+					GenerateRenderMinimapBoundsData();
+				}
 				ImGui::TreePop();
 			}
 
@@ -1945,7 +2015,10 @@ void Level::RenderUI(Renderer& renderer)
 					if (skyboxRenderChanged & REND_FLAGS_COLUMN_0) { GenerateRenderSkyboxData(); }
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0);
-					ImGui::Checkbox("Show Instances", &GuiRenderSettings::showInstances);
+					unsigned minimapBoundsChanged = checkboxPair("Show Intances", &GuiRenderSettings::showInstances, "Show Minimap Bounds", &GuiRenderSettings::showMinimapBounds);
+
+					if (minimapBoundsChanged & REND_FLAGS_COLUMN_0) { GenerateRenderSkyboxData(); }
+					if (minimapBoundsChanged & REND_FLAGS_COLUMN_1) { GenerateRenderMinimapBoundsData(); }
 
 					ImGui::EndTable();
 				}
@@ -2956,7 +3029,7 @@ void Texture::RenderUI(const std::vector<size_t>& quadblockIndexes, std::vector<
 	}
 }
 
-void Texture::RenderUI()
+void Texture::RenderUI() // TODO : IMPLEMENT MORE TEXTURE RENDERUI
 {
 	std::vector<size_t> dummyIndexes;
 	std::vector<Quadblock> dummyQuadblocks;

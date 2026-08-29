@@ -96,6 +96,7 @@
     <ClInclude Include="src\lev.h" />
     <ClInclude Include="src\level.h" />
     <ClInclude Include="src\material.h" />
+    <ClInclude Include="src\minimap.h" />
     <ClInclude Include="src\skybox.h" />
     <ClInclude Include="src\path.h" />
     <ClInclude Include="src\process.h" />

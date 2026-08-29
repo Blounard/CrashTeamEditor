@@ -135,6 +135,7 @@ struct BoundingBox
 	BoundingBox Intersect(const BoundingBox& other) const;
 	std::vector<Primitive> ToGeometry() const;
 	void RenderUI() const;
+	static BoundingBox Empty();
 };
 
 struct Quaternion

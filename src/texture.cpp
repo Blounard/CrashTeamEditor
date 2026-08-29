@@ -118,6 +118,64 @@ Texture::Texture(const LayoutKey& key, const PixelBounds& bounds, const std::vec
 }
 
 
+Texture::Texture(const Texture& top, const Texture& bottom, const std::string& newMatName, const std::filesystem::path& tempDir)
+	: m_width(0), m_height(0), m_imageX(0), m_imageY(0), m_clutX(0), m_clutY(0), m_blendMode(0), m_semiTransparent(false)
+	// Constructor for the minimap specifically
+	// The last row of 'top' is discarded, so the result is width x ((2*height)-1).
+{
+	const int width = top.GetWidth();
+	const int height = top.GetHeight();
+	const int croppedTopHeight = height - 1;        // discard top's bottom row
+	const int mergedHeight = croppedTopHeight + height; // == (2 * height) - 1
+
+	int topW = 0, topH = 0, topChannels = 0;
+	stbi_uc* topImage = stbi_load(top.GetPath().string().c_str(), &topW, &topH, &topChannels, 4);
+	if (topImage == nullptr) { return; }
+
+	int botW = 0, botH = 0, botChannels = 0;
+	stbi_uc* botImage = stbi_load(bottom.GetPath().string().c_str(), &botW, &botH, &botChannels, 4);
+	if (botImage == nullptr)
+	{
+		stbi_image_free(topImage);
+		return;
+	}
+	if (topW != width || topH != height || botW != width || botH != height)
+	{
+		stbi_image_free(topImage);
+		stbi_image_free(botImage);
+		return;
+	}
+
+	std::vector<uint8_t> rgba(static_cast<size_t>(width) * static_cast<size_t>(mergedHeight) * 4);
+	for (int y = 0; y < croppedTopHeight; y++)
+	{
+		const uint8_t* src = &topImage[static_cast<size_t>(y) * width * 4];
+		uint8_t* dst = &rgba[static_cast<size_t>(y) * width * 4];
+		std::copy(src, src + (static_cast<size_t>(width) * 4), dst);
+	}
+	for (int y = 0; y < height; y++)
+	{
+		const uint8_t* src = &botImage[static_cast<size_t>(y) * width * 4];
+		uint8_t* dst = &rgba[static_cast<size_t>(croppedTopHeight + y) * width * 4];
+		std::copy(src, src + (static_cast<size_t>(width) * 4), dst);
+	}
+	stbi_image_free(topImage);
+	stbi_image_free(botImage);
+
+	m_path = tempDir / (newMatName + ".png");
+	if (stbi_write_png(m_path.string().c_str(), width, mergedHeight, 4, rgba.data(), width * 4))
+	{
+		m_blendMode = top.GetBlendMode();
+		if (!CreateTexture()) { ClearTexture(); }
+	}
+	else
+	{
+		printf("ERROR: Failed to write PNG for %s\n", newMatName.c_str());
+		ClearTexture();
+	}
+}
+
+
 void Texture::UpdateTexture(const std::filesystem::path& path)
 {
 	uint16_t blendMode = m_blendMode;
@@ -348,7 +406,11 @@ bool Texture::CreateTexture()
 {
 	int channels;
 	stbi_uc* image = stbi_load(m_path.string().c_str(), &m_width, &m_height, &channels, 0);
-	if (image == nullptr) { return false; }
+	if (image == nullptr) 
+	{ 
+		printf("ERROR : CAN'T LOAD IMAGE AT %s\n", m_path.string().c_str());
+		return false; 
+	}
 	bool alphaImage = channels == 4;
 	int semiTransparentPx = 0;
 	std::vector<size_t> colorIndexes;
@@ -376,6 +438,7 @@ bool Texture::CreateTexture()
 	Texture::BPP bpp = GetBPP();
 	if (GetVRAMWidth() > TEXPAGE_WIDTH || GetHeight() > TEXPAGE_HEIGHT)
 	{
+		printf("ERROR : TEXTURE TOO BIG\n");
 		stbi_image_free(image);
 		return false;
 	}
@@ -398,7 +461,8 @@ uint16_t Texture::ConvertColor(unsigned char r, unsigned char g, unsigned char b
 	color |= (((g * 249) + 1014) >> 11) & 0x1F;
 	color <<= 5;
 	color |= (((r * 249) + 1014) >> 11) & 0x1F;
-	if (color == 0) { color = 1 << 10; }
+	if (color == 1 << 15) { color = 1 << 15 | 1 << 10 | 1 << 5 | 1; } // Semi transparent black 32bit becomes semi transparent dark grey 16bit because semi transparent black 16bit doesn't exist
+	if (color == 0) { color = 1 << 15; } // Opaque black is encoded with stp = 1, unlike other colors.
 	return color;
 }
 
