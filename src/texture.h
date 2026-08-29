@@ -236,6 +236,7 @@ private:
 };
 
 std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures);
+
 inline QuadUV MakeUV(const PixelBounds& bounds, const RawUV rawUV) 
 {
 	float croppedWidth = 1.0f + static_cast<float>(bounds.maxU - bounds.minU);

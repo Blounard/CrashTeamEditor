@@ -1873,6 +1873,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		std::string newMatName = materialCache[key];
 		Texture newTexture(key, bounds, vram, newMatName, tempDir, true);
 		m_materialToTexture[newMatName] = newTexture;
+		printf("Created texture %s, %d x %d\n", newMatName, newTexture.GetWidth(), newTexture.GetHeight());
 	}
 	
 	// 4.1th pass : Create Models/Header with UVs and textures Assign QuadUVs to Models/Headers

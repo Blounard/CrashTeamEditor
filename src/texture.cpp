@@ -115,6 +115,8 @@ Texture::Texture(const LayoutKey& key, const PixelBounds& bounds, const std::vec
 		printf("ERROR: Failed to write PNG for %s\n", newMatName.c_str());
 		ClearTexture();
 	}
+	printf("[VRM-reconstruct] mat=%s bpp=%d crop=%d bounds(U:%d-%d V:%d-%d) -> cropped %dx%d\n",
+		newMatName.c_str(), bppMode, crop, minU, maxU, minV, maxV, croppedWidth, croppedHeight);
 }
 
 
@@ -545,6 +547,23 @@ static bool FindAvailableSpace(std::vector<bool>& vramUsed, size_t width, size_t
 	return false;
 }
 
+static void DumpVRAMDebugImage(const std::vector<bool>& vramUsed, const char* path = "./debug_vram.png")
+{
+	std::vector<uint8_t> image(vramUsed.size());
+	for (size_t i = 0; i < vramUsed.size(); i++)
+	{
+		image[i] = vramUsed[i] ? 255 : 0; // white = used, black = free
+	}
+	if (!stbi_write_png(path, static_cast<int>(VRAM_WIDTH), static_cast<int>(VRAM_HEIGHT), 1, image.data(), static_cast<int>(VRAM_WIDTH)))
+	{
+		printf("ERROR : Failed to write debug VRAM image to %s\n", path);
+	}
+	else
+	{
+		printf("Debug VRAM image written to %s (white = used, black = free)\n", path);
+	}
+}
+
 std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures)
 {
 	bool empty = true;
@@ -573,15 +592,18 @@ std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures)
 		if (!FindAvailableSpace(vramUsed, texture->GetVRAMWidth(), texture->GetHeight(), x, y, false))
 		{
 			printf(" VRAM GENERATION FAILED : NO SPACE LEFT DURING TEXTURE PASS\n");
+			printf("Failed texture size : %d x %d\n", texture->GetVRAMWidth(), texture->GetHeight());
 			printf("VRAM USED : %zu / %zu (%f %%)\n",
 				std::count(vramUsed.begin(), vramUsed.end(), true),
 				VRAM_WIDTH * VRAM_HEIGHT,
 				100.0f * static_cast<float>(std::count(vramUsed.begin(), vramUsed.end(), true)) / static_cast<float>(VRAM_WIDTH * VRAM_HEIGHT));
+			DumpVRAMDebugImage(vramUsed);
 			return std::vector<uint8_t>();
 		}
 		empty = false;
 		texture->SetImageCoords(x, y);
 		BufferToVRM(vram, vramUsed, texture->GetImage(), x, y, texture->GetVRAMWidth());
+		printf("Placing texture at x=%zu, y=%zu, width=%d, height=%d\n", x, y, texture->GetVRAMWidth(), texture->GetHeight());
 		cachedTextures.push_back(texture);
 	}
 
@@ -603,10 +625,12 @@ std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures)
 		if (!FindAvailableSpace(vramUsed, clut.size(), 1, x, y, true))
 		{
 			printf(" VRAM GENERATION FAILED : NO SPACE LEFT DURING CLUT PASS\n");
+			printf("Failed CLUT size : %zu\n", clut.size());
 			printf("VRAM USED : %zu / %zu (%f %%)\n",
 				std::count(vramUsed.begin(), vramUsed.end(), true),
 				VRAM_WIDTH * VRAM_HEIGHT,
 				100.0f * static_cast<float>(std::count(vramUsed.begin(), vramUsed.end(), true)) / static_cast<float>(VRAM_WIDTH * VRAM_HEIGHT));
+			DumpVRAMDebugImage(vramUsed);
 			return std::vector<uint8_t>();
 		}
 		texture->SetCLUTCoords(x, y);
@@ -660,5 +684,6 @@ std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures)
 		std::count(vramUsed.begin(), vramUsed.end(), true), 
 		VRAM_WIDTH * VRAM_HEIGHT, 
 		100.0f * static_cast<float>(std::count(vramUsed.begin(), vramUsed.end(), true)) / static_cast<float>(VRAM_WIDTH * VRAM_HEIGHT));
+	DumpVRAMDebugImage(vramUsed);
 	return vrm;
 }
