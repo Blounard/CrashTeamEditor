@@ -79,6 +79,8 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\minimap.cpp">
+ 	 <Filter>Source Files</Filter>
+	</ClCompile>
     <ClCompile Include="src\skybox.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -211,6 +213,8 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\minimap.h">
+	<Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="src\skybox.h">
       <Filter>Header Files</Filter>
     </ClInclude>
