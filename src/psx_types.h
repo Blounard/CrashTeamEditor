@@ -389,8 +389,7 @@ namespace PSX
 		uint32_t offPos;
 	};
 
-	// Minimap struct
-	struct Map
+	struct Minimap
 	{
 		int16_t worldEndX;      // 0x0 - World coordinate bound
 		int16_t worldEndZ;      // 0x2
@@ -404,7 +403,6 @@ namespace PSX
 		int16_t unk;            // 0x12 - Needed for some levels like Crash Cove (value different from 0 stops drawing top part)
 	};
 
-	// Icon struct for minimap textures
 	struct Icon
 	{
 		char name[16];                    // 0x0 - Icon name
@@ -412,7 +410,6 @@ namespace PSX
 		TextureLayout texLayout;          // 0x14 - UV and texture page info
 	};
 
-	// LevelIconHeader - Icon pack header, pointed to by Level::levelIconHeader
 	struct LevelIconHeader
 	{
 		int32_t numIcon;                  // 0x0 - Number of icons (2 for minimap: top and bottom)
@@ -424,10 +421,6 @@ namespace PSX
 	// Global icon array indices for minimap
 	static constexpr int32_t ICON_INDEX_MAP_TOP = 3;
 	static constexpr int32_t ICON_INDEX_MAP_BOTTOM = 4;
-
-	// Screen size
-	static constexpr int16_t SCREEN_WIDTH = 512;
-	static constexpr int16_t SCREEN_HEIGHT = 252;
 
 	struct Vertex
 	{

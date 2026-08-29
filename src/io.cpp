@@ -17,6 +17,16 @@ void from_json(const nlohmann::json& json, Vec3& v)
 	if (json.contains("z")) { v.z = json["z"]; }
 }
 
+void to_json(nlohmann::json& json, const BoundingBox& box)
+{
+	json = { {"min", box.min}, {"max", box.max} };
+}
+void from_json(const nlohmann::json& json, BoundingBox& box)
+{
+	if (json.contains("min")) { json.at("min").get_to(box.min); }
+	if (json.contains("max")) { json.at("max").get_to(box.max); }
+}
+
 void to_json(nlohmann::json& json, const Color& c)
 {
 	json = {{"r", c.Red()}, {"g", c.Green()}, {"b", c.Blue()}, {"a", c.a}};
@@ -105,24 +115,18 @@ void from_json(const nlohmann::json& json, Weather& weather)
 	if (json.contains("OTindex")) { weather.OTindex = json["OTindex"]; }
 }
 
-void to_json(nlohmann::json& json, const MinimapConfig& minimap)
+void to_json(nlohmann::json& json, const Minimap& minimap)
 {
 	json = {
-		{"worldEndX", minimap.worldEndX},
-		{"worldEndZ", minimap.worldEndZ},
-		{"worldStartX", minimap.worldStartX},
-		{"worldStartZ", minimap.worldStartZ},
+		{"worldBox", minimap.worldBox},
 		{"orientationMode", minimap.orientationMode},
 		{"texturePath", minimap.texture.GetPath()},
 	};
 }
 
-void from_json(const nlohmann::json& json, MinimapConfig& minimap)
+void from_json(const nlohmann::json& json, Minimap& minimap)
 {
-	if (json.contains("worldEndX")) { json.at("worldEndX").get_to(minimap.worldEndX); }
-	if (json.contains("worldEndZ")) { json.at("worldEndZ").get_to(minimap.worldEndZ); }
-	if (json.contains("worldStartX")) { json.at("worldStartX").get_to(minimap.worldStartX); }
-	if (json.contains("worldStartZ")) { json.at("worldStartZ").get_to(minimap.worldStartZ); }
+	if (json.contains("worldBox")) { json.at("worldBox").get_to(minimap.worldBox); }
 	if (json.contains("orientationMode")) { json.at("orientationMode").get_to(minimap.orientationMode); }
 
 	if (json.contains("texturePath"))

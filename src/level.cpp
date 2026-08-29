@@ -89,7 +89,7 @@ void Level::Clear(bool clearErrors)
 	m_saveScript = false;
 	m_vrm.clear();
 	m_lastAnimTextureCount = 0;
-	m_minimapConfig = {};
+	m_minimap = {};
 	DeleteMaterials(this);
 	m_skybox.Clear();
 	m_splitLines[0] = 0.0;
@@ -966,30 +966,26 @@ bool Level::GenerateMinimap()
 	}
 
 	// Build Bounding Box
-	BoundingBox worldBox = BoundingBox::Empty();
+	m_minimap.worldBox = BoundingBox::Empty();
 	for (const Tri& t : tris)
 	{
 		for (int i = 0; i < 3; i++)
-			worldBox.Expand(t.p[i].pos);
+			m_minimap.worldBox.Expand(t.p[i].pos);
 	}
-	m_minimapConfig.worldStartX = worldBox.min.x;
-	m_minimapConfig.worldEndX = worldBox.max.x;
-	m_minimapConfig.worldStartZ = worldBox.min.z;
-	m_minimapConfig.worldEndZ = worldBox.max.z;
 
-	const float spanX = m_minimapConfig.worldEndX - m_minimapConfig.worldStartX;
-	const float spanZ = m_minimapConfig.worldEndZ - m_minimapConfig.worldStartZ;
+	const float spanX = m_minimap.worldBox.AxisLength().x;
+	const float spanZ = m_minimap.worldBox.AxisLength().z;
 
 	// World -> pixel mapping
 	if (m_minimapSettings.orientation == MinimapOrientation::AUTO)
 		if (spanX > spanZ)
-			m_minimapConfig.orientationMode = MinimapOrientation::DOWN;
+			m_minimap.orientationMode = MinimapOrientation::DOWN;
 		else
-			m_minimapConfig.orientationMode = MinimapOrientation::RIGHT;
+			m_minimap.orientationMode = MinimapOrientation::RIGHT;
 	else
-		m_minimapConfig.orientationMode = m_minimapSettings.orientation;
+		m_minimap.orientationMode = m_minimapSettings.orientation;
 
-	const bool swapped = (m_minimapConfig.orientationMode == MinimapOrientation::DOWN || m_minimapConfig.orientationMode == MinimapOrientation::UP);
+	const bool swapped = (m_minimap.orientationMode == MinimapOrientation::DOWN || m_minimap.orientationMode == MinimapOrientation::UP);
 	const float colSpanWorld = swapped ? spanZ : spanX;
 	const float rowSpanWorld = swapped ? spanX : spanZ;
 	constexpr float minimapStretchX = 1.6f;
@@ -1000,12 +996,12 @@ bool Level::GenerateMinimap()
 		{
 			float x = worldPos.x, z = worldPos.z;
 			float colFrac = 0.0, rowFrac = 0.0;
-			switch (m_minimapConfig.orientationMode)
+			switch (m_minimap.orientationMode)
 			{
-			case MinimapOrientation::RIGHT: colFrac = (x - m_minimapConfig.worldStartX) / spanX; rowFrac = (z - m_minimapConfig.worldStartZ) / spanZ; break;
-			case MinimapOrientation::DOWN:  colFrac = (m_minimapConfig.worldEndZ - z) / spanZ;   rowFrac = (x - m_minimapConfig.worldStartX) / spanX; break;
-			case MinimapOrientation::LEFT:  colFrac = (m_minimapConfig.worldEndX - x) / spanX;   rowFrac = (m_minimapConfig.worldEndZ - z) / spanZ;   break;
-			case MinimapOrientation::UP:    colFrac = (z - m_minimapConfig.worldStartZ) / spanZ; rowFrac = (m_minimapConfig.worldEndX - x) / spanX;   break;
+			case MinimapOrientation::RIGHT: colFrac = (x - m_minimap.worldBox.min.x) / spanX; rowFrac = (z - m_minimap.worldBox.min.z) / spanZ; break;
+			case MinimapOrientation::DOWN:  colFrac = (m_minimap.worldBox.max.z - z) / spanZ; rowFrac = (x - m_minimap.worldBox.min.x) / spanX; break;
+			case MinimapOrientation::LEFT:  colFrac = (m_minimap.worldBox.max.x - x) / spanX; rowFrac = (m_minimap.worldBox.max.z - z) / spanZ; break;
+			case MinimapOrientation::UP:    colFrac = (z - m_minimap.worldBox.min.z) / spanZ; rowFrac = (m_minimap.worldBox.max.x - x) / spanX; break;
 			}
 			Vec2 res{};
 			res.x = colFrac * contentWidth;
@@ -1037,12 +1033,12 @@ bool Level::GenerateMinimap()
 
 	const float extCol = colSpanWorld / static_cast<float>(contentWidth);
 	const float extRow = rowSpanWorld / static_cast<float>(contentHeight);
-	switch (m_minimapConfig.orientationMode)
+	switch (m_minimap.orientationMode)
 	{
-	case MinimapOrientation::RIGHT: m_minimapConfig.worldEndX += extCol; m_minimapConfig.worldEndZ += extRow; break;
-	case MinimapOrientation::DOWN:  m_minimapConfig.worldStartZ -= extCol; m_minimapConfig.worldEndX += extRow; break;
-	case MinimapOrientation::LEFT:  m_minimapConfig.worldStartX -= extCol; m_minimapConfig.worldStartZ -= extRow; break;
-	case MinimapOrientation::UP:    m_minimapConfig.worldEndZ += extCol; m_minimapConfig.worldStartX -= extRow; break;
+	case MinimapOrientation::RIGHT: m_minimap.worldBox.max.x += extCol; m_minimap.worldBox.max.z += extRow; break;
+	case MinimapOrientation::DOWN:  m_minimap.worldBox.min.z -= extCol; m_minimap.worldBox.max.x += extRow; break;
+	case MinimapOrientation::LEFT:  m_minimap.worldBox.min.x -= extCol; m_minimap.worldBox.min.z -= extRow; break;
+	case MinimapOrientation::UP:    m_minimap.worldBox.max.z += extCol; m_minimap.worldBox.min.x -= extRow; break;
 	}
 
 	// Colors
@@ -1073,13 +1069,13 @@ bool Level::GenerateMinimap()
 		return false;
 	}
 
-	m_minimapConfig.texture = Texture(pngPath);
-	if (m_minimapConfig.texture.IsEmpty())
+	m_minimap.texture = Texture(pngPath);
+	if (m_minimap.texture.IsEmpty())
 	{
 		printf("ERROR: Failed to load generated minimap texture %s\n", pngPath.string().c_str());
 		return false;
 	}
-	m_minimapConfig.texture.SetBlendMode(static_cast<uint16_t>(PSX::BlendMode::ADDITIVE));
+	m_minimap.texture.SetBlendMode(static_cast<uint16_t>(PSX::BlendMode::ADDITIVE));
 	return true;
 }
 
@@ -1266,7 +1262,7 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 	{
 		if (json.contains("minimap"))
 		{
-			m_minimapConfig = json["minimap"];
+			m_minimap = json["minimap"];
 		}
 	}
 	else
@@ -1380,7 +1376,7 @@ bool Level::SavePreset(const std::filesystem::path& path)
 
 	nlohmann::json minimapJson = {};
 	minimapJson["header"] = PresetHeader::MINIMAP;
-	minimapJson["minimap"] = m_minimapConfig;
+	minimapJson["minimap"] = m_minimap;
 	SaveJSON(dirPath / "minimap.json", minimapJson);
 	
 	return true;
@@ -1674,7 +1670,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	size_t offAnimStart = header.offAnimTex;
 
 
-	//Extract Environment map and minimap (todo)
+	//Extract Environment map
 	LayoutKey waterkey(m_rawWaterLayout);
 	PixelBounds waterBound{ 0, 0, 63, 63 }; // Always 64x64. Actual UVs in the TextureLayout are irrelevant.
 	m_envMapMatName = "envMap";
@@ -1682,7 +1678,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	m_materialToTexture[m_envMapMatName] = envMapTex;
 
 
-	Texture minimapTop; Texture minimapBottom;
+	Texture minimapTop; Texture minimapBottom; Texture minimapMerged;
 	for (PSX::Icon& icon : levelIcons)
 	{
 		if (icon.globalIconArrayIndex == PSX::ICON_INDEX_MAP_TOP)
@@ -1703,7 +1699,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	}
 	if (!minimapTop.IsEmpty() && !minimapBottom.IsEmpty())
 	{
-		m_minimapConfig.texture = Texture(minimapTop, minimapBottom, "minimap", tempDir);
+		minimapMerged = Texture(minimapTop, minimapBottom, "minimap", tempDir);
 	}
 
 
@@ -2586,9 +2582,10 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		if (extraHeader.count > PSX::LevelExtra::MINIMAP && extraHeader.offsets[PSX::LevelExtra::MINIMAP] != 0)
 		{
 			file.seekg(offLev + std::streampos(extraHeader.offsets[PSX::LevelExtra::MINIMAP]));
-			PSX::Map minimap{};
+			PSX::Minimap minimap{};
 			Read(file, minimap);
-			m_minimapConfig.LoadFromPSX(minimap);
+			m_minimap = ConvertMinimap(minimap);
+			m_minimap.texture = minimapMerged;
 		}
 	}
 
@@ -3549,15 +3546,15 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	std::vector<uint8_t> minimapData;
 	std::vector<size_t> minimapPtrMapOffsets;
 
-	if (!m_minimapConfig.texture.IsEmpty())
+	if (!m_minimap.texture.IsEmpty())
 	{
 		// Map struct - this is what extraHeader.offsets[MINIMAP] will point to
 		offMinimapStruct = currOffset;
-		PSX::Map mapStruct = m_minimapConfig.Serialize();
+		PSX::Minimap mapStruct = ConvertMinimap(m_minimap);
 		size_t mapStructOffset = minimapData.size();
-		minimapData.resize(minimapData.size() + sizeof(PSX::Map));
-		memcpy(&minimapData[mapStructOffset], &mapStruct, sizeof(PSX::Map));
-		currOffset += sizeof(PSX::Map);
+		minimapData.resize(minimapData.size() + sizeof(PSX::Minimap));
+		memcpy(&minimapData[mapStructOffset], &mapStruct, sizeof(PSX::Minimap));
+		currOffset += sizeof(PSX::Minimap);
 
 		// Icon structs (top and bottom minimap textures)
 		offMinimapIcons = currOffset;
@@ -3571,7 +3568,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		PSX::Icon topIcon = {};
 		strncpy_s(topIcon.name, sizeof(topIcon.name), "minimap-top", _TRUNCATE);
 		topIcon.globalIconArrayIndex = PSX::ICON_INDEX_MAP_TOP;
-		topIcon.texLayout = m_minimapConfig.texture.Serialize(topUV);
+		topIcon.texLayout = m_minimap.texture.Serialize(topUV);
 		size_t topIconOffset = minimapData.size();
 		minimapData.resize(minimapData.size() + sizeof(PSX::Icon));
 		memcpy(&minimapData[topIconOffset], &topIcon, sizeof(PSX::Icon));
@@ -3581,7 +3578,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		PSX::Icon bottomIcon = {};
 		strncpy_s(bottomIcon.name, sizeof(bottomIcon.name), "minimap-bot", _TRUNCATE);
 		bottomIcon.globalIconArrayIndex = PSX::ICON_INDEX_MAP_BOTTOM;
-		bottomIcon.texLayout = m_minimapConfig.texture.Serialize(bottomUV);
+		bottomIcon.texLayout = m_minimap.texture.Serialize(bottomUV);
 		size_t bottomIconOffset = minimapData.size();
 		minimapData.resize(minimapData.size() + sizeof(PSX::Icon));
 		memcpy(&minimapData[bottomIconOffset], &bottomIcon, sizeof(PSX::Icon));
@@ -3653,7 +3650,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	header.offEnvironmentMap = static_cast<uint32_t>(offEnvMapLayout);
 
 	// Set minimap pointers in header if enabled
-	if (!m_minimapConfig.texture.IsEmpty())
+	if (!m_minimap.texture.IsEmpty())
 	{
 		header.offIconsLookup = static_cast<uint32_t>(offLevelIconHeader);
 		header.offIcons = static_cast<uint32_t>(offMinimapIcons);
@@ -3854,7 +3851,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	}
 	
 	// Add minimap header pointers to pointer map
-	if (!m_minimapConfig.texture.IsEmpty())
+	if (!m_minimap.texture.IsEmpty())
 	{
 		pointerMap.push_back(CALCULATE_OFFSET(PSX::LevHeader, offIconsLookup, offHeader));
 		pointerMap.push_back(CALCULATE_OFFSET(PSX::LevHeader, offIcons, offHeader));
@@ -4869,9 +4866,9 @@ bool Level::UpdateVRM()
 	}
 	
 	// Add minimap textures if enabled
-	if (!m_minimapConfig.texture.IsEmpty())
+	if (!m_minimap.texture.IsEmpty())
 	{
-		Texture* tex = &m_minimapConfig.texture;
+		Texture* tex = &m_minimap.texture;
 		bool foundEqual = false;
 		for (Texture* addedTexture : textures)
 		{
@@ -5307,25 +5304,16 @@ void Level::GenerateRenderMinimapBoundsData()
 {
 	if (!m_models[LevelModels::MINIMAP_BOUNDS]) { return; }
 
-	if (m_minimapConfig.texture.IsEmpty())
+	if (m_minimap.texture.IsEmpty())
 	{
 		m_models[LevelModels::MINIMAP_BOUNDS]->GetMesh().Clear();
 		return;
 	}
 
-	// Add some height to the minimap bounds for better visibility
-	float minY = -10.0f;
-	float maxY = 10.0f;
-
-	// Create bounding box for minimap bounds
-	BoundingBox bbox;
-	bbox.min = Vec3(m_minimapConfig.worldStartX, minY, m_minimapConfig.worldStartZ);
-	bbox.max = Vec3(m_minimapConfig.worldEndX, maxY, m_minimapConfig.worldEndZ);
-
 	// Magenta color for minimap bounds
 	Color c = Color(static_cast<unsigned char>(255), static_cast<unsigned char>(0), static_cast<unsigned char>(255));
 
-	std::vector<Primitive> triangles = bbox.ToGeometry();
+	std::vector<Primitive> triangles = m_minimap.worldBox.ToGeometry();
 	for (Primitive& primitive : triangles)
 	{
 		for (unsigned i = 0; i < primitive.pointCount; i++) { primitive.p[i].color = c; }

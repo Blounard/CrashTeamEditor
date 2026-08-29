@@ -1459,20 +1459,20 @@ void Level::RenderUI(Renderer& renderer)
 
 				ImGui::Separator();
 				ImGui::Text("World Bounds:");
-				if (ImGui::InputFloat("World Start X", &m_minimapConfig.worldStartX, 1.0f, 10.0f, "%.2f")) boundsChanged = true;
-				if (ImGui::InputFloat("World Start Y", &m_minimapConfig.worldStartZ, 1.0f, 10.0f, "%.2f")) boundsChanged = true;
-				if (ImGui::InputFloat("World End X", &m_minimapConfig.worldEndX, 1.0f, 10.0f, "%.2f")) boundsChanged = true;
-				if (ImGui::InputFloat("World End Y", &m_minimapConfig.worldEndZ, 1.0f, 10.0f, "%.2f")) boundsChanged = true;
+				if (ImGui::InputFloat("World Start X", &m_minimap.worldBox.min.x, 1.0f, 10.0f, "%.2f")) boundsChanged = true;
+				if (ImGui::InputFloat("World Start Y", &m_minimap.worldBox.min.z, 1.0f, 10.0f, "%.2f")) boundsChanged = true;
+				if (ImGui::InputFloat("World End X", &m_minimap.worldBox.max.x, 1.0f, 10.0f, "%.2f")) boundsChanged = true;
+				if (ImGui::InputFloat("World End Y", &m_minimap.worldBox.max.z, 1.0f, 10.0f, "%.2f")) boundsChanged = true;
 				ImGui::Separator();
-				int currentOrientation = static_cast<int>(m_minimapConfig.orientationMode);
+				int currentOrientation = static_cast<int>(m_minimap.orientationMode);
 				if (ImGui::Combo("Relative rotation", &currentOrientation, orientationModes, 4))
 				{
-					m_minimapConfig.orientationMode = static_cast<MinimapOrientation>(currentOrientation);
+					m_minimap.orientationMode = static_cast<MinimapOrientation>(currentOrientation);
 				}
 				ImGui::SetItemTooltip("Determines minimap clockwise rotation relative to the world\n It doesnt affect texture orientation, it affects how the driver icon moves on the minimap");
 
 				std::vector<Quadblock> dummy;
-				m_minimapConfig.texture.RenderUI({}, dummy, [&]() { this->UpdateAnimationRenderData(); });
+				m_minimap.texture.RenderUI({}, dummy, [&]() { this->UpdateAnimationRenderData(); });
 
 				if (boundsChanged && GuiRenderSettings::showMinimapBounds)
 				{

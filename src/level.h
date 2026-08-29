@@ -194,10 +194,10 @@ private:
 	std::vector<AnimTexture> m_animTextures;
 	BitMatrix m_bspVis;
 	std::vector<uint8_t> m_vrm;
-	MinimapConfig m_minimapConfig;
+	Minimap m_minimap;
 	Skybox m_skybox;
 	BotPath m_botPaths[3];
-	std::string m_envMapMatName;
+	std::string m_envMapMatName; // TODO STORE TEXTURE NOT MATERIAL
 
 	bool m_hasRawTexture;
 	std::unordered_map<uint32_t, PSX::TextureGroup> m_rawTextureGroup;
