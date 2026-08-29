@@ -875,59 +875,54 @@ bool Level::GenerateOceanVertices()
 }
 
 
-namespace
+// Helper functions for GenerateMinimap (calculate how much area a triangle cover within a square)
+// AI
+template <typename InsideFn, typename IntersectFn>
+void ClipHalfPlane(std::vector<Vec2>& poly, InsideFn inside, IntersectFn intersect)
 {
-	// One Sutherland-Hodgman clip pass against a single half-plane.
-	template <typename InsideFn, typename IntersectFn>
-	void ClipHalfPlane(std::vector<Vec2>& poly, InsideFn inside, IntersectFn intersect)
+	if (poly.empty()) { return; }
+	std::vector<Vec2> out;
+	out.reserve(poly.size() + 1);
+	for (size_t i = 0; i < poly.size(); i++)
 	{
-		if (poly.empty()) { return; }
-		std::vector<Vec2> out;
-		out.reserve(poly.size() + 1);
-		for (size_t i = 0; i < poly.size(); i++)
+		const Vec2& curr = poly[i];
+		const Vec2& prev = poly[(i + poly.size() - 1) % poly.size()];
+		const bool currIn = inside(curr);
+		const bool prevIn = inside(prev);
+		if (currIn)
 		{
-			const Vec2& curr = poly[i];
-			const Vec2& prev = poly[(i + poly.size() - 1) % poly.size()];
-			const bool currIn = inside(curr);
-			const bool prevIn = inside(prev);
-			if (currIn)
-			{
-				if (!prevIn) { out.push_back(intersect(prev, curr)); }
-				out.push_back(curr);
-			}
-			else if (prevIn)
-			{
-				out.push_back(intersect(prev, curr));
-			}
+			if (!prevIn) { out.push_back(intersect(prev, curr)); }
+			out.push_back(curr);
 		}
-		poly = std::move(out);
-	}
-
-	// Exact area of a triangle clipped against axis-aligned pixel box [x0,x1] x [y0,y1].
-	float ClipTriangleToBoxArea(Vec2 p0, Vec2 p1, Vec2 p2, float x0, float y0, float x1, float y1)
-	{
-		std::vector<Vec2> poly = { p0, p1, p2 };
-
-		ClipHalfPlane(poly, [&](const Vec2& p) { return p.x >= x0; },
-			[&](const Vec2& a, const Vec2& b) { const float t = (x0 - a.x) / (b.x - a.x); return Vec2{ x0, a.y + t * (b.y - a.y) }; });
-		ClipHalfPlane(poly, [&](const Vec2& p) { return p.x <= x1; },
-			[&](const Vec2& a, const Vec2& b) { const float t = (x1 - a.x) / (b.x - a.x); return Vec2{ x1, a.y + t * (b.y - a.y) }; });
-		ClipHalfPlane(poly, [&](const Vec2& p) { return p.y >= y0; },
-			[&](const Vec2& a, const Vec2& b) { const float t = (y0 - a.y) / (b.y - a.y); return Vec2{ a.x + t * (b.x - a.x), y0 }; });
-		ClipHalfPlane(poly, [&](const Vec2& p) { return p.y <= y1; },
-			[&](const Vec2& a, const Vec2& b) { const float t = (y1 - a.y) / (b.y - a.y); return Vec2{ a.x + t * (b.x - a.x), y1 }; });
-		if (poly.size() < 3) { return 0.0; }
-		float area2 = 0.0;
-		for (size_t i = 0; i < poly.size(); i++)
+		else if (prevIn)
 		{
-			const Vec2& a = poly[i];
-			const Vec2& b = poly[(i + 1) % poly.size()];
-			area2 += (a.x * b.y) - (b.x * a.y);
+			out.push_back(intersect(prev, curr));
 		}
-		return std::fabs(area2) * 0.5f;
 	}
+	poly = std::move(out);
 }
+float ClipTriangleToBoxArea(Vec2 p0, Vec2 p1, Vec2 p2, float x0, float y0, float x1, float y1)
+{
+	std::vector<Vec2> poly = { p0, p1, p2 };
 
+	ClipHalfPlane(poly, [&](const Vec2& p) { return p.x >= x0; },
+		[&](const Vec2& a, const Vec2& b) { const float t = (x0 - a.x) / (b.x - a.x); return Vec2{ x0, a.y + t * (b.y - a.y) }; });
+	ClipHalfPlane(poly, [&](const Vec2& p) { return p.x <= x1; },
+		[&](const Vec2& a, const Vec2& b) { const float t = (x1 - a.x) / (b.x - a.x); return Vec2{ x1, a.y + t * (b.y - a.y) }; });
+	ClipHalfPlane(poly, [&](const Vec2& p) { return p.y >= y0; },
+		[&](const Vec2& a, const Vec2& b) { const float t = (y0 - a.y) / (b.y - a.y); return Vec2{ a.x + t * (b.x - a.x), y0 }; });
+	ClipHalfPlane(poly, [&](const Vec2& p) { return p.y <= y1; },
+		[&](const Vec2& a, const Vec2& b) { const float t = (y1 - a.y) / (b.y - a.y); return Vec2{ a.x + t * (b.x - a.x), y1 }; });
+	if (poly.size() < 3) { return 0.0; }
+	float area2 = 0.0;
+	for (size_t i = 0; i < poly.size(); i++)
+	{
+		const Vec2& a = poly[i];
+		const Vec2& b = poly[(i + 1) % poly.size()];
+		area2 += (a.x * b.y) - (b.x * a.y);
+	}
+	return std::fabs(area2) * 0.5f;
+}
 
 bool Level::GenerateMinimap()
 {

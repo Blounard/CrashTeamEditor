@@ -78,9 +78,6 @@
     <ClCompile Include="src\levelui.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\minimap.cpp">
- 	 <Filter>Source Files</Filter>
-	</ClCompile>
     <ClCompile Include="src\skybox.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -159,9 +156,6 @@
     <ClCompile Include="python_bindings\cte_bindings.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\levdataextractor.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="src\instance.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -213,7 +207,7 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\minimap.h">
-	<Filter>Header Files</Filter>
+      <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\skybox.h">
       <Filter>Header Files</Filter>
@@ -258,9 +252,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\vistree.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="src\levdataextractor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\bots.h">
