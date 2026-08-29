@@ -115,8 +115,6 @@ Texture::Texture(const LayoutKey& key, const PixelBounds& bounds, const std::vec
 		printf("ERROR: Failed to write PNG for %s\n", newMatName.c_str());
 		ClearTexture();
 	}
-	printf("[VRM-reconstruct] mat=%s bpp=%d crop=%d bounds(U:%d-%d V:%d-%d) -> cropped %dx%d\n",
-		newMatName.c_str(), bppMode, crop, minU, maxU, minV, maxV, croppedWidth, croppedHeight);
 }
 
 
@@ -319,11 +317,21 @@ PSX::TextureLayout Texture::Serialize(const QuadUV& uvs) const
 	size_t u2 = x + static_cast<size_t>(std::round(uvs[2].x * width));	size_t v2 = y + static_cast<size_t>(std::round(uvs[2].y * height));
 	size_t u3 = x + static_cast<size_t>(std::round(uvs[3].x * width));	size_t v3 = y + static_cast<size_t>(std::round(uvs[3].y * height));
 	size_t maxU = std::max(std::max(u0, u1), std::max(u2, u3)); size_t maxV = std::max(std::max(v0, v1), std::max(v2, v3));
-	if (u0 == maxU) u0 -= 1; if (v0 == maxV) v0 -= 1;
-	if (u1 == maxU) u1 -= 1; if (v1 == maxV) v1 -= 1;
-	if (u2 == maxU) u2 -= 1; if (v2 == maxV) v2 -= 1;
-	if (u3 == maxU) u3 -= 1; if (v3 == maxV) v3 -= 1;
-
+	if (maxU > 0)
+	{
+		if (u0 == maxU) u0 -= 1;
+		if (u1 == maxU) u1 -= 1;
+		if (u2 == maxU) u2 -= 1;
+		if (u3 == maxU) u3 -= 1;
+	}
+	if (maxV > 0)
+	{
+		if (v0 == maxV) v0 -= 1;
+		if (v1 == maxV) v1 -= 1;
+		if (v2 == maxV) v2 -= 1;
+		if (v3 == maxV) v3 -= 1;
+	}
+	 
 	layout.u0 = static_cast<uint8_t>(u0); layout.v0 = static_cast<uint8_t>(v0);
 	layout.u1 = static_cast<uint8_t>(u1); layout.v1 = static_cast<uint8_t>(v1);
 	layout.u2 = static_cast<uint8_t>(u2); layout.v2 = static_cast<uint8_t>(v2);
@@ -560,7 +568,7 @@ static void DumpVRAMDebugImage(const std::vector<bool>& vramUsed, const char* pa
 	}
 	else
 	{
-		printf("Debug VRAM image written to %s (white = used, black = free)\n", path);
+		printf("Debug VRAM image written to %s\n", path);
 	}
 }
 
@@ -603,7 +611,6 @@ std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures)
 		empty = false;
 		texture->SetImageCoords(x, y);
 		BufferToVRM(vram, vramUsed, texture->GetImage(), x, y, texture->GetVRAMWidth());
-		printf("Placing texture at x=%zu, y=%zu, width=%d, height=%d\n", x, y, texture->GetVRAMWidth(), texture->GetHeight());
 		cachedTextures.push_back(texture);
 	}
 

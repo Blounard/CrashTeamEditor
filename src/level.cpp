@@ -1873,7 +1873,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		std::string newMatName = materialCache[key];
 		Texture newTexture(key, bounds, vram, newMatName, tempDir, true);
 		m_materialToTexture[newMatName] = newTexture;
-		printf("Created texture %s, %d x %d\n", newMatName, newTexture.GetWidth(), newTexture.GetHeight());
 	}
 	
 	// 4.1th pass : Create Models/Header with UVs and textures Assign QuadUVs to Models/Headers
@@ -2170,9 +2169,9 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		Quadblock& qb = m_quadblocks.emplace_back(psxQuad, vertices, [this](const Quadblock& qb) { UpdateFilterRenderData(qb); });
 		bool materialAssigned = false;
 		std::string qbMatName = "default";
-		for (int f = 0; f < 4; f++) 
+		for (int f = 0; f < NUM_FACES_QUADBLOCK + 1 ; f++) 
 		{
-			uint32_t texOffset = psxQuad.offMidTextures[f];
+			uint32_t texOffset = f == NUM_FACES_QUADBLOCK ? psxQuad.offLowTexture : psxQuad.offMidTextures[f];
 			if (hasAnimData && texOffset >= offAnimStart && pointerMap.contains(texOffset - 1)) // Anim Texture
 			{
 				qb.SetAnimated(true);
