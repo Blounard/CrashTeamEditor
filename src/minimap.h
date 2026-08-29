@@ -67,29 +67,28 @@ static inline PSX::Minimap ConvertMinimap(const Minimap& map)
 	out.driverDotStartX = MinimapAnchorScreenX;
 	out.driverDotStartY = MinimapAnchorBaseScreenY + 16;
 
-	float bboxSizeX = map.worldBox.AxisLength().x;
-	float bboxSizeZ = map.worldBox.AxisLength().z;
-
-	if (bboxSizeX < EPSILON || bboxSizeZ < EPSILON)
+	const int32_t bboxSizeX = static_cast<int32_t>(out.worldEndX) - static_cast<int32_t>(out.worldStartX);
+	const int32_t bboxSizeZ = static_cast<int32_t>(out.worldEndZ) - static_cast<int32_t>(out.worldStartZ);
+	if (bboxSizeX == 0 || bboxSizeZ == 0)
 		return out;
 
 	switch (map.orientationMode)
 	{
 	case MinimapOrientation::RIGHT: // 0 deg
-		out.driverDotStartX -= static_cast<int16_t>(static_cast<float>(out.iconSizeX) * map.worldBox.max.x / bboxSizeX);
-		out.driverDotStartY -= static_cast<int16_t>(static_cast<float>(out.iconSizeY * 2) * map.worldBox.max.z / bboxSizeZ);
+		out.driverDotStartX -= static_cast<int16_t>((static_cast<int32_t>(out.worldEndX) * out.iconSizeX) / bboxSizeX);
+		out.driverDotStartY -= static_cast<int16_t>((static_cast<int32_t>(out.worldEndZ) * out.iconSizeY * 2) / bboxSizeZ);
 		break;
 	case MinimapOrientation::DOWN: // 90 deg
-		out.driverDotStartX += static_cast<int16_t>(static_cast<float>(out.iconSizeX) * map.worldBox.min.z / bboxSizeZ);
-		out.driverDotStartY -= static_cast<int16_t>(static_cast<float>(out.iconSizeY * 2) * map.worldBox.max.x / bboxSizeX);
+		out.driverDotStartX += static_cast<int16_t>((static_cast<int32_t>(out.worldStartZ) * out.iconSizeX) / bboxSizeZ);
+		out.driverDotStartY -= static_cast<int16_t>((static_cast<int32_t>(out.worldEndX) * out.iconSizeY * 2) / bboxSizeX);
 		break;
 	case MinimapOrientation::LEFT: // 180 deg
-		out.driverDotStartX += static_cast<int16_t>(static_cast<float>(out.iconSizeX) * map.worldBox.min.x / bboxSizeX);
-		out.driverDotStartY += static_cast<int16_t>(static_cast<float>(out.iconSizeY * 2) * map.worldBox.min.z / bboxSizeZ);
+		out.driverDotStartX += static_cast<int16_t>((static_cast<int32_t>(out.worldStartX) * out.iconSizeX) / bboxSizeX);
+		out.driverDotStartY += static_cast<int16_t>((static_cast<int32_t>(out.worldStartZ) * out.iconSizeY * 2) / bboxSizeZ);
 		break;
 	case MinimapOrientation::UP: // 270 deg
-		out.driverDotStartX -= static_cast<int16_t>(static_cast<float>(out.iconSizeX) * map.worldBox.max.z / bboxSizeZ);
-		out.driverDotStartY += static_cast<int16_t>(static_cast<float>(out.iconSizeY * 2) * map.worldBox.min.x / bboxSizeX);
+		out.driverDotStartX -= static_cast<int16_t>((static_cast<int32_t>(out.worldEndZ) * out.iconSizeX) / bboxSizeZ);
+		out.driverDotStartY += static_cast<int16_t>((static_cast<int32_t>(out.worldStartX) * out.iconSizeY * 2) / bboxSizeX);
 		break;
 	}
 	return out;
