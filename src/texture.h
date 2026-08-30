@@ -206,6 +206,7 @@ public:
 	size_t GetCLUTX() const;
 	size_t GetCLUTY() const;
 	bool IsSemiTransparent() const;
+	bool IsPlaced() const;
 	void SetImageCoords(size_t x, size_t y);
 	void SetCLUTCoords(size_t x, size_t y);
 	void SetBlendMode(uint16_t mode);
@@ -226,6 +227,7 @@ private:
 private:
 	int m_width, m_height;
 	uint16_t m_blendMode;
+	bool m_placed;
 	size_t m_imageX, m_imageY;
 	size_t m_clutX, m_clutY;
 	bool m_semiTransparent;

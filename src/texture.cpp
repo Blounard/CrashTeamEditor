@@ -24,6 +24,7 @@ Texture::Texture(const std::filesystem::path& path)
 {
 	m_path = path;
 	m_blendMode = PSX::BlendMode::HALF_TRANSPARENT;
+	m_placed = false;
 	if (!CreateTexture()) 
 	{ 
 		ClearTexture(); 
@@ -33,7 +34,7 @@ Texture::Texture(const std::filesystem::path& path)
 
 
 Texture::Texture(const LayoutKey& key, const PixelBounds& bounds, const std::vector<uint16_t>& vram, const std::string& newMatName, const std::filesystem::path& tempDir, bool crop)
-	: m_width(0), m_height(0), m_imageX(0), m_imageY(0), m_clutX(0), m_clutY(0), m_blendMode(0), m_semiTransparent(false)
+	: m_width(0), m_height(0), m_imageX(0), m_imageY(0), m_clutX(0), m_clutY(0), m_blendMode(0), m_semiTransparent(false), m_placed(false)
 // Constructor that create the PNG file from vram
 {
 	int bppMode = key.bpp;
@@ -119,7 +120,7 @@ Texture::Texture(const LayoutKey& key, const PixelBounds& bounds, const std::vec
 
 
 Texture::Texture(const Texture& top, const Texture& bottom, const std::string& newMatName, const std::filesystem::path& tempDir)
-	: m_width(0), m_height(0), m_imageX(0), m_imageY(0), m_clutX(0), m_clutY(0), m_blendMode(0), m_semiTransparent(false)
+	: m_width(0), m_height(0), m_imageX(0), m_imageY(0), m_clutX(0), m_clutY(0), m_blendMode(0), m_semiTransparent(false), m_placed(false)
 	// Constructor for the minimap specifically
 	// The last row of 'top' is discarded, so the result is width x ((2*height)-1).
 {
@@ -262,10 +263,16 @@ bool Texture::IsSemiTransparent() const
 	return m_semiTransparent;
 }
 
+bool Texture::IsPlaced() const
+{
+	return m_placed;
+}
+
 void Texture::SetImageCoords(size_t x, size_t y)
 {
 	m_imageX = x + 512;
 	m_imageY = y;
+	m_placed = true;
 }
 
 void Texture::SetCLUTCoords(size_t x, size_t y)
@@ -282,7 +289,16 @@ void Texture::SetBlendMode(uint16_t mode)
 PSX::TextureLayout Texture::Serialize(const QuadUV& uvs) const
 {
 	PSX::TextureLayout layout = {};
-	if (IsEmpty()) { return layout; }
+	if (IsEmpty()) 
+	{ 
+		printf("Warning : Trying to serialize an empty Texture\n");
+		return layout; 
+	}
+	if (!IsPlaced())
+	{
+		printf("Warning : Trying to serialize a Texture not in VRAM\n");
+		return layout;
+	}
 
 	layout.texPage.blendMode = m_blendMode;
 	size_t bppMultiplier = 1;
@@ -405,6 +421,7 @@ void Texture::ClearTexture()
 {
 	m_blendMode = 0;
 	m_width = m_height = 0;
+	m_placed = false;
 	m_imageX = m_imageY = 0;
 	m_clutX = m_clutY = 0;
 	m_semiTransparent = false;

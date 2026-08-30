@@ -965,16 +965,21 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 		quadblock.offMidTextures[1] = static_cast<uint32_t>(m_animTexOffset[1] | 1);
 		quadblock.offMidTextures[2] = static_cast<uint32_t>(m_animTexOffset[2] | 1);
 		quadblock.offMidTextures[3] = static_cast<uint32_t>(m_animTexOffset[3] | 1);
-		quadblock.offLowTexture = static_cast<uint32_t>(offTextures + (m_textureIDs[4] * sizeof(PSX::TextureGroup)));
 	}
 	else
 	{
-		quadblock.offMidTextures[0] = static_cast<uint32_t>(offTextures + (m_textureIDs[0] * sizeof(PSX::TextureGroup)));
-		quadblock.offMidTextures[1] = static_cast<uint32_t>(offTextures + (m_textureIDs[1] * sizeof(PSX::TextureGroup)));
-		quadblock.offMidTextures[2] = static_cast<uint32_t>(offTextures + (m_textureIDs[2] * sizeof(PSX::TextureGroup)));
-		quadblock.offMidTextures[3] = static_cast<uint32_t>(offTextures + (m_textureIDs[3] * sizeof(PSX::TextureGroup)));
-		quadblock.offLowTexture = static_cast<uint32_t>(offTextures + (m_textureIDs[4] * sizeof(PSX::TextureGroup)));
+		if (m_textureIDs[0] >= 0)
+			quadblock.offMidTextures[0] = static_cast<uint32_t>(offTextures + (m_textureIDs[0] * sizeof(PSX::TextureGroup)));
+		if (m_textureIDs[1] >= 0)
+			quadblock.offMidTextures[1] = static_cast<uint32_t>(offTextures + (m_textureIDs[1] * sizeof(PSX::TextureGroup)));
+		if (m_textureIDs[2] >= 0)
+			quadblock.offMidTextures[2] = static_cast<uint32_t>(offTextures + (m_textureIDs[2] * sizeof(PSX::TextureGroup)));
+		if (m_textureIDs[3] >= 0)
+			quadblock.offMidTextures[3] = static_cast<uint32_t>(offTextures + (m_textureIDs[3] * sizeof(PSX::TextureGroup)));
 	}
+	if (m_textureIDs[4] >= 0)
+		quadblock.offLowTexture = static_cast<uint32_t>(offTextures + (m_textureIDs[4] * sizeof(PSX::TextureGroup)));
+
 	quadblock.bbox.min = ConvertVec3(m_bbox.min, FP_ONE_GEO);
 	quadblock.bbox.max = ConvertVec3(m_bbox.max, FP_ONE_GEO);
 	quadblock.terrain = m_terrain;

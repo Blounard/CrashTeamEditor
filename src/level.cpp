@@ -2913,6 +2913,8 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		{
 			for (auto& [material, texture] : m_materialToTexture)
 			{
+				if (texture.IsEmpty() || !texture.IsPlaced())
+					continue;
 				std::vector<size_t>& quadIndexes = m_materialToQuadblocks[material];
 				for (size_t index : quadIndexes)
 				{
