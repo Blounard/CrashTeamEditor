@@ -24,6 +24,7 @@ Texture::Texture(const std::filesystem::path& path)
 {
 	m_path = path;
 	m_blendMode = PSX::BlendMode::HALF_TRANSPARENT;
+	m_placed = false;
 	if (!CreateTexture()) 
 	{ 
 		ClearTexture(); 
@@ -33,7 +34,7 @@ Texture::Texture(const std::filesystem::path& path)
 
 
 Texture::Texture(const LayoutKey& key, const PixelBounds& bounds, const std::vector<uint16_t>& vram, const std::string& newMatName, const std::filesystem::path& tempDir, bool crop)
-	: m_width(0), m_height(0), m_imageX(0), m_imageY(0), m_clutX(0), m_clutY(0), m_blendMode(0), m_semiTransparent(false)
+	: m_width(0), m_height(0), m_imageX(0), m_imageY(0), m_clutX(0), m_clutY(0), m_blendMode(0), m_semiTransparent(false), m_placed(false)
 // Constructor that create the PNG file from vram
 {
 	int bppMode = key.bpp;
@@ -112,6 +113,64 @@ Texture::Texture(const LayoutKey& key, const PixelBounds& bounds, const std::vec
 		}
 	}
 	else {
+		printf("ERROR: Failed to write PNG for %s\n", newMatName.c_str());
+		ClearTexture();
+	}
+}
+
+
+Texture::Texture(const Texture& top, const Texture& bottom, const std::string& newMatName, const std::filesystem::path& tempDir)
+	: m_width(0), m_height(0), m_imageX(0), m_imageY(0), m_clutX(0), m_clutY(0), m_blendMode(0), m_semiTransparent(false), m_placed(false)
+	// Constructor for the minimap specifically
+	// The last row of 'top' is discarded, so the result is width x ((2*height)-1).
+{
+	const int width = top.GetWidth();
+	const int height = top.GetHeight();
+	const int croppedTopHeight = height - 1;        // discard top's bottom row
+	const int mergedHeight = croppedTopHeight + height; // == (2 * height) - 1
+
+	int topW = 0, topH = 0, topChannels = 0;
+	stbi_uc* topImage = stbi_load(top.GetPath().string().c_str(), &topW, &topH, &topChannels, 4);
+	if (topImage == nullptr) { return; }
+
+	int botW = 0, botH = 0, botChannels = 0;
+	stbi_uc* botImage = stbi_load(bottom.GetPath().string().c_str(), &botW, &botH, &botChannels, 4);
+	if (botImage == nullptr)
+	{
+		stbi_image_free(topImage);
+		return;
+	}
+	if (topW != width || topH != height || botW != width || botH != height)
+	{
+		stbi_image_free(topImage);
+		stbi_image_free(botImage);
+		return;
+	}
+
+	std::vector<uint8_t> rgba(static_cast<size_t>(width) * static_cast<size_t>(mergedHeight) * 4);
+	for (int y = 0; y < croppedTopHeight; y++)
+	{
+		const uint8_t* src = &topImage[static_cast<size_t>(y) * width * 4];
+		uint8_t* dst = &rgba[static_cast<size_t>(y) * width * 4];
+		std::copy(src, src + (static_cast<size_t>(width) * 4), dst);
+	}
+	for (int y = 0; y < height; y++)
+	{
+		const uint8_t* src = &botImage[static_cast<size_t>(y) * width * 4];
+		uint8_t* dst = &rgba[static_cast<size_t>(croppedTopHeight + y) * width * 4];
+		std::copy(src, src + (static_cast<size_t>(width) * 4), dst);
+	}
+	stbi_image_free(topImage);
+	stbi_image_free(botImage);
+
+	m_path = tempDir / (newMatName + ".png");
+	if (stbi_write_png(m_path.string().c_str(), width, mergedHeight, 4, rgba.data(), width * 4))
+	{
+		m_blendMode = top.GetBlendMode();
+		if (!CreateTexture()) { ClearTexture(); }
+	}
+	else
+	{
 		printf("ERROR: Failed to write PNG for %s\n", newMatName.c_str());
 		ClearTexture();
 	}
@@ -204,10 +263,16 @@ bool Texture::IsSemiTransparent() const
 	return m_semiTransparent;
 }
 
+bool Texture::IsPlaced() const
+{
+	return m_placed;
+}
+
 void Texture::SetImageCoords(size_t x, size_t y)
 {
 	m_imageX = x + 512;
 	m_imageY = y;
+	m_placed = true;
 }
 
 void Texture::SetCLUTCoords(size_t x, size_t y)
@@ -224,7 +289,16 @@ void Texture::SetBlendMode(uint16_t mode)
 PSX::TextureLayout Texture::Serialize(const QuadUV& uvs) const
 {
 	PSX::TextureLayout layout = {};
-	if (IsEmpty()) { return layout; }
+	if (IsEmpty()) 
+	{ 
+		printf("Warning : Trying to serialize an empty Texture\n");
+		return layout; 
+	}
+	if (!IsPlaced())
+	{
+		printf("Warning : Trying to serialize a Texture not in VRAM\n");
+		return layout;
+	}
 
 	layout.texPage.blendMode = m_blendMode;
 	size_t bppMultiplier = 1;
@@ -259,11 +333,21 @@ PSX::TextureLayout Texture::Serialize(const QuadUV& uvs) const
 	size_t u2 = x + static_cast<size_t>(std::round(uvs[2].x * width));	size_t v2 = y + static_cast<size_t>(std::round(uvs[2].y * height));
 	size_t u3 = x + static_cast<size_t>(std::round(uvs[3].x * width));	size_t v3 = y + static_cast<size_t>(std::round(uvs[3].y * height));
 	size_t maxU = std::max(std::max(u0, u1), std::max(u2, u3)); size_t maxV = std::max(std::max(v0, v1), std::max(v2, v3));
-	if (u0 == maxU) u0 -= 1; if (v0 == maxV) v0 -= 1;
-	if (u1 == maxU) u1 -= 1; if (v1 == maxV) v1 -= 1;
-	if (u2 == maxU) u2 -= 1; if (v2 == maxV) v2 -= 1;
-	if (u3 == maxU) u3 -= 1; if (v3 == maxV) v3 -= 1;
-
+	if (maxU > 0)
+	{
+		if (u0 == maxU) u0 -= 1;
+		if (u1 == maxU) u1 -= 1;
+		if (u2 == maxU) u2 -= 1;
+		if (u3 == maxU) u3 -= 1;
+	}
+	if (maxV > 0)
+	{
+		if (v0 == maxV) v0 -= 1;
+		if (v1 == maxV) v1 -= 1;
+		if (v2 == maxV) v2 -= 1;
+		if (v3 == maxV) v3 -= 1;
+	}
+	 
 	layout.u0 = static_cast<uint8_t>(u0); layout.v0 = static_cast<uint8_t>(v0);
 	layout.u1 = static_cast<uint8_t>(u1); layout.v1 = static_cast<uint8_t>(v1);
 	layout.u2 = static_cast<uint8_t>(u2); layout.v2 = static_cast<uint8_t>(v2);
@@ -337,6 +421,7 @@ void Texture::ClearTexture()
 {
 	m_blendMode = 0;
 	m_width = m_height = 0;
+	m_placed = false;
 	m_imageX = m_imageY = 0;
 	m_clutX = m_clutY = 0;
 	m_semiTransparent = false;
@@ -348,7 +433,11 @@ bool Texture::CreateTexture()
 {
 	int channels;
 	stbi_uc* image = stbi_load(m_path.string().c_str(), &m_width, &m_height, &channels, 0);
-	if (image == nullptr) { return false; }
+	if (image == nullptr) 
+	{ 
+		printf("ERROR : CAN'T LOAD IMAGE AT %s\n", m_path.string().c_str());
+		return false; 
+	}
 	bool alphaImage = channels == 4;
 	int semiTransparentPx = 0;
 	std::vector<size_t> colorIndexes;
@@ -376,6 +465,7 @@ bool Texture::CreateTexture()
 	Texture::BPP bpp = GetBPP();
 	if (GetVRAMWidth() > TEXPAGE_WIDTH || GetHeight() > TEXPAGE_HEIGHT)
 	{
+		printf("ERROR : TEXTURE TOO BIG\n");
 		stbi_image_free(image);
 		return false;
 	}
@@ -398,7 +488,8 @@ uint16_t Texture::ConvertColor(unsigned char r, unsigned char g, unsigned char b
 	color |= (((g * 249) + 1014) >> 11) & 0x1F;
 	color <<= 5;
 	color |= (((r * 249) + 1014) >> 11) & 0x1F;
-	if (color == 0) { color = 1 << 10; }
+	if (color == 1 << 15) { color = 1 << 15 | 1 << 10 | 1 << 5 | 1; } // Semi transparent black 32bit becomes semi transparent dark grey 16bit because semi transparent black 16bit doesn't exist
+	if (color == 0) { color = 1 << 15; } // Opaque black is encoded with stp = 1, unlike other colors.
 	return color;
 }
 
@@ -481,6 +572,23 @@ static bool FindAvailableSpace(std::vector<bool>& vramUsed, size_t width, size_t
 	return false;
 }
 
+static void DumpVRAMDebugImage(const std::vector<bool>& vramUsed, const char* path = "./debug_vram.png")
+{
+	std::vector<uint8_t> image(vramUsed.size());
+	for (size_t i = 0; i < vramUsed.size(); i++)
+	{
+		image[i] = vramUsed[i] ? 255 : 0; // white = used, black = free
+	}
+	if (!stbi_write_png(path, static_cast<int>(VRAM_WIDTH), static_cast<int>(VRAM_HEIGHT), 1, image.data(), static_cast<int>(VRAM_WIDTH)))
+	{
+		printf("ERROR : Failed to write debug VRAM image to %s\n", path);
+	}
+	else
+	{
+		printf("Debug VRAM image written to %s\n", path);
+	}
+}
+
 std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures)
 {
 	bool empty = true;
@@ -509,10 +617,12 @@ std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures)
 		if (!FindAvailableSpace(vramUsed, texture->GetVRAMWidth(), texture->GetHeight(), x, y, false))
 		{
 			printf(" VRAM GENERATION FAILED : NO SPACE LEFT DURING TEXTURE PASS\n");
+			printf("Failed texture size : %d x %d\n", texture->GetVRAMWidth(), texture->GetHeight());
 			printf("VRAM USED : %zu / %zu (%f %%)\n",
 				std::count(vramUsed.begin(), vramUsed.end(), true),
 				VRAM_WIDTH * VRAM_HEIGHT,
 				100.0f * static_cast<float>(std::count(vramUsed.begin(), vramUsed.end(), true)) / static_cast<float>(VRAM_WIDTH * VRAM_HEIGHT));
+			DumpVRAMDebugImage(vramUsed);
 			return std::vector<uint8_t>();
 		}
 		empty = false;
@@ -539,10 +649,12 @@ std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures)
 		if (!FindAvailableSpace(vramUsed, clut.size(), 1, x, y, true))
 		{
 			printf(" VRAM GENERATION FAILED : NO SPACE LEFT DURING CLUT PASS\n");
+			printf("Failed CLUT size : %zu\n", clut.size());
 			printf("VRAM USED : %zu / %zu (%f %%)\n",
 				std::count(vramUsed.begin(), vramUsed.end(), true),
 				VRAM_WIDTH * VRAM_HEIGHT,
 				100.0f * static_cast<float>(std::count(vramUsed.begin(), vramUsed.end(), true)) / static_cast<float>(VRAM_WIDTH * VRAM_HEIGHT));
+			DumpVRAMDebugImage(vramUsed);
 			return std::vector<uint8_t>();
 		}
 		texture->SetCLUTCoords(x, y);
@@ -596,5 +708,6 @@ std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures)
 		std::count(vramUsed.begin(), vramUsed.end(), true), 
 		VRAM_WIDTH * VRAM_HEIGHT, 
 		100.0f * static_cast<float>(std::count(vramUsed.begin(), vramUsed.end(), true)) / static_cast<float>(VRAM_WIDTH * VRAM_HEIGHT));
+	DumpVRAMDebugImage(vramUsed);
 	return vrm;
 }

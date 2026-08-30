@@ -17,6 +17,16 @@ void from_json(const nlohmann::json& json, Vec3& v)
 	if (json.contains("z")) { v.z = json["z"]; }
 }
 
+void to_json(nlohmann::json& json, const BoundingBox& box)
+{
+	json = { {"min", box.min}, {"max", box.max} };
+}
+void from_json(const nlohmann::json& json, BoundingBox& box)
+{
+	if (json.contains("min")) { json.at("min").get_to(box.min); }
+	if (json.contains("max")) { json.at("max").get_to(box.max); }
+}
+
 void to_json(nlohmann::json& json, const Color& c)
 {
 	json = {{"r", c.Red()}, {"g", c.Green()}, {"b", c.Blue()}, {"a", c.a}};
@@ -103,6 +113,28 @@ void from_json(const nlohmann::json& json, Weather& weather)
 	if (json.contains("colorBottom")) { weather.colorBottom = json["colorBottom"]; }
 	if (json.contains("fillMode")) { weather.fillMode = json["fillMode"]; }
 	if (json.contains("OTindex")) { weather.OTindex = json["OTindex"]; }
+}
+
+void to_json(nlohmann::json& json, const Minimap& minimap)
+{
+	json = {
+		{"worldBox", minimap.worldBox},
+		{"orientationMode", minimap.orientationMode},
+		{"texturePath", minimap.texture.GetPath()},
+	};
+}
+
+void from_json(const nlohmann::json& json, Minimap& minimap)
+{
+	if (json.contains("worldBox")) { json.at("worldBox").get_to(minimap.worldBox); }
+	if (json.contains("orientationMode")) { json.at("orientationMode").get_to(minimap.orientationMode); }
+
+	if (json.contains("texturePath"))
+	{
+		std::string path;
+		json.at("texturePath").get_to(path);
+		if (!path.empty()) { minimap.texture.UpdateTexture(path); }
+	}
 }
 
 void ReadBinaryFile(std::vector<uint8_t>& v, const std::filesystem::path& path)

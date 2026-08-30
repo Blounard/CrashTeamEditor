@@ -11,6 +11,7 @@
 #include "texture.h"
 #include "ui.h"
 #include "script.h"
+#include "minimap.h"
 
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
@@ -394,7 +395,7 @@ void BotPath::RenderUI(int pathIndex)
 }
 
 
-bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, const std::vector<std::string>& modelNames, Vec3& queryPoint)
+bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, const std::unordered_map<size_t, InstanceModel>& modelInstances, Vec3& queryPoint, std::vector<Quadblock>& quadblocks)
 {
 	bool modelChanged = false;
 
@@ -402,14 +403,14 @@ bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, co
 	if (ImGui::CollapsingHeader((headerLabel + "###instHeader").c_str()))
 	{
 		// Model selection dropdown
-		if (ImGui::BeginCombo("Model", m_modelName.c_str()))
+		if (ImGui::BeginCombo("Model", modelInstances.at(m_modelKey).GetName().c_str()))
 		{
-			for (const std::string& name : modelNames)
+			for (const auto& [key, model] : modelInstances)
 			{
-				bool isSelected = (m_modelName == name);
-				if (ImGui::Selectable(name.c_str(), isSelected))
+				bool isSelected = (m_modelKey == key);
+				if (ImGui::Selectable(model.GetName().c_str(), isSelected))
 				{
-					m_modelName = name;
+					m_modelKey = key;
 					modelChanged = true;
 				}
 				if (isSelected)
@@ -431,8 +432,6 @@ bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, co
 		// Model ID selector (behavior selector)
 		{
 			ModelId prevModelID = m_modelID;
-
-			
 
 			ModelIdWidget("Model ID", &m_modelID);
 
@@ -465,13 +464,25 @@ bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, co
 			m_pos = queryPoint;
 		}
 
-		ImGui::Text("Rot:"); ImGui::SameLine();
+		ImGui::Text("Rot:"); 
+		ImGui::SameLine();
 		if (ImGui::DragFloat3("##rot", m_rot.Data(), 1.0f, -360.0f, 360.0f))
 		{
 			m_rot.x = Clamp(m_rot.x, -360.0f, 360.0f);
 			m_rot.y = Clamp(m_rot.y, -360.0f, 360.0f);
 			m_rot.z = Clamp(m_rot.z, -360.0f, 360.0f);
 		};
+		ImGui::SameLine();
+		if (ImGui::Button(("Snap to ground##Instance")))
+		{
+			std::vector<size_t> quadindexes;
+			for (size_t j = 0; j < quadblocks.size(); j++)
+			{
+				if (quadblocks[j].GetFlags() & QuadFlags::GROUND)
+					quadindexes.push_back(j);
+			}
+			SnapToClosestQuad(quadblocks, quadindexes, m_pos, m_rot, Vec3(0.0f, 1.0f, 0.0f), -1.0f, 1.0f);
+		}
 
 		ImGui::Text("Scale:");
 		ImGui::SameLine();
@@ -574,11 +585,12 @@ bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, co
 	return modelChanged;
 }
 
-bool InstanceModelHeader::RenderUI(std::unordered_map<std::string, Texture>& materialToTexture)
+bool InstanceModelHeader::RenderUI()
 {
 	bool toDel = false;
-	if (ImGui::TreeNode(m_name.c_str()))
+	if (ImGui::TreeNodeEx((void*)this, ImGuiTreeNodeFlags_None, m_name.c_str()))
 	{
+		ImGui::InputText("Name", &m_name, 0x10);
 		ImGui::SetNextItemWidth(200.0f);
 		ImGui::DragFloat("Max visible distance##", &m_maxDistLOD, 0.5f, -1.0f, 1000.0f, "%.1f");
 		ImGui::InputScalar("Flags", ImGuiDataType_U16, &m_flags, nullptr, nullptr, "%04X", ImGuiInputTextFlags_CharsHexadecimal);
@@ -587,6 +599,7 @@ bool InstanceModelHeader::RenderUI(std::unordered_map<std::string, Texture>& mat
 		ImGui::Text("Scale:"); ImGui::SameLine();
 		ImGui::InputFloat3("##scale", m_scale.Data());
 		ImGui::EndDisabled();
+		ImGui::Checkbox("Start Banner Waving", &m_bannerWave);
 		ImGui::Text(("Triangle count: " + std::to_string(m_animations[0].frames[0].size())).c_str());
 		if (m_isAnimated)
 			ImGui::Text(("is animated : yes"));
@@ -597,41 +610,35 @@ bool InstanceModelHeader::RenderUI(std::unordered_map<std::string, Texture>& mat
 		for (size_t i = 0 ; i < m_animations.size(); i++)
 		{
 			ModelAnimation& anim = m_animations[i];
-			ImGui::Text(("Group: " + std::to_string(i) + ", Frames: " + std::to_string(anim.rawNumFrames) + ", Size: " + std::to_string(anim.frames.size())).c_str());
+			ImGui::Text(("Group: " + std::to_string(i) + ", Frames: " + std::to_string(anim.frames.size())).c_str());
 		}
-
-
-
-
-
 
 		if (ImGui::Button("Delete LOD"))
 		{
 			toDel = true;
 		}
-		
 
-
+		ImGui::Text("\n");
 		ImGui::TreePop();
 	}
 	return toDel;
 }
 
-bool InstanceModel::RenderUI(std::unordered_map<std::string, Texture>& materialToTexture, std::function<void(void)> refreshTextureStores)
+bool InstanceModel::RenderUI(std::unordered_map<std::string, Texture>& materialToTexture)
 {
 	bool toDel = false;
-	if (ImGui::TreeNode(m_name.c_str()))
+	if (ImGui::TreeNodeEx((void*)this, ImGuiTreeNodeFlags_None, m_name.c_str()))
 	{
+		ImGui::InputText("Name", &m_name, 0x10);
 		ModelIdWidget("Model ID", &m_id);
 
-		//ImGui::Text("List of LOD");
 		ImGui::SeparatorText("List of LOD");
 		std::vector<size_t> headerToDel;
 		for (size_t i = 0; i < m_headers.size() ; i++)
 		{
 			InstanceModelHeader& header = m_headers[i];
 			ImGui::PushID(static_cast<int>(i));
-			if (header.RenderUI(materialToTexture))
+			if (header.RenderUI())
 			{
 				headerToDel.push_back(i);
 			}
@@ -649,9 +656,9 @@ bool InstanceModel::RenderUI(std::unordered_map<std::string, Texture>& materialT
 			std::unordered_set<std::string> texList;
 			for (InstanceModelHeader& hd : m_headers)
 			{
-				for (AnimatedFace& af : hd.GetGeometry())
+				for (Tri& tri : hd.GetGeometry())
 				{
-					texList.insert(af.tri.texture);
+					texList.insert(tri.texture);
 				}
 
 			}
@@ -659,8 +666,7 @@ bool InstanceModel::RenderUI(std::unordered_map<std::string, Texture>& materialT
 			{
 				if (ImGui::TreeNode((texName + "##modelListtexture").c_str()))
 				{
-					std::vector<Quadblock> dummy;
-					materialToTexture[texName].RenderUI({}, dummy, refreshTextureStores);
+					materialToTexture[texName].RenderUI();
 					ImGui::TreePop();
 				}
 			}
@@ -694,6 +700,7 @@ bool InstanceModel::RenderUI(std::unordered_map<std::string, Texture>& materialT
 		{
 			toDel = true;
 		}
+		ImGui::Text("\n");
 		ImGui::TreePop();
 	}
 	return toDel;
@@ -939,6 +946,16 @@ void Level::RenderUI(Renderer& renderer)
 				auto selection = pfd::open_file("Vrm File", m_parentPath.string(), {"Vrm Files", "*.vrm"}, pfd::opt::force_path).result();
 				if (!selection.empty()) { m_hotReloadVRMPath = selection.front(); }
 			}
+			if (ImGui::TreeNode("Settings##hotreload"))
+			{
+				ImGui::InputFloat("Relic Sapphire time", &m_hotReloadSettings.relicSapphire);
+				ImGui::InputFloat("Relic Gold time", &m_hotReloadSettings.relicGold);
+				ImGui::InputFloat("Relic Platinum time", &m_hotReloadSettings.relicPlatinum);
+				ImGui::InputFloat("Crystal Challenge time", &m_hotReloadSettings.crystalTime);
+				ImGui::Checkbox("Intro Cutscene", &m_hotReloadSettings.introCutscene);
+				ImGui::Checkbox("Ghost", &m_hotReloadSettings.ghost);
+				ImGui::TreePop();
+			}
 
 			const std::string successMessage = "Successfully hot reloaded.";
 			const std::string failMessage = "Failed hot reloading.\nMake sure Duckstation is opened and that the game is unpaused.";
@@ -996,17 +1013,20 @@ void Level::RenderUI(Renderer& renderer)
 		{
 			static std::string spawnButtonMessage;
 			static ButtonUI generateSpawnButton = ButtonUI();
-			static float spawnRowSpacing = 5.0f;
-			static float spawnColSpacing = 5.0f;
+			static float spawnRowSpacing = 3.5f;
+			static float spawnColSpacing = 3.0f;
+			static float centerOffset = 0.0f;
 
 			ImGui::SetNextItemWidth(200.0f);
 			ImGui::DragFloat("Row Spacing##spawnRowSpace", &spawnRowSpacing, 0.1f, 0.1f, 30.0f, "%.1f");
 			ImGui::SetNextItemWidth(200.0f);
 			ImGui::DragFloat("Column Spacing##spawnColSpace", &spawnColSpacing, 0.1f, 0.1f, 30.0f, "%.1f");
+			ImGui::SetNextItemWidth(200.0f);
+			ImGui::DragFloat("Center Offset##spawnColSpace", &centerOffset, 0.1f, -30.0f, 30.0f, "%.1f");
 
 			if (generateSpawnButton.Show("Generate from checkpoint", spawnButtonMessage, false))
 			{
-				if (GenerateSpawn(spawnColSpacing, spawnRowSpacing)) { spawnButtonMessage = "Successfully generated the spawn positions."; }
+				if (GenerateSpawn(spawnColSpacing, spawnRowSpacing, centerOffset)) { spawnButtonMessage = "Successfully generated the spawn positions."; }
 				else { spawnButtonMessage = "Failed generating the spawn position."; }
 				GenerateRenderStartpointData();
 			}
@@ -1181,10 +1201,14 @@ void Level::RenderUI(Renderer& renderer)
 				ImGui::SetNextItemWidth(150.0f);
 				ImGui::DragFloat("Above ground threshold##mip", &m_instPathSettings.posSnapDist, 0.1f, 0.1f, 50.0f, "%.1f");
 				ImGui::EndDisabled();
-				ImGui::DragFloat("Object Radius##mip", &m_instPathSettings.radius, 0.1f, 0.1f, 100.0f, "%.1f");
-				ImGui::SetItemTooltip("Only used for pos + rot");
 				ImGui::Checkbox("Rolling##mip", &m_instPathSettings.rolling);
 				ImGui::SetItemTooltip("Only used for pos + rot");
+				ImGui::BeginDisabled(!m_instPathSettings.rolling);
+				ImGui::SameLine();
+				ImGui::SetNextItemWidth(200.0f);
+				ImGui::DragFloat("Object Radius##mip", &m_instPathSettings.radius, 0.1f, 0.1f, 100.0f, "%.1f");
+				ImGui::SetItemTooltip("Only used for pos + rot");
+				ImGui::EndDisabled();
 				ImGui::Checkbox("Loop##mip", &m_instPathSettings.loop);
 				ImGui::SetItemTooltip("Loop or Point to Point");
 
@@ -1195,7 +1219,8 @@ void Level::RenderUI(Renderer& renderer)
 					
 					if (ImGui::TreeNode(("Path " + std::to_string(i) + "##st2pos").c_str()))
 					{
-						if (ImGui::Button("Load##st2pos"))
+						
+						if (ImGui::Button("Load Path##st2pos"))
 						{
 							auto selection = pfd::open_file("Select Path OBJ", m_parentPath.string(),
 								{ "OBJ Files", "*.obj", "All Files", "*" }).result();
@@ -1226,7 +1251,7 @@ void Level::RenderUI(Renderer& renderer)
 							}		
 						}
 						ImGui::SameLine();
-						if (ImGui::Button("Delete##st2pos"))
+						if (ImGui::Button("Delete Path##st2pos"))
 						{
 							m_spawntypes.erase(m_spawntypes.begin() + i);
 						}
@@ -1239,6 +1264,15 @@ void Level::RenderUI(Renderer& renderer)
 							ImGui::InputFloat3("##pos", m_spawntypes[i][j].Data());
 							ImGui::Separator();
 							ImGui::PopID();
+						}
+						if (ImGui::Button("Add Node##st2pos"))
+						{
+							m_spawntypes[i].emplace_back();
+						}
+						ImGui::SameLine();
+						if (ImGui::Button("Delete Node##st2pos"))
+						{
+							m_spawntypes[i].pop_back();
 						}
 						ImGui::TreePop();
 					}
@@ -1279,7 +1313,7 @@ void Level::RenderUI(Renderer& renderer)
 									for (size_t j = 0; j < posvec.size() ; j++)
 									{
 
-										size_t quadId = SnapToClosestQuad(m_quadblocks, quadindexes, posvec[j], rotvec[j], Vec3(0.0f, 1.0f, 0.0f),
+										int quadId = SnapToClosestQuad(m_quadblocks, quadindexes, posvec[j], rotvec[j], Vec3(0.0f, 1.0f, 0.0f),
 											m_instPathSettings.negSnapDist, m_instPathSettings.posSnapDist);
 										if (quadId != -1)
 											upvec[j] = m_quadblocks[quadId].GetNormal();
@@ -1328,6 +1362,15 @@ void Level::RenderUI(Renderer& renderer)
 							ImGui::Separator();
 							ImGui::PopID();
 						}
+						if (ImGui::Button("Add Node##st2posRot"))
+						{
+							m_spawntypesPosRot[i].emplace_back();
+						}
+						ImGui::SameLine();
+						if (ImGui::Button("Delete Node##st2posRot"))
+						{
+							m_spawntypesPosRot[i].pop_back();
+						}
 						ImGui::TreePop();
 					}
 				
@@ -1361,7 +1404,80 @@ void Level::RenderUI(Renderer& renderer)
 				{
 					m_splitLines[1] = m_rendererQueryPoint.y;
 				}
+				ImGui::TreePop();
+			}
 
+			if (ImGui::TreeNode("Minimap"))
+			{
+				bool boundsChanged = false;
+
+				ImGui::InputInt("Target Height##minimap", &m_minimapSettings.textureHeight);
+				ImGui::Checkbox("Use checkpoint quads##minimap", &m_minimapSettings.checkpointQuads);
+				ImGui::Checkbox("Use checkpoint pathable quads##minimap", &m_minimapSettings.checkpointPathableQuads);
+				const char* orientationModes[] = { "0°", "90°", "180°", "270°", "Auto" };
+				int selectOrientation = static_cast<int>(m_minimapSettings.orientation);
+				if (ImGui::Combo("Relative rotation##minimapsettings", &selectOrientation, orientationModes, 5))
+				{
+					m_minimapSettings.orientation = static_cast<MinimapOrientation>(selectOrientation);
+				}
+				if (ImGui::TreeNode("Materials##minimapsettings"))
+				{
+					if (ImGui::BeginCombo("##minimapmatcombo", m_minimapSettings.previewMatName.c_str()))
+					{
+						for (const auto& [material, indexes] : m_materialToQuadblocks)
+						{
+							if (ImGui::Selectable(material.c_str()))
+							{
+								m_minimapSettings.previewMatName = material;
+							}
+						}
+						ImGui::EndCombo();
+					}
+					ImGui::SameLine();
+					if (ImGui::Button("Add Material##minimapsettinbgd"))
+						m_minimapSettings.materials.insert(m_minimapSettings.previewMatName);
+					std::vector<std::string> toDel;
+					for (const std::string& matName : m_minimapSettings.materials)
+					{
+						ImGui::Text(matName.c_str());
+						ImGui::SameLine();
+						if (ImGui::Button(("Delete##minimapsettingsmaterial" + matName).c_str()))
+							toDel.push_back(matName);
+					}
+					for (const std::string& matName : toDel)
+						m_minimapSettings.materials.erase(matName);
+					ImGui::TreePop();
+				}
+
+
+				if (ImGui::Button("AutoGenerate##minimap"))
+				{
+					GenerateMinimap();
+					boundsChanged = true;
+				}
+
+				ImGui::Separator();
+				ImGui::Text("World Bounds:");
+				if (ImGui::InputFloat("World Start X", &m_minimap.worldBox.min.x, 1.0f, 10.0f, "%.2f")) boundsChanged = true;
+				if (ImGui::InputFloat("World Start Y", &m_minimap.worldBox.min.z, 1.0f, 10.0f, "%.2f")) boundsChanged = true;
+				if (ImGui::InputFloat("World End X", &m_minimap.worldBox.max.x, 1.0f, 10.0f, "%.2f")) boundsChanged = true;
+				if (ImGui::InputFloat("World End Y", &m_minimap.worldBox.max.z, 1.0f, 10.0f, "%.2f")) boundsChanged = true;
+				ImGui::Separator();
+				int currentOrientation = static_cast<int>(m_minimap.orientationMode);
+				if (ImGui::Combo("Relative rotation", &currentOrientation, orientationModes, 4))
+				{
+					m_minimap.orientationMode = static_cast<MinimapOrientation>(currentOrientation);
+				}
+				ImGui::SetItemTooltip("Determines minimap clockwise rotation relative to the world\n It doesnt affect texture orientation, it affects how the driver icon moves on the minimap");
+
+				ImGui::Separator();
+				ImGui::Text("Minimap Texture : Odd Height Recommended");
+				m_minimap.texture.RenderUI();
+
+				if (boundsChanged && GuiRenderSettings::showMinimapBounds)
+				{
+					GenerateRenderMinimapBoundsData();
+				}
 				ImGui::TreePop();
 			}
 
@@ -1405,15 +1521,9 @@ void Level::RenderUI(Renderer& renderer)
 					ImGui::InputInt("Brightness Cycles Time", &m_waterAnimSettings.brightWaveCycle);
 					ImGui::SetItemTooltip("Temporal cycles over loop (different from ripple cycles so waves and shimmer don't lock-step).");
 
-				//	ImGui::Separator();
-
-				//	// --- Variation ---
-				//	ImGui::InputFloat("Seed", &m_waterAnimSettings.seed);
-				//	ImGui::SetItemTooltip("Vary between separate, unconnected water bodies.");
-
 					ImGui::TreePop();
 				}
-				m_materialToTexture[m_envMapMatName].RenderUI({}, m_quadblocks, [&]() { this->UpdateAnimationRenderData(); });
+
 				static std::string buttonMessage;
 				static ButtonUI generateWaterButton = ButtonUI();
 				if (generateWaterButton.Show("Generate Water Animations", buttonMessage, false))
@@ -1421,6 +1531,9 @@ void Level::RenderUI(Renderer& renderer)
 					if (GenerateOceanVertices()) { buttonMessage = "Successfully generated the ocean animations."; }
 					else { buttonMessage = "Failed to create water (this shouldn't be possible)."; }
 				}
+				ImGui::Separator();
+				ImGui::Text("Environment Texture");
+				m_envMapTex.RenderUI();
 				ImGui::TreePop();
 			}
 		}
@@ -1475,7 +1588,11 @@ void Level::RenderUI(Renderer& renderer)
 
 					if (m_materialToTexture.contains(material))
 					{
-						m_materialToTexture[material].RenderUI(quadblockIndexes, m_quadblocks, [&]() { this->UpdateAnimationRenderData(); });
+						if (ImGui::TreeNode("Texture"))
+						{
+							m_materialToTexture[material].RenderUI(quadblockIndexes, m_quadblocks, [&]() { this->UpdateAnimationRenderData(); });
+							ImGui::TreePop();
+						}
 					}
 
 					ImGui::TreePop();
@@ -1899,7 +2016,10 @@ void Level::RenderUI(Renderer& renderer)
 					if (skyboxRenderChanged & REND_FLAGS_COLUMN_0) { GenerateRenderSkyboxData(); }
 					ImGui::TableNextRow();
 					ImGui::TableSetColumnIndex(0);
-					ImGui::Checkbox("Show Instances", &GuiRenderSettings::showInstances);
+					unsigned minimapBoundsChanged = checkboxPair("Show Intances", &GuiRenderSettings::showInstances, "Show Minimap Bounds", &GuiRenderSettings::showMinimapBounds);
+
+					if (minimapBoundsChanged & REND_FLAGS_COLUMN_0) { GenerateRenderSkyboxData(); }
+					if (minimapBoundsChanged & REND_FLAGS_COLUMN_1) { GenerateRenderMinimapBoundsData(); }
 
 					ImGui::EndTable();
 				}
@@ -2157,87 +2277,45 @@ void Level::RenderUI(Renderer& renderer)
 				if (model.IsValid())
 				{
 					importModelButtonMessage = "Successfully imported" + model.GetName();
-					m_instanceModels[model.GetName()] = model;
+					size_t modelKey = GenerateUniqueModelKey();
+					m_instanceModels[modelKey] = model;
 				}
 				else
 					importModelButtonMessage = "Failed to import the model";
 			}
 			ImGui::EndDisabled();
 			if (disabled) { ImGui::SetItemTooltip("You must select a .json file before importing."); }
+			ImGui::SameLine();
+			if (ImGui::Button("New Model"))
+			{
+				InstanceModel model;
+				size_t modelKey = GenerateUniqueModelKey();
+				m_instanceModels[modelKey] = model;
+			}
 
 			// Show list of currently loaded models
 			ImGui::Separator();
-			if (ImGui::TreeNodeEx(("Loaded Models (" + std::to_string(m_instanceModels.size()) + ")##modelsList").c_str(), 0))
+			if (ImGui::TreeNodeEx((void*)this, ImGuiTreeNodeFlags_None, "Loaded models (%zu)", m_instanceModels.size()))
 			{
 				ImGui::Separator();
 
 				if (!m_instanceModels.empty())
 				{
-					std::string modelToDelete;
-					for (auto& [modelName, instModel] : m_instanceModels)
+					std::vector<size_t> modelToDelete;
+					for (auto& [modelKey, instModel] : m_instanceModels)
 					{
-						ImGui::PushID(modelName.c_str());
+						ImGui::PushID(static_cast<int>(modelKey));
 
-						if (instModel.RenderUI(m_materialToTexture, [&]() { this->UpdateAnimationRenderData(); }))
-							modelToDelete = modelName;
-						/*if (ImGui::TreeNode("Textures##Model"))
-						{
-							std::unordered_set<std::string> texList;
-							for (InstanceModelHeader& hd : instModel.m_headers)
-							{
-								for (AnimatedFace& af : hd.GetGeometry())
-								{
-									texList.insert(af.tri.texture);
-								}
-								
-							}
-							for (std::string texName : texList)
-							{
-								if (ImGui::TreeNode((texName + "##modelListtexture").c_str()))
-								{
-									m_materialToTexture[texName].RenderUI({}, m_quadblocks, [&]() { this->UpdateAnimationRenderData(); });
-									ImGui::TreePop();
-								}
-							}
-							
-							ImGui::TreePop();
-						
-						}*/
-						//if (ImGui::TreeNode((modelName + "##modelList").c_str()))
-						//{
-						//	
-						//	ImGui::Text("%s", modelName.c_str());
-						//	ImGui::SameLine();
-						//	ImGui::Text("(%zu bytes)", instModel.GetRawData().size());
-						//	ImGui::SameLine(ImGui::GetContentRegionAvail().x - 20);
-						//	if (ImGui::Button("X"))
-						//	{
-						//		modelToDelete = modelName;
-						//	}
-						//	int i = 0;
-						//	for (const InstanceModelHeader& header : instModel.m_headers)
-						//	{
-						//		/*for (const std::string& texName : header.m_texNames)
-						//		{
-						//			if (ImGui::TreeNode((texName + "##modelListtexture" + std::to_string(i)).c_str()))
-						//			{
-						//				m_materialToTexture[texName].RenderUI({}, m_quadblocks, [&]() { this->UpdateAnimationRenderData(); });
-						//				ImGui::TreePop();
-						//			}
-						//			i++;
-						//		}*/
-						//	}					
-						//	ImGui::TreePop();
-						//}
+						if (instModel.RenderUI(m_materialToTexture))
+							modelToDelete.push_back(modelKey);
 						ImGui::PopID();
 						
 					}
 
 					// Delete the model after iteration to avoid iterator invalidation
-					if (!modelToDelete.empty())
-					{
-						m_instanceModels.erase(modelToDelete);
-					}
+					for (size_t key : modelToDelete)
+						m_instanceModels.erase(key);
+					modelToDelete.clear();
 				}
 				else
 				{
@@ -2387,9 +2465,7 @@ void Level::RenderUI(Renderer& renderer)
 				ImGui::PushID(static_cast<int>(i));
 				bool shouldDelete = false;
 				bool shouldDuplicate = false;
-				std::vector<std::string> modelNames;
-				for (const auto& [name, _] : m_instanceModels) { modelNames.push_back(name); }
-				if (m_instances[i].RenderUI(shouldDelete, shouldDuplicate, static_cast<int>(i), modelNames, m_rendererQueryPoint))
+				if (m_instances[i].RenderUI(shouldDelete, shouldDuplicate, static_cast<int>(i), m_instanceModels, m_rendererQueryPoint, m_quadblocks))
 					renderInstanceNeedsUpdate = true;
 				if (shouldDelete)
 					instanceToDelete = static_cast<int>(i);
@@ -2912,46 +2988,44 @@ void Vertex::RenderUI(size_t index, bool& editedPos)
 void Texture::RenderUI(const std::vector<size_t>& quadblockIndexes, std::vector<Quadblock>& quadblocks, std::function<void(void)> refreshTextureStores)
 {
 	std::string texPath = GetPath().string();
-	if (ImGui::TreeNode(("Texture##" + texPath).c_str()))
+
+	ImGui::Text("Path:"); ImGui::SameLine();
+	ImGui::BeginDisabled();
+	ImGui::InputText("##texpath", &texPath, ImGuiInputTextFlags_ReadOnly);
+	ImGui::EndDisabled();
+	ImGui::SetItemTooltip(texPath.c_str());
+	ImGui::SameLine();
+	if (ImGui::Button("..."))
 	{
-		ImGui::Text("Path:"); ImGui::SameLine();
-		ImGui::BeginDisabled();
-		ImGui::InputText("##texpath", &texPath, ImGuiInputTextFlags_ReadOnly);
-		ImGui::EndDisabled();
-		ImGui::SetItemTooltip(texPath.c_str());
-		ImGui::SameLine();
-		if (ImGui::Button("..."))
+		std::filesystem::path currentPath = GetPath();
+		std::string defaultDir = currentPath.has_parent_path() ? currentPath.parent_path().string() : ".";
+		std::string defaultFile = currentPath.filename().string();
+		auto selection = pfd::open_file("Texture File", defaultDir, {"Texture Files", "*.bmp, *.jpeg, *.jpg, *.png"}).result();
+		if (!selection.empty())
 		{
-			std::filesystem::path currentPath = GetPath();
-			std::string defaultDir = currentPath.has_parent_path() ? currentPath.parent_path().string() : ".";
-			std::string defaultFile = currentPath.filename().string();
-			auto selection = pfd::open_file("Texture File", defaultDir, {"Texture Files", "*.bmp, *.jpeg, *.jpg, *.png"}).result();
-			if (!selection.empty())
-			{
-				const std::filesystem::path& newTexPath = selection.front();
-				UpdateTexture(newTexPath);
-				refreshTextureStores();
-				for (const size_t index : quadblockIndexes) { quadblocks[index].SetTexPath(newTexPath); }
-			}
+			const std::filesystem::path& newTexPath = selection.front();
+			UpdateTexture(newTexPath);
+			refreshTextureStores();
+			for (const size_t index : quadblockIndexes) { quadblocks[index].SetTexPath(newTexPath); }
 		}
-		if (IsEmpty()) { ImGui::TreePop(); return; }
-		constexpr size_t NUM_BLEND_MODES = 4;
-		const std::array<std::string, NUM_BLEND_MODES> BLEND_MODES = {"Half Transparent", "Additive", "Subtractive", "Additive Translucent"};
-		uint16_t blendMode = GetBlendMode();
-		ImGui::Text("Blend Mode:"); ImGui::SameLine();
-		if (ImGui::BeginCombo("##blendmode", BLEND_MODES[blendMode].c_str()))
-		{
-			for (size_t i = 0; i < NUM_BLEND_MODES; i++)
-			{
-				if (ImGui::Selectable(BLEND_MODES[i].c_str()))
-				{
-					SetBlendMode(static_cast<uint16_t>(i));
-				}
-			}
-			ImGui::EndCombo();
-		}
-		ImGui::TreePop();
 	}
+	ImGui::Text("Size : %d x %d", GetWidth(), GetHeight());
+	constexpr size_t NUM_BLEND_MODES = 4;
+	const std::array<std::string, NUM_BLEND_MODES> BLEND_MODES = {"Half Transparent", "Additive", "Subtractive", "Additive Translucent"};
+	uint16_t blendMode = GetBlendMode();
+	ImGui::Text("Blend Mode:"); ImGui::SameLine();
+	if (ImGui::BeginCombo("##blendmode", BLEND_MODES[blendMode].c_str()))
+	{
+		for (size_t i = 0; i < NUM_BLEND_MODES; i++)
+		{
+			if (ImGui::Selectable(BLEND_MODES[i].c_str()))
+			{
+				SetBlendMode(static_cast<uint16_t>(i));
+			}
+		}
+		ImGui::EndCombo();
+	}
+	
 }
 
 void Texture::RenderUI()

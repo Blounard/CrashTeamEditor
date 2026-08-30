@@ -12,6 +12,7 @@
 #include "animtexture.h"
 #include "model.h"
 #include "vistree.h"
+#include "minimap.h"
 #include "skybox.h"
 #include "bots.h"
 #include "instance.h"
@@ -39,7 +40,37 @@ namespace LevelModels
 	static constexpr size_t SKYBOX = 7;
 	static constexpr size_t BOT = 8;
 	static constexpr size_t INSTANCES = 9;
-	static constexpr size_t COUNT = 10;
+	static constexpr size_t MINIMAP_BOUNDS = 10;
+	static constexpr size_t COUNT = 11;
+};
+
+struct HostSettings // RAW STRUCT TO EMIT FOR HOT RELOAD SETTINGS
+{
+	int32_t magic;          // HOST_SETTINGS_MAGIC once the editor has written here
+	int32_t sequence;       // bumped by the editor on every push
+	int32_t relicSapphire;  // ms
+	int32_t relicGold;      // ms
+	int32_t relicPlatinum;  // ms
+	int32_t crystalTime;    // ms
+	int32_t introCutscene;  // 1 plays the intro cam, 0 skips it
+	int32_t ghost;          // 1 leaves the ghost replay alone, 0 kills its thread
+};
+
+struct HotReloadSettings	// HOT RELOAD PARAMETERS
+{
+	float relicSapphire;	// seconds
+	float relicGold;		// seconds
+	float relicPlatinum;	// seconds
+	float crystalTime;		// seconds
+	bool introCutscene;		// 1 plays the intro cam, 0 skips it
+	bool ghost;				// 1 leaves the ghost replay alone, 0 kills its thread
+	HotReloadSettings() :
+		relicSapphire(60.0f),
+		relicGold(60.0f),
+		relicPlatinum(60.0f),
+		crystalTime(60.0f),
+		introCutscene(false),
+		ghost(false){}
 };
 
 class Level
@@ -96,8 +127,9 @@ private:
 	bool SetGhostData(const std::filesystem::path& path, bool tropy);
 	bool UpdateVRM();
 	std::vector<uint16_t> ReadRawVRAM(std::filesystem::path vrmPath);
+	bool EmplaceInstanceBSP();
 	void GenerateBotPathChangeCode();
-	bool GenerateSpawn(float colSpacing, float rowSpacing);
+	bool GenerateSpawn(float colSpacing, float rowSpacing, float centerOffset);
 	bool GenerateInstanceRow(int checkpointIndex, size_t instanceIndex, int numInstances, float spacing, bool deleteAfter);
 	bool QueryGround(const Vec3& pos, float& height, Vec3& normal) const;
 	std::string GenerateUniqueInstanceName(const std::string& name) const;
@@ -105,6 +137,7 @@ private:
 	bool GenerateBSP();
 	bool ReOrderBSP();
 	bool GenerateOceanVertices();
+	bool GenerateMinimap();
 	void OpenHotReloadWindow();
 	void RenderUI(Renderer& renderer);
 	void InitModels(Renderer& renderer);
@@ -113,6 +146,7 @@ private:
 	void GenerateRenderBspData();
 	void GenerateRenderInstanceData();
 	void GenerateRenderStartpointData();
+	void GenerateRenderMinimapBoundsData();
 	void GenerateRenderSkyboxData();
 	void GenerateRenderSelectedBlockData(const Quadblock& quadblock, const Vec3& queryPoint);
 	bool UpdateAnimTextures(float deltaTime);
@@ -125,11 +159,13 @@ private:
 	bool m_showLogWindow;
 	bool m_showHotReloadWindow;
 	bool m_loaded;
+	HotReloadSettings m_hotReloadSettings; // TODO : MAKE A SETTINGS FILE, WITH I/O
 	BSPTreeSettings m_bspSettings;
 	VisTreeSettings m_visTreeSettings;
 	BotPathSettings m_botPathSettings;
 	WaterAnimSettings m_waterAnimSettings;
 	InstanceLoadPathSettings m_instPathSettings;
+	MinimapSettings m_minimapSettings;
 
 	std::vector<std::tuple<std::string, std::string>> m_invalidQuadblocks;
 	std::string m_logMessage;
@@ -158,9 +194,10 @@ private:
 	std::vector<AnimTexture> m_animTextures;
 	BitMatrix m_bspVis;
 	std::vector<uint8_t> m_vrm;
+	Minimap m_minimap;
 	Skybox m_skybox;
 	BotPath m_botPaths[3];
-	std::string m_envMapMatName;
+	Texture m_envMapTex;
 
 	bool m_hasRawTexture;
 	std::unordered_map<uint32_t, PSX::TextureGroup> m_rawTextureGroup;
@@ -190,14 +227,12 @@ private:
 	std::vector<size_t> m_rendererSelectedQuadblockIndexes;
 	size_t m_lastAnimTextureCount;
 
-	std::unordered_map<std::string, InstanceModel> m_instanceModels;
-
-	// Model textures placed in VRAM (filled by UpdateVRM, used by SaveLEV)
-	std::vector<ModelTextureForVRM> m_modelTexturesInVRAM;
+	
 
 	// VRAM data parsed from .vrm file (for model texture extraction)
 	std::vector<uint16_t> m_vramData;
 
+	std::unordered_map<size_t, InstanceModel> m_instanceModels; //Not using vector, so model can be deleted without affecting instance's model key.
 	std::vector<Instance> m_instances;
 	std::vector<std::vector<Vec3>> m_spawntypes;
 	std::vector<std::vector<Spawn>> m_spawntypesPosRot;

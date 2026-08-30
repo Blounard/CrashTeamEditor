@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <unordered_set>
+#include <unordered_map>
 
 
 Tri::Tri(const Point& p0, const Point& p1, const Point& p2)
@@ -21,6 +22,13 @@ Line::Line(const Point& p0, const Point& p1)
 	: Primitive(PrimitiveType::LINE, 2)
 {
 	p[0] = p0; p[1] = p1;
+}
+
+void BoundingBox::Expand(const Vec3& pos)
+{
+	min.x = std::min(min.x, pos.x); max.x = std::max(max.x, pos.x);
+	min.y = std::min(min.y, pos.y); max.y = std::max(max.y, pos.y);
+	min.z = std::min(min.z, pos.z); max.z = std::max(max.z, pos.z);
 }
 
 float BoundingBox::Area() const
@@ -57,7 +65,25 @@ Vec3 BoundingBox::Midpoint() const
 	return (max + min) / 2;
 }
 
-BoundingBox BoundingBox::Union(const BoundingBox other) const 
+float BoundingBox::Distance(const Vec3& point) const
+{
+	const Vec3 closest(
+		std::max(min.x, std::min(point.x, max.x)),
+		std::max(min.y, std::min(point.y, max.y)),
+		std::max(min.z, std::min(point.z, max.z))
+	);
+	return (point - closest).Length();
+}
+
+float BoundingBox::Distance(const BoundingBox& other) const
+{
+	const float dx = std::max({ 0.0f, min.x - other.max.x, other.min.x - max.x });
+	const float dy = std::max({ 0.0f, min.y - other.max.y, other.min.y - max.y });
+	const float dz = std::max({ 0.0f, min.z - other.max.z, other.min.z - max.z });
+	return Vec3(dx, dy, dz).Length();
+}
+
+BoundingBox BoundingBox::Union(const BoundingBox& other) const 
 {
 	BoundingBox box{};
 	box.min.x = std::min(min.x, other.min.x); box.max.x = std::max(max.x, other.max.x);
@@ -80,6 +106,15 @@ BoundingBox BoundingBox::Intersect(const BoundingBox& other) const
 	result.max.y = std::max(result.max.y, result.min.y);
 	result.max.z = std::max(result.max.z, result.min.z);
 	return result;
+}
+
+BoundingBox BoundingBox::Empty()
+{
+	BoundingBox box{};
+	box.min.x = std::numeric_limits<float>::max(); box.max.x = std::numeric_limits<float>::lowest();
+	box.min.y = std::numeric_limits<float>::max(); box.max.y = std::numeric_limits<float>::lowest();
+	box.min.z = std::numeric_limits<float>::max(); box.max.z = std::numeric_limits<float>::lowest();
+	return box;
 }
 
 std::vector<Primitive> BoundingBox::ToGeometry() const
@@ -363,31 +398,28 @@ bool SnapTriangle(const Vec3& A, const Vec3& B, const Vec3& C,
 	return true;
 }
 
-
+// Load an .obj file that contain a path. Read and return the list of Vec3 it contains.
 std::vector<Vec3> LoadPath(const std::filesystem::path& path)
 {
-	// AI MADE, TODO : RECODE / VERIFY
 	std::ifstream file(path);
 	if (!file.is_open())
 		return {};
 
-	std::vector<Vec3>                        rawVertices;
-	std::unordered_map<int, int>             adjacency;   // edge map: from -> to (1-based)
-	bool                                     inFirstObject = false;
+	std::vector<Vec3> rawVertices;
+	std::unordered_map<int, int> adjacency; // 1 based
+	bool inFirstObject = false;
 
 	std::string line;
 	while (std::getline(file, line))
 	{
 		if (line.empty() || line[0] == '#')
 			continue;
-
 		std::istringstream ss(line);
-		std::string        token;
+		std::string token;
 		ss >> token;
 
 		if (token == "o")
 		{
-			// Only parse the first object
 			if (!inFirstObject)
 				inFirstObject = true;
 			else
@@ -403,46 +435,38 @@ std::vector<Vec3> LoadPath(const std::filesystem::path& path)
 		{
 			int a, b;
 			if (ss >> a >> b)
-				adjacency[a] = b;  // directed edge a -> b (OBJ indices are 1-based)
+				adjacency[a] = b;
 		}
 	}
 
 	if (rawVertices.empty() || adjacency.empty())
-		return rawVertices;
+		return {};
 
 	// Find the start of the chain: a vertex that appears as a source but never as a destination
 	std::unordered_set<int> destinations;
-	for (auto& [from, to] : adjacency)
-		destinations.insert(to);
+	for (auto& [source, target] : adjacency)
+		destinations.insert(target);
 
-	int start = -1;
-	for (auto& [from, to] : adjacency)
+	int start = 1; // Default value is just the first vertices (1 indexed)
+	for (auto& [source, target] : adjacency)
 	{
-		if (destinations.find(from) == destinations.end())
+		if (!destinations.contains(source))
 		{
-			start = from;
+			start = source;
 			break;
 		}
 	}
 
-	// Fallback: if it's a closed loop, just pick any start
-	if (start == -1 && !adjacency.empty())
-		start = adjacency.begin()->first;
-
-	// Walk the chain in edge order
 	std::vector<Vec3> ordered;
-	ordered.reserve(rawVertices.size());
-
 	int current = start;
-	while (adjacency.count(current))
+	while (adjacency.contains(current))
 	{
-		// OBJ indices are 1-based
 		ordered.push_back(rawVertices[current - 1]);
 		int next = adjacency[current];
 		adjacency.erase(current);  // prevent infinite loops on malformed data
 		current = next;
 	}
-	// Push the final vertex (the chain end that has no outgoing edge)
+
 	if (current >= 1 && current <= static_cast<int>(rawVertices.size()))
 		ordered.push_back(rawVertices[current - 1]);
 

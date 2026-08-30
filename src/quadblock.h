@@ -229,8 +229,8 @@ private:
 	mutable size_t m_bspID;
 	std::vector<std::array<size_t, 3>> m_collTriFaces;
 	std::array<QuadUV, NUM_FACES_QUADBLOCK + 1> m_uvs; /* Last id is reserved for low tex */
-	std::array<size_t, NUM_FACES_QUADBLOCK + 1> m_textureIDs = { 0, 0, 0, 0, 0 };
-	std::array<size_t, NUM_FACES_QUADBLOCK + 1> m_animTexOffset = {0, 0, 0, 0, 0};
+	std::array<int, NUM_FACES_QUADBLOCK + 1> m_textureIDs = { -1, -1, -1, -1, -1 }; // -1 means no tex
+	std::array<int, NUM_FACES_QUADBLOCK + 1> m_animTexOffset = { -1, -1, -1, -1, -1 };
 	std::filesystem::path m_texPath;
 	bool m_hasRawNormalData; //for raw normals
 	uint8_t m_triNormalVecBitshift;
@@ -250,4 +250,4 @@ private:
   std::string m_message;
 };
 
-size_t SnapToClosestQuad(const std::vector<Quadblock>& quadblocks, const std::vector<size_t>quadIndexes, Vec3& outpos, Vec3& outrot, const Vec3& projectDir, float negSnapLimit, float posSnapLimit, float barycentricTolerance = EPSILON);
+int SnapToClosestQuad(const std::vector<Quadblock>& quadblocks, const std::vector<size_t>quadIndexes, Vec3& outpos, Vec3& outrot, const Vec3& projectDir, float negSnapLimit, float posSnapLimit, float barycentricTolerance = EPSILON);

@@ -30,6 +30,8 @@ namespace PSX
 		uint32_t g : 8;
 		uint32_t b : 8;
 		uint32_t a : 8;
+
+		inline bool operator==(const Color& c) const { return r == c.r && g == c.g && b == c.b && a == c.a;}
 	};
 
 	struct Spawn
@@ -260,22 +262,6 @@ namespace PSX
 	};
 
 
-
-	// Command list encoding. See RenderBucket_DrawFunc_Normal in the game's
-	// RenderBucket_QueueExecute.c -- all five DrawFunc variants share this logic.
-	static constexpr uint32_t CMD_TERMINATOR = 0xFFFFFFFF;
-	// (command & CMD_COLOR_ONLY_MASK) == 0 means a color-only command: it consumes no
-	// vertex, and its low 9 bits are a color index rather than a texture index.
-	static constexpr uint32_t CMD_COLOR_ONLY_MASK = 0xFFFF0000;
-	// Bit 26. Set means "reuse the cached vertex at stackIndex" -- no vertex consumed.
-	static constexpr uint32_t CMD_REUSE_VERTEX_FLAG = 0x04000000;
-	static constexpr uint32_t CMD_TEX_INDEX_MASK = 0x1FF;
-
-	// ModelAnim::numFrames encoding.
-	static constexpr uint16_t ANIM_INTERPOLATED_BIT = 0x8000;
-	static constexpr uint16_t ANIM_FRAME_COUNT_MASK = 0x7FFF;
-
-
 	struct ModelHeader
 	{
 		char name[0x10]; // 0x0 name of model group, "oxide_hi" for example
@@ -325,6 +311,10 @@ namespace PSX
 		int vertexOffset; // usually 0x1C
 	};
 
+	// ModelAnim::numFrames encoding.
+	static constexpr uint16_t ANIM_INTERPOLATED_BIT = 0x8000;
+	static constexpr uint16_t ANIM_FRAME_COUNT_MASK = 0x7FFF;
+
 	struct ModelAnim
 	{
 		// 0x0 -- name of the animation
@@ -373,11 +363,6 @@ namespace PSX
 	enum LevelExtra
 	{
 		MINIMAP = 0,
-		// Array of int16_t "cycle timing" values, one per hazard instance. Hazard
-		// birth handlers index it by the LAST DIGIT OF THE INSTANCE NAME:
-		//   timeAtEdge = metaArray[inst->name[strlen(inst->name) - 1] - '0'];
-		// which is why vanilla names them "armadillo#0", "armadillo#1", ... The
-		// handlers do NOT null-check this pointer. See the SaveLEV gotcha note.
 		SPAWN = 1,
 		CAMERA_END_OF_RACE = 2,
 		CAMERA_DEMO = 3,
@@ -398,6 +383,39 @@ namespace PSX
 		uint32_t numCoord;
 		uint32_t offPos;
 	};
+
+	struct Minimap
+	{
+		int16_t worldEndX;      // 0x0 - World coordinate bound
+		int16_t worldEndZ;      // 0x2
+		int16_t worldStartX;    // 0x4
+		int16_t worldStartZ;    // 0x6
+		int16_t iconSizeX;      // 0x8 - Size in pixels of minimap icon (width)
+		int16_t iconSizeY;      // 0xA - Size in pixels of minimap icon (height)
+		int16_t driverDotStartX; // 0xC - Screen position for driver markers (512x252 screen)
+		int16_t driverDotStartY; // 0xE
+		int16_t orientationMode;           // 0x10 - Orientation mode (0=0°, 1=90°, 2=180°, 3=270°)
+		int16_t unk;            // 0x12 - Needed for some levels like Crash Cove (value different from 0 stops drawing top part)
+	};
+
+	struct Icon
+	{
+		char name[16];                    // 0x0 - Icon name
+		int32_t globalIconArrayIndex;     // 0x10 - Index in global icon array (3=top, 4=bottom)
+		TextureLayout texLayout;          // 0x14 - UV and texture page info
+	};
+
+	struct LevelIconHeader
+	{
+		int32_t numIcon;                  // 0x0 - Number of icons (2 for minimap: top and bottom)
+		uint32_t offFirstIcon;            // 0x4 - Pointer to first Icon struct
+		int32_t numIconGroup;             // 0x8 - Number of icon groups
+		uint32_t offFirstIconGroupPtr;    // 0xC - Pointer to IconGroup pointer array
+	};
+
+	// Global icon array indices for minimap
+	static constexpr int32_t ICON_INDEX_MAP_TOP = 3;
+	static constexpr int32_t ICON_INDEX_MAP_BOTTOM = 4;
 
 	struct Vertex
 	{
@@ -577,6 +595,19 @@ namespace PSX
 }
 
 template<>
+struct std::hash<PSX::Color>
+{
+	inline std::size_t operator()(const PSX::Color& key) const noexcept
+	{
+		uint32_t value = key.r | (key.g << 8) | (key.b << 16) | (key.a << 24);
+		std::size_t seed = 0;
+		HashCombine(seed, value);
+		return seed;
+	}
+};
+
+
+template<>
 struct std::hash<PSX::TextureLayout>
 {
 	inline std::size_t operator()(const PSX::TextureLayout& key) const noexcept
@@ -635,14 +666,18 @@ struct std::hash<PSX::OceanVertexFrame>
 static constexpr int16_t FP_ONE = 0x1000;
 static constexpr int16_t FP_ONE_GEO = 64;
 static constexpr int16_t FP_ONE_CP = 8;
-static constexpr int16_t FP_ONE_ROT = 256;
 static constexpr int16_t FP_ONE_SPLITPOINT = 32;
-static constexpr int16_t FP_ONE_MODEL = 1024; // WAS 1024
+static constexpr int16_t FP_ONE_MODEL_ORIGIN = 256;
+static constexpr int16_t FP_ONE_MODEL_SCALE = 1024; 
 
 static inline int16_t ConvertFloat(float x, int16_t one = FP_ONE) { return static_cast<int16_t>(std::round(x * static_cast<float>(one))); };
 static inline int16_t ConvertAngle(float x, int16_t one = FP_ONE) { return static_cast<int16_t>(std::round((x * static_cast<float>(FP_ONE)) / 360.0f)); }
+static inline float ConvertFP(int32_t fp, int16_t one = FP_ONE) { return static_cast<float>(fp) / static_cast<float>(one); }
+static inline float ConvertFP(uint32_t fp, int16_t one = FP_ONE) { return static_cast<float>(fp) / static_cast<float>(one); }
 static inline float ConvertFP(int16_t fp, int16_t one = FP_ONE) { return static_cast<float>(fp) / static_cast<float>(one); }
-//static inline float ConvertFP(uint8_t fp, int16_t one = FP_ONE) { return static_cast<float>(fp) / static_cast<float>(one); }
+static inline float ConvertFP(uint16_t fp, int16_t one = FP_ONE) { return static_cast<float>(fp) / static_cast<float>(one); }
+static inline float ConvertFP(int8_t fp, int16_t one = FP_ONE) { return static_cast<float>(fp) / static_cast<float>(one); }
+static inline float ConvertFP(uint8_t fp, int16_t one = FP_ONE) { return static_cast<float>(fp) / static_cast<float>(one); }
 static inline float ConvertFPAngle(int16_t fp, int16_t one = FP_ONE) { return (static_cast<float>(fp) * 360.0f) / static_cast<float>(FP_ONE); }
 
 static inline PSX::Vec3 ConvertAngle(const Vec3& v, int16_t one = FP_ONE)
@@ -672,6 +707,15 @@ static inline PSX::Vec3 ConvertVec3(const Vec3& v, int16_t one = FP_ONE)
 	return out;
 }
 
+static inline PSX::Vec3b ConvertVec3b(const Vec3& v, int16_t one = FP_ONE)
+{	// WARNING : NOT ALIGNED, Y AND Z ARE SWAPPED, USED BY MODELS
+	PSX::Vec3b out = {};
+	out.x = static_cast<uint8_t>(Clamp(static_cast<float>(ConvertFloat(v.x, one)),0.0f , 255.0f));
+	out.y = static_cast<uint8_t>(Clamp(static_cast<float>(ConvertFloat(v.z, one)), 0.0f, 255.0f));
+	out.z = static_cast<uint8_t>(Clamp(static_cast<float>(ConvertFloat(v.y, one)), 0.0f, 255.0f));
+	return out;
+}
+
 static inline Vec3 ConvertPSXVec3(const PSX::Vec3& v, int16_t one = FP_ONE)
 {
 	Vec3 out = {};
@@ -682,11 +726,11 @@ static inline Vec3 ConvertPSXVec3(const PSX::Vec3& v, int16_t one = FP_ONE)
 }
 
 static inline Vec3 ConvertPSXVec3b(const PSX::Vec3b& v, int16_t one = FP_ONE)
-{
+{ // WARNING : NOT ALIGNED, Y AND Z ARE SWAPPED, USED BY MODELS
 	Vec3 out = {};
 	out.x = ConvertFP(v.x, one);
-	out.y = ConvertFP(v.y, one);
-	out.z = ConvertFP(v.z, one);
+	out.y = ConvertFP(v.z, one);
+	out.z = ConvertFP(v.y, one);
 	return out;
 }
 

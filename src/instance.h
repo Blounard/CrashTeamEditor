@@ -13,21 +13,6 @@
 #include <nlohmann/json.hpp>
 
 
-// Per-InstDef settings for emitting a BSP-leaf collision hitbox at save time.
-// Presets mirror flag/extent combos observed in vanilla levels (proto8).
-struct InstanceHitbox
-{
-	enum Preset : int { PICKUP = 0, SOLID_WALL = 1, STATIC_DECORATION = 2, CUSTOM = 3 };
-
-	bool enabled = false;
-	int preset = Preset::PICKUP;
-	uint32_t flags = 0x000004C0; // vanilla pickup flags (bit 0x80 set = trigger-only)
-	float halfExtent = 1.1875f; // vanilla pickup trigger radius
-	float yOffset = 0; // hitbox center offset above InstDef position
-};
-
-
-
 enum class InstanceFlag : uint32_t
 {
 	DRAW_INSTANCE = 1,
@@ -291,7 +276,6 @@ enum class ModelId : int16_t
 	NUM_TYPES = 0xE2
 };
 
-
 static const std::map<ModelId, const char*> ModelIdLabels = {
 	{ModelId::NOFUNC,             "No Function"},
 	{ModelId::ANIMATE_IF_HIT,     "Animate If Hit"},
@@ -313,42 +297,39 @@ static const std::map<ModelId, const char*> ModelIdLabels = {
 	{ModelId::BLADE,              "Blade"},
 	{ModelId::DYNAMIC_SEAL,       "Seal"},
 	{ModelId::DYNAMIC_ORCA,       "Orca"},
-	{ModelId::DYNAMIC_BARREL,     "Barrel"},
+	{ModelId::DYNAMIC_BARREL,     "Barrel (Sewer)"},
 	{ModelId::DYNAMIC_VONLABASS,  "Von Labass"},
 	{ModelId::DYNAMIC_SKUNK,      "Skunk"},
 	{ModelId::DYNAMIC_TURTLE,     "Turtle"},
 	{ModelId::DYNAMIC_SPIDER,     "Spider"},
 	{ModelId::DYNAMIC_SPIDERSHADOW, "Spider Shadow"},
 	{ModelId::DYNAMIC_FIREBALL,   "Fireball"},
+	{ModelId::DYNAMIC_DRUM,   "Barrel (Labs)"},
 	{ModelId::STATIC_CASTLE_SIGN, "Castle Sign"},
+	{ModelId::STATIC_TIME_CRATE_01, "Relic Crate 1"},
+	{ModelId::STATIC_CRYSTAL, "Crystal"},
+	{ModelId::STATIC_TIME_CRATE_02, "Relic Crate 2"},
+	{ModelId::STATIC_TIME_CRATE_03, "Relic Crate 3"},
 	{ModelId::STATIC_BANNER,      "Banner"},
 	{ModelId::STATIC_WARPPAD,     "Warp Pad"},
-	{ModelId::STATIC_TEETH,       "Teeth"},
+	{ModelId::STATIC_TEETH,       "TigerTemple Door"},
 	{ModelId::STATIC_STARTTEXT,   "Start Text"},
 	{ModelId::STATIC_SAVEOBJ,     "Save Object"},
 	{ModelId::STATIC_C,           "C Letter"},
 	{ModelId::STATIC_T,           "T Letter"},
 	{ModelId::STATIC_R,           "R Letter"},
+	{ModelId::STATIC_STARTBANNERWAVE,"Start banner"},
 };
-constexpr char     kAnimMagic[4] = { 'A', 'N', 'I', 'M' };
-constexpr uint32_t kAnimVersion = 1;
 
-struct AnimatedFace //Rename to ModelFace
-{
-	Tri tri;
-	bool doubleSided = false;
-};
 struct ModelAnimation
 {
 	std::string name;
 	bool interpolated = false;
-	bool hasRawNumFrames = false; // true only when decoded from a real .lev
-	uint16_t rawNumFrames = 0;    // verbatim PSX::ModelAnim::numFrames -- exact round-trip fidelity
-	std::vector<std::vector<AnimatedFace>> frames; // frames[f].size() == frames[0].size() for every f; only .tri.p[*].pos may legitimately differ across frames
+	std::vector<std::vector<Tri>> frames; // frames[f].size() == frames[0].size() for every f; only .tri.p[*].pos may legitimately differ across frames
 };
 
 class InstanceModelHeader
-{ // TODO : double sided to .obj with material names
+{ 
 public:
 
 	InstanceModelHeader() = default;
@@ -358,16 +339,14 @@ public:
 
 	void Clear();
 	const std::string& GetName() const;
-	std::vector<AnimatedFace>& GetGeometry();
+	std::vector<Tri>& GetGeometry();
 	bool IsAnimated() const { return m_isAnimated; }
 	
-	void LoadOBJ(const std::filesystem::path& objFilename, std::unordered_map<std::string, Texture>& materialToTexture);
 	bool LoadGLTF(const std::filesystem::path& gltfPath, std::unordered_map<std::string, Texture>& materialToTexture);
-	void ExportOBJ(const std::filesystem::path& modelDir, std::string baseFileName, std::unordered_map<std::string, Texture>& materialToTexture);
 	void ExportGLTF(const std::filesystem::path& modelDir, const std::string& baseFileName, std::unordered_map<std::string, Texture>& materialToTexture) const;
-	nlohmann::json WriteMetadataJson(const std::string& objFile, const std::string& mtlFile, const std::string& gltfFile) const;
+	nlohmann::json WriteMetadataJson(const std::string& gltfFile) const;
 
-	bool RenderUI(std::unordered_map<std::string, Texture>& materialToTexture);
+	bool RenderUI();
 	void SerializeInto(std::vector<uint8_t>& output, uint32_t modelOffset,
 		size_t headerStructOffset,
 		std::unordered_map<std::string, Texture>& materialToTexture,
@@ -379,22 +358,19 @@ private:
 	bool m_hasScale;
 	Vec3 m_scale;
 	int16_t m_scaleOrPad;
-	bool m_hasOrigin;
-	Vec3 m_origin;
-	int16_t m_originOrPad;
 	std::vector<ModelAnimation> m_animations; // ALWAYS >= 1 entry after construction; entry 0's frame 0 is the rest pose
 	uint32_t m_unk1; // 0x10
-	uint32_t m_colorCount; // At offCommandList, before the 1st command TODO: change to "flag animated" for if >63
+	bool m_bannerWave; // For Banner start flag waving animation, encoded with colorCount > 63
 	bool m_isAnimated = false;
 };
 
-
+size_t GenerateUniqueModelKey();
 
 class InstanceModel // group of models ?
 {
 public:
-	InstanceModel() = default;
-	InstanceModel(PSX::Model model, std::string modelName);
+	InstanceModel();
+	InstanceModel(PSX::Model model);
 	InstanceModel(const std::filesystem::path& jsonPath, std::unordered_map<std::string, Texture>& materialToTexture);
 
 	const bool IsValid() const { return (m_valid && !m_headers.empty()); }
@@ -406,7 +382,7 @@ public:
 	void SetParsed(bool parsed) { m_parsed = parsed; }
 	void Export(const std::filesystem::path& exportDir, std::unordered_map<std::string, Texture>& materialToTexture);
 
-	bool RenderUI(std::unordered_map<std::string, Texture>& materialToTexture, std::function<void(void)> refreshTextureStores);
+	bool RenderUI(std::unordered_map<std::string, Texture>& materialToTexture);
 	std::vector<uint8_t> Serialize(uint32_t modelOffset, std::unordered_map<std::string, Texture>& materialToTexture,
 		std::vector<uint32_t>& outPointerLocations) const;
 
@@ -417,16 +393,33 @@ private:
 	std::string m_name;
 	ModelId m_id;
 	std::vector<Primitive> m_parsedGeometry;
-	bool m_parsed = false;
-	bool m_valid = true;
+	bool m_parsed;
+	bool m_valid;
 };
+
+
+
+
+// Per-InstDef settings for emitting a BSP-leaf collision hitbox at save time.
+// Presets mirror flag/extent combos observed in vanilla levels (proto8).
+struct InstanceHitbox
+{
+	enum Preset : int { PICKUP = 0, SOLID_WALL = 1, STATIC_DECORATION = 2, CUSTOM = 3 };
+
+	bool enabled = false;
+	int preset = Preset::PICKUP;
+	uint32_t flags = 0x000004C0; // vanilla pickup flags (bit 0x80 set = trigger-only)
+	float halfExtent = 1.1875f; // vanilla pickup trigger radius
+	float yOffset = 0; // hitbox center offset above InstDef position
+};
+
 
 
 class Instance
 {
 public:
-	Instance(std::string model);
-	Instance(PSX::InstDef);
+	Instance(size_t modelKey);
+	Instance(PSX::InstDef, size_t modelKey);
 
 	// Name
 	const std::string& GetName() const { return m_name; }
@@ -452,9 +445,8 @@ public:
 	const Color& GetColor() const { return m_color; }
 	void SetColor(const Color& color) { m_color = color; }
 
-	// Model name
-	std::string GetModelName() const { return m_modelName; }
-	void SetModelName(std::string model) { m_modelName = model; }
+	size_t GetModelKey() const { return m_modelKey; }
+	void SetModelKey(size_t key) { m_modelKey = key; }
 
 	// Flags
 	uint32_t GetFlags() const { return m_flags; }
@@ -474,8 +466,9 @@ public:
 	void SetHitbox(const InstanceHitbox& hitbox) { m_hitbox = hitbox; }
 	void SetHitbox(const PSX::InstHitbox& hitbox);
 
-	BoundingBox ComputeBBox();
-	bool RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, const std::vector<std::string>& modelNames, Vec3& queryPoint);
+	BoundingBox ComputeBBox() const;
+	Vec3 Center() const;
+	bool RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, const std::unordered_map<size_t, InstanceModel>& modelInstances, Vec3& queryPoint, std::vector<Quadblock>& quadblocks);
 	std::vector<uint8_t> Serialize(uint32_t offModel) const;
 	PSX::InstHitbox SerializeHitbox(uint32_t insatnceOffset) const;
 private:
@@ -485,7 +478,7 @@ private:
 	Vec3 m_rot;
 	ModelId m_modelID;
 	Color m_color;
-	std::string m_modelName;
+	size_t m_modelKey;
 	uint32_t m_flags;
 	uint32_t m_unk24;
 	uint32_t m_unk28;

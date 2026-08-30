@@ -4,6 +4,7 @@
 #include "path.h"
 #include "quadblock.h"
 #include "animtexture.h"
+#include "minimap.h"
 
 #include <nlohmann/json.hpp>
 
@@ -28,6 +29,9 @@ void from_json(const nlohmann::json& json, Stars& stars);
 
 void to_json(nlohmann::json& json, const Weather& weather);
 void from_json(const nlohmann::json& json, Weather& weather);
+
+void to_json(nlohmann::json& json, const Minimap& minimap);
+void from_json(const nlohmann::json& json, Minimap& minimap);
 
 void ReadBinaryFile(std::vector<uint8_t>& v, const std::filesystem::path& path);
 

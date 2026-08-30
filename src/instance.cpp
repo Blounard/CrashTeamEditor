@@ -16,399 +16,22 @@
 
 
 
-namespace
+std::string MakeUniqueMaterialName(const std::string& baseName, const std::unordered_map<std::string, Texture>& materialToTexture)
 {
-	// --- Parsing helpers, file-local to this translation unit ---
-
-	int ParseIntSafe(const std::string& s)
+	if (!materialToTexture.contains(baseName)) { return baseName; }
+	int suffix = 1;
+	std::string candidate;
+	do
 	{
-		if (s.empty()) { return 0; }
-		try { return std::stoi(s); }
-		catch (...) { return 0; }
-	}
-
-	struct ParsedMaterial
-	{
-		std::string localName;
-		std::string textureFile; // relative filename from map_Kd, empty if none
-	};
-
-	std::vector<ParsedMaterial> ParseMtlFile(const std::filesystem::path& mtlPath)
-	{
-		std::vector<ParsedMaterial> materials;
-		std::ifstream file(mtlPath);
-		if (!file) { return materials; }
-
-		std::string line;
-		while (std::getline(file, line))
-		{
-			std::istringstream iss(line);
-			std::string token;
-			iss >> token;
-
-			if (token == "newmtl")
-			{
-				ParsedMaterial mat;
-				iss >> mat.localName;
-				materials.push_back(mat);
-			}
-			else if (token == "map_Kd" && !materials.empty())
-			{
-				iss >> materials.back().textureFile;
-			}
-		}
-		return materials;
-	}
-
-	struct ParsedOBJVertex
-	{
-		Vec3 pos;
-		Color color = Color(static_cast<unsigned char>(128), 128, 128);
-	};
-
-	struct ParsedFace
-	{
-		int vIdx[3] = { 0, 0, 0 };
-		int vtIdx[3] = { 0, 0, 0 };
-		int vnIdx[3] = { 0, 0, 0 };
-		std::string material; // local material name from the last "usemtl"
-	};
-
-	void ParseFaceVertexToken(const std::string& token, int& v, int& vt, int& vn)
-	{
-		v = 0; vt = 0; vn = 0;
-		size_t firstSlash = token.find('/');
-		if (firstSlash == std::string::npos)
-		{
-			v = ParseIntSafe(token);
-			return;
-		}
-		v = ParseIntSafe(token.substr(0, firstSlash));
-
-		size_t secondSlash = token.find('/', firstSlash + 1);
-		if (secondSlash == std::string::npos)
-		{
-			vt = ParseIntSafe(token.substr(firstSlash + 1));
-			return;
-		}
-		vt = ParseIntSafe(token.substr(firstSlash + 1, secondSlash - firstSlash - 1));
-		vn = ParseIntSafe(token.substr(secondSlash + 1));
-	}
-
-	void ParseObjFile(const std::filesystem::path& objPath,
-		std::vector<ParsedOBJVertex>& outVerts,
-		std::vector<Vec2>& outUVs,
-		std::vector<Vec3>& outNormals,
-		std::vector<ParsedFace>& outFaces)
-	{
-		std::ifstream file(objPath);
-		if (!file) { return; }
-
-		std::string currentMaterial;
-		std::string line;
-		while (std::getline(file, line))
-		{
-			if (line.empty() || line[0] == '#') { continue; }
-			std::istringstream iss(line);
-			std::string token;
-			iss >> token;
-
-			if (token == "v")
-			{
-				ParsedOBJVertex v;
-				float r = 0.5f, g = 0.5f, b = 0.5f;
-				iss >> v.pos.x >> v.pos.y >> v.pos.z;
-				iss >> r >> g >> b; // our exporter always writes these; default gray if absent
-				v.color = Color(
-					static_cast<unsigned char>(std::clamp(r, 0.0f, 1.0f) * 255.0f),
-					static_cast<unsigned char>(std::clamp(g, 0.0f, 1.0f) * 255.0f),
-					static_cast<unsigned char>(std::clamp(b, 0.0f, 1.0f) * 255.0f));
-				outVerts.push_back(v);
-			}
-			else if (token == "vt")
-			{
-				Vec2 uv;
-				iss >> uv.x >> uv.y;
-				outUVs.push_back(uv);
-			}
-			else if (token == "vn")
-			{
-				Vec3 n;
-				iss >> n.x >> n.y >> n.z;
-				outNormals.push_back(n);
-			}
-			else if (token == "usemtl")
-			{
-				iss >> currentMaterial;
-			}
-			else if (token == "f")
-			{
-				ParsedFace face;
-				face.material = currentMaterial;
-				for (int i = 0; i < 3; i++)
-				{
-					std::string vertToken;
-					iss >> vertToken;
-					ParseFaceVertexToken(vertToken, face.vIdx[i], face.vtIdx[i], face.vnIdx[i]);
-				}
-				outFaces.push_back(face);
-			}
-		}
-	}
-
-	// Ensures 'baseName' doesn't collide with an existing key in materialToTexture,
-	// appending a numeric suffix ("wood" -> "wood1") until it's unique.
-	std::string MakeUniqueMaterialName(const std::string& baseName,
-		const std::unordered_map<std::string, Texture>& materialToTexture)
-	{
-		if (!materialToTexture.contains(baseName)) { return baseName; }
-		int suffix = 1;
-		std::string candidate;
-		do
-		{
-			candidate = baseName + std::to_string(suffix);
-			suffix++;
-		} while (materialToTexture.contains(candidate));
-		return candidate;
-	}
-
-	// Loads an .obj + .mtl pair into a flat triangle list, creating a new Texture
-	// object (with a globally-unique material name) for every material that has
-	// a texture, and adding it to materialToTexture.
-	std::vector<Tri> LoadFacesFromObjMtl(const std::filesystem::path& objPath,
-		const std::filesystem::path& mtlPath,
-		std::unordered_map<std::string, Texture>& materialToTexture)
-	{
-		std::vector<Tri> faces;
-
-		std::vector<ParsedMaterial> materials = ParseMtlFile(mtlPath);
-
-		// Local (per-header, as written in the .mtl) material name -> globally-unique name
-		std::unordered_map<std::string, std::string> localToGlobalMaterial;
-		for (const ParsedMaterial& mat : materials)
-		{
-			if (mat.textureFile.empty())
-			{
-				// No texture (e.g. "notex") — nothing to add to the shared map,
-				// so no uniqueness concern; keep the name as-is.
-				localToGlobalMaterial[mat.localName] = mat.localName;
-				continue;
-			}
-
-			std::string globalName = MakeUniqueMaterialName(mat.localName, materialToTexture);
-			std::filesystem::path pngPath = mtlPath.parent_path() / mat.textureFile;
-			materialToTexture.emplace(globalName, Texture(pngPath));
-			localToGlobalMaterial[mat.localName] = globalName;
-		}
-
-		std::vector<ParsedOBJVertex> verts;
-		std::vector<Vec2> uvs;
-		std::vector<Vec3> normals;
-		std::vector<ParsedFace> parsedFaces;
-		ParseObjFile(objPath, verts, uvs, normals, parsedFaces);
-
-		faces.reserve(parsedFaces.size());
-		for (const ParsedFace& pf : parsedFaces)
-		{
-			Point p[3];
-			bool hasNormal[3] = { false, false, false };
-
-			for (int i = 0; i < 3; i++)
-			{
-				int vIndex = pf.vIdx[i] - 1;
-				if (vIndex >= 0 && vIndex < static_cast<int>(verts.size()))
-				{
-					p[i].pos = verts[vIndex].pos;
-					p[i].color = verts[vIndex].color;
-				}
-
-				int vtIndex = pf.vtIdx[i] - 1;
-				if (vtIndex >= 0 && vtIndex < static_cast<int>(uvs.size()))
-				{
-					Vec2 rawUV = uvs[vtIndex]; // as stored in the .obj file (bottom-left origin)
-					if (rawUV.x < 0.0f || rawUV.x > 1.0f || rawUV.y < 0.0f || rawUV.y > 1.0f)
-					{
-						printf("WARNING: UV (%.4f, %.4f) out of [0,1] range in %s, clamping\n",
-							rawUV.x, rawUV.y, objPath.string().c_str());
-						rawUV.x = std::clamp(rawUV.x, 0.0f, 1.0f);
-						rawUV.y = std::clamp(rawUV.y, 0.0f, 1.0f);
-					}
-					// Invert ExportOBJ's `1.0f - v` to get back to top-left origin
-					p[i].uv = Vec2(rawUV.x, 1.0f - rawUV.y);
-				}
-
-				int vnIndex = pf.vnIdx[i] - 1;
-				if (vnIndex >= 0 && vnIndex < static_cast<int>(normals.size()))
-				{
-					p[i].normal = normals[vnIndex];
-					hasNormal[i] = true;
-				}
-			}
-
-			// Fallback: recompute a flat face normal if the .obj didn't provide one
-			if (!hasNormal[0] || !hasNormal[1] || !hasNormal[2])
-			{
-				Vec3 e1 = p[1].pos - p[0].pos;
-				Vec3 e2 = p[2].pos - p[0].pos;
-				Vec3 n = e1.Cross(e2);
-				if (n.LengthSquared() > 0.0001f) { n.Normalize(); }
-				p[0].normal = n; p[1].normal = n; p[2].normal = n;
-			}
-
-			Tri tri(p[0], p[1], p[2]);
-			auto matIt = localToGlobalMaterial.find(pf.material);
-			tri.texture = (matIt != localToGlobalMaterial.end()) ? matIt->second : std::string();
-			faces.push_back(tri);
-		}
-
-		return faces;
-	}
-}
-namespace
-{
-	void AppendBytes(std::vector<uint8_t>& buffer, const void* data, size_t size)
-	{
-		const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data);
-		buffer.insert(buffer.end(), bytes, bytes + size);
-	}
-
-	template <typename T>
-	void AppendValue(std::vector<uint8_t>& buffer, const T& value)
-	{
-		AppendBytes(buffer, &value, sizeof(T));
-	}
-
-	void AppendPadding(std::vector<uint8_t>& buffer, size_t alignment)
-	{
-		size_t remainder = buffer.size() % alignment;
-		if (remainder != 0)
-		{
-			buffer.insert(buffer.end(), alignment - remainder, uint8_t(0));
-		}
-	}
-
-	// Inverse of the decoder's per-axis dequantization:
-	//   value = ((rawByte / 255.0f) + origin) * scale
-	uint8_t QuantizeVertexAxis(float value, float scale, float origin)
-	{
-		if (std::fabs(scale) < 0.0001f) { return 0; } // degenerate (flat) axis
-		float normalized = (value / scale) - origin;
-		float raw = std::round(normalized * 255.0f);
-		return static_cast<uint8_t>(std::clamp(raw, 0.0f, 255.0f));
-	}
-
-	// Encodes an engine-space position into the PSX format's byte triple:
-	// axis-shuffled (X,Z,Y storage order) and sign-flipped on X/Z, mirroring
-	// DecodeModelHeaderTriangles' vertex decode in reverse.
-	void EncodeVertexBytes(const Vec3& pos, const Vec3& scale, const Vec3& origin, uint8_t outBytes[3])
-	{
-		float preFlipX = -pos.x;
-		float preFlipY = pos.y;
-		float preFlipZ = -pos.z;
-
-		outBytes[0] = QuantizeVertexAxis(preFlipX, scale.x, origin.x); // decode reads src[0] -> pos.x
-		outBytes[2] = QuantizeVertexAxis(preFlipY, scale.y, origin.y); // decode reads src[2] -> pos.y
-		outBytes[1] = QuantizeVertexAxis(preFlipZ, scale.z, origin.z); // decode reads src[1] -> pos.z
-	}
-
-	// Useless function, must remove to use directly ConvertColor
-	uint32_t PackColor(const Color& c)
-	{
-		PSX::Color psxColor = ConvertColor(c);
-		return (uint32_t(psxColor.r) << 0) | (uint32_t(psxColor.g) << 8) |
-			(uint32_t(psxColor.b) << 16) | (uint32_t(psxColor.a) << 24);
-	}
-
-	// colorCoordIndex is only 7 bits wide (max 128 entries per header), so
-	// colors are deduplicated by exact value. If a header genuinely needs more
-	// than 128 distinct colors, we warn once and reuse the last slot rather
-	// than silently corrupt the index via bitfield truncation.
-	uint32_t GetOrAddColorIndex(std::vector<uint32_t>& palette, std::unordered_map<uint32_t, uint32_t>& lookup,
-		const Color& color, const std::string& headerName, bool& warnedOverflow)
-	{
-		uint32_t packed = PackColor(color);
-		auto it = lookup.find(packed);
-		if (it != lookup.end()) { return it->second; }
-
-		if (palette.size() >= 128)
-		{
-			if (!warnedOverflow)
-			{
-				printf("WARNING: header '%s' needs more than 128 unique colors; some colors will be approximated\n", headerName.c_str());
-				warnedOverflow = true;
-			}
-			return static_cast<uint32_t>(palette.size() - 1);
-		}
-
-		uint32_t index = static_cast<uint32_t>(palette.size());
-		palette.push_back(packed);
-		lookup[packed] = index;
-		return index;
-	}
-}
-namespace detail
-{
-	// ---- low-level helpers ----
-
-	template <typename T>
-	void writePOD(std::ostream& os, const T& value)
-	{
-		static_assert(std::is_trivially_copyable<T>::value, "writePOD requires trivially copyable type");
-		os.write(reinterpret_cast<const char*>(&value), sizeof(T));
-	}
-
-	template <typename T>
-	void readPOD(std::istream& is, T& value)
-	{
-		static_assert(std::is_trivially_copyable<T>::value, "readPOD requires trivially copyable type");
-		is.read(reinterpret_cast<char*>(&value), sizeof(T));
-		if (!is)
-			throw std::runtime_error("Unexpected end of file while reading POD value");
-	}
-
-	void writeString(std::ostream& os, const std::string& s)
-	{
-		uint32_t len = static_cast<uint32_t>(s.size());
-		writePOD(os, len);
-		if (len > 0)
-			os.write(s.data(), len);
-	}
-
-	std::string readString(std::istream& is)
-	{
-		uint32_t len = 0;
-		readPOD(is, len);
-		std::string s(len, '\0');
-		if (len > 0)
-		{
-			is.read(&s[0], len);
-			if (!is)
-				throw std::runtime_error("Unexpected end of file while reading string data");
-		}
-		return s;
-	}
-
-	void writeVec3(std::ostream& os, const Vec3& v)
-	{
-		writePOD(os, v.x);
-		writePOD(os, v.y);
-		writePOD(os, v.z);
-	}
-
-	Vec3 readVec3(std::istream& is)
-	{
-		Vec3 v{};
-		readPOD(is, v.x);
-		readPOD(is, v.y);
-		readPOD(is, v.z);
-		return v;
-	}
+		candidate = baseName + "_" + std::to_string(suffix);
+		suffix++;
+	} while (materialToTexture.contains(candidate));
+	return candidate;
 }
 
 
 
-
-namespace
+namespace // Load GLTF
 {
 
 
@@ -480,9 +103,6 @@ namespace
 		return ReadFloatAccessorFlat(model, accessorIdx, 1);
 	}
 
-	// COLOR_0 may be VEC3/VEC4 and FLOAT / normalized UBYTE / normalized
-	// USHORT per spec (Blender commonly exports normalized UBYTE VEC4).
-	// Alpha, if present, is dropped -- we don't track per-vertex alpha.
 	static std::vector<Vec3> ReadColorAccessor(const tinygltf::Model& model, int accessorIdx)
 	{
 		const tinygltf::Accessor& acc = model.accessors[accessorIdx];
@@ -598,8 +218,6 @@ namespace
 		);
 	}
 
-	// Linear part only -- no translation. Used for morph-target deltas, which
-	// are directions, not points.
 	static Vec3 Mat4TransformVector(const Mat4& m, const Vec3& v)
 	{
 		return Vec3(
@@ -635,10 +253,9 @@ namespace
 			if (FindMeshNodeRecursive(model, rootNode, Mat4{}, outMeshIdx, outMeshNodeIdx, outAncestorTransform)) { return true; }
 		return false;
 	}
-}
 
-namespace
-{
+
+
 	struct ChannelSampler
 	{
 		std::vector<float> times;
@@ -648,9 +265,6 @@ namespace
 		bool valid = false;
 	};
 
-	// Evaluates a channel at time t via binary search + STEP/LINEAR
-	// interpolation between the two surrounding real keyframes. Clamps to
-	// the first/last value outside the authored time range.
 	void EvaluateChannel(const ChannelSampler& ch, float t, float* out)
 	{
 		if (!ch.valid || ch.times.empty())
@@ -686,10 +300,6 @@ namespace
 		}
 	}
 
-	// Quaternion lerp+renormalize ("nlerp"), not true slerp. A standard,
-	// widely-used approximation -- adequate at our fixed 30Hz sample rate
-	// for ordinary rotation content; only meaningfully diverges from true
-	// slerp on very large angular deltas between adjacent keyframes.
 	void EvaluateQuatChannel(const ChannelSampler& ch, float t, float outQuat[4])
 	{
 		if (!ch.valid || ch.times.empty()) { outQuat[0] = outQuat[1] = outQuat[2] = 0; outQuat[3] = 1; return; }
@@ -716,18 +326,6 @@ namespace
 
 	std::vector<float> ReadVec4Flat(const tinygltf::Model& model, int accessorIdx)
 	{
-		/*const tinygltf::Accessor& acc = model.accessors[accessorIdx];
-		const tinygltf::BufferView& bv = model.bufferViews[acc.bufferView];
-		const tinygltf::Buffer& buf = model.buffers[bv.buffer];
-		size_t stride = bv.byteStride != 0 ? bv.byteStride : sizeof(float) * 4;
-		const uint8_t* base = buf.data.data() + bv.byteOffset + acc.byteOffset;
-		std::vector<float> out(acc.count * 4);
-		for (size_t i = 0; i < acc.count; i++)
-		{
-			const float* f = reinterpret_cast<const float*>(base + i * stride);
-			for (int c = 0; c < 4; c++) out[i * 4 + c] = f[c];
-		}
-		return out;*/
 		return ReadFloatAccessorFlat(model, accessorIdx, 4);
 	}
 
@@ -746,22 +344,13 @@ namespace
 				return cs; // valid stays false -> caller falls back to the node's static value
 			}
 			cs.times = ReadScalarAccessor(model, sampler.input);
-			cs.values = (numComponents == 4) ? ReadVec4Flat(model, sampler.output) : [&] {
-				std::vector<float> flat;
-				if (numComponents == 3)
-					for (const Vec3& v : ReadVec3Accessor(model, sampler.output)) { flat.push_back(v.x); flat.push_back(v.y); flat.push_back(v.z); }
-				return flat;
-				}();
+			cs.values = ReadFloatAccessorFlat(model, sampler.output, numComponents);
 			cs.interpolation = sampler.interpolation;
 			cs.valid = true;
 			return cs;
 		}
 		return cs;
 	}
-}
-
-namespace
-{
 
 
 	struct PrimData
@@ -779,7 +368,7 @@ namespace
 
 	std::vector<ModelAnimation> BuildAnimationsFromTRS(const tinygltf::Model& model, const std::vector<PrimData>& prims,
 		int meshNodeIdx, const Mat4& ancestorTransform,
-		const std::function<std::vector<AnimatedFace>(const std::function<Vec3(size_t, size_t)>&)>& buildFaces)
+		const std::function<std::vector<Tri>(const std::function<Vec3(size_t, size_t)>&)>& buildFaces)
 	{
 		std::vector<ModelAnimation> out;
 		const tinygltf::Node& restNode = model.nodes[meshNodeIdx];
@@ -809,7 +398,6 @@ namespace
 			ModelAnimation animation{};
 			animation.name = !anim.name.empty() ? anim.name : ("anim_" + std::to_string(out.size()));
 			animation.interpolated = (refCh->interpolation == "LINEAR");
-			animation.hasRawNumFrames = false;
 
 			std::vector<double> restT = restNode.translation, restR = restNode.rotation, restS = restNode.scale;
 
@@ -859,12 +447,18 @@ namespace
 
 		int meshIdx = -1; 
 		int meshNodeIdx = -1;
-		Mat4 nodeTransform{};
-		if (!FindMeshNode(model, meshIdx, meshNodeIdx, nodeTransform))
+		Mat4 ancestorTransform{};
+		if (!FindMeshNode(model, meshIdx, meshNodeIdx, ancestorTransform))
 		{
 			if (model.meshes.empty()) { printf("ERROR: no mesh in %s\n", gltfPath.string().c_str()); return false; }
 			meshIdx = 0; // no scene graph present -- fall back to the first mesh, identity transform
 		}
+		Mat4 fullTransform = ancestorTransform;
+		if (meshNodeIdx >= 0)
+		{
+			fullTransform = Mat4Multiply(ancestorTransform, Mat4FromNode(model.nodes[meshNodeIdx]));
+		}
+
 		const tinygltf::Mesh& mesh = model.meshes[meshIdx];
 		std::filesystem::path gltfDir = gltfPath.parent_path();
 
@@ -889,8 +483,8 @@ namespace
 			else { pd.cornerToVertex.resize(rawPositions.size()); std::iota(pd.cornerToVertex.begin(), pd.cornerToVertex.end(), 0); }
 
 			pd.basePositions.reserve(pd.cornerToVertex.size());
-			for (uint32_t vi : pd.cornerToVertex)
-				pd.basePositions.push_back(Mat4TransformPoint(nodeTransform, rawPositions[vi]));
+			for (uint32_t vi : pd.cornerToVertex) 
+				pd.basePositions.push_back(Mat4TransformPoint(fullTransform, rawPositions[vi]));
 
 			pd.localPositions.reserve(pd.cornerToVertex.size());
 			for (uint32_t vi : pd.cornerToVertex)
@@ -927,8 +521,15 @@ namespace
 						std::filesystem::path pngPath = gltfDir / filename;
 						std::string baseName = !mat.name.empty() ? mat.name : std::filesystem::path(filename).stem().string();
 						std::string globalName = MakeUniqueMaterialName(baseName, materialToTexture);
-						materialToTexture.emplace(globalName, Texture(pngPath));
-						pd.materialName = globalName;
+						if (!std::filesystem::exists(pngPath))
+						{
+							printf("WARNING: texture file not found: %s\n", pngPath.string().c_str());
+						}
+						else
+						{
+							materialToTexture.emplace(globalName, Texture(pngPath));
+							pd.materialName = globalName;
+						}
 					}
 				}
 			}
@@ -945,7 +546,7 @@ namespace
 				auto tPosIt = target.find("POSITION");
 				std::vector<Vec3> deltas = tPosIt != target.end() ? ReadVec3Accessor(model, tPosIt->second)
 					: std::vector<Vec3>(rawPositions.size(), Vec3(0, 0, 0));
-				for (Vec3& d : deltas) { d = Mat4TransformVector(nodeTransform, d); }
+				for (Vec3& d : deltas) { d = Mat4TransformVector(fullTransform, d); }
 				pd.targetDeltasByVertex.push_back(std::move(deltas));
 			}
 
@@ -955,41 +556,41 @@ namespace
 		if (prims.empty()) { printf("ERROR: no usable triangle primitives in %s\n", gltfPath.string().c_str()); return false; }
 		if (globalNumTargets == SIZE_MAX) { globalNumTargets = 0; }
 
-		auto BuildFaces = [&](const std::function<Vec3(size_t primIdx, size_t corner)>& getPos) -> std::vector<AnimatedFace>
+		auto BuildFaces = [&](const std::function<Vec3(size_t primIdx, size_t corner)>& getPos) -> std::vector<Tri>
 			{
-				std::vector<AnimatedFace> faces;
+				std::vector<Tri> faces;
 				for (size_t p = 0; p < prims.size(); p++)
 				{
 					const PrimData& pd = prims[p];
 					for (size_t c = 0; c + 2 < pd.basePositions.size(); c += 3)
 					{
-						AnimatedFace af;
-						af.doubleSided = pd.doubleSided;
-						af.tri.texture = pd.materialName;
+						Tri tri;
+						tri.doubleSided = pd.doubleSided;
+						tri.texture = pd.materialName;
 						for (int k = 0; k < 3; k++)
 						{
-							af.tri.p[k].pos = getPos(p, c + k);
-							af.tri.p[k].uv = pd.uvs[c + k];
+							tri.p[k].pos = getPos(p, c + k);
+							tri.p[k].uv = pd.uvs[c + k];
 							const Vec3& col = pd.colors[c + k];
-							af.tri.p[k].color = Color(
+							tri.p[k].color = Color(
 								static_cast<unsigned char>(std::clamp(col.x, 0.0f, 1.0f) * 255.0f),
 								static_cast<unsigned char>(std::clamp(col.y, 0.0f, 1.0f) * 255.0f),
 								static_cast<unsigned char>(std::clamp(col.z, 0.0f, 1.0f) * 255.0f));
 						}
-						Vec3 e1 = af.tri.p[1].pos - af.tri.p[0].pos;
-						Vec3 e2 = af.tri.p[2].pos - af.tri.p[0].pos;
+						Vec3 e1 = tri.p[1].pos - tri.p[0].pos;
+						Vec3 e2 = tri.p[2].pos - tri.p[0].pos;
 						Vec3 n = e1.Cross(e2);
 						if (n.LengthSquared() > 0.0001f) { n.Normalize(); }
-						af.tri.p[0].normal = af.tri.p[1].normal = af.tri.p[2].normal = n;
-						faces.push_back(af);
+						tri.p[0].normal = tri.p[1].normal = tri.p[2].normal = n;
+						faces.push_back(tri);
 					}
 				}
 				return faces;
 			};
 
-		std::vector<AnimatedFace> baseFaces = BuildFaces([&](size_t p, size_t c) { return prims[p].basePositions[c]; });
+		std::vector<Tri> baseFaces = BuildFaces([&](size_t p, size_t c) { return prims[p].basePositions[c]; });
 
-		auto BuildBlendedFrame = [&](const float* weights, size_t numWeights) -> std::vector<AnimatedFace>
+		auto BuildBlendedFrame = [&](const float* weights, size_t numWeights) -> std::vector<Tri>
 			{
 				return BuildFaces([&](size_t p, size_t c) -> Vec3
 					{
@@ -1034,7 +635,6 @@ namespace
 				ModelAnimation animation{};
 				animation.name = !anim.name.empty() ? anim.name : ("anim_" + std::to_string(outAnimations.size()));
 				animation.interpolated = (sampler.interpolation == "LINEAR");
-				animation.hasRawNumFrames = false;
 
 				for (size_t f = 0; f < times.size(); f++)
 				{
@@ -1053,8 +653,7 @@ namespace
 		{
 			if (meshNodeIdx >= 0 && !model.animations.empty())
 			{
-				// TODO : change the fps setting so 1 frame is blender = 1 frame in game, regardless or blender scene fps
-				std::vector<ModelAnimation> trsAnims = BuildAnimationsFromTRS(model, prims, meshNodeIdx, nodeTransform, BuildFaces);
+				std::vector<ModelAnimation> trsAnims = BuildAnimationsFromTRS(model, prims, meshNodeIdx, ancestorTransform, BuildFaces);
 				if (!trsAnims.empty())
 				{
 					outAnimations = std::move(trsAnims);
@@ -1076,38 +675,17 @@ namespace
 
 
 
-static size_t Align4(size_t value)
-{
-	return (value + 3) & ~static_cast<size_t>(3);
-}
-
-// Component-wise divide with a guard: an axis with truly zero scale (shouldn't
-// happen after MIN_BOX_SIZE clamping, but a raw m_hasScale override could still
-// supply one) maps to origin 0 rather than producing inf/UB.
-static Vec3 SafeDivide(const Vec3& num, const Vec3& denom)
-{
-	return Vec3(
-		std::fabs(denom.x) < 0.0001f ? 0.0f : num.x / denom.x,
-		std::fabs(denom.y) < 0.0001f ? 0.0f : num.y / denom.y,
-		std::fabs(denom.z) < 0.0001f ? 0.0f : num.z / denom.z
-	);
-}
-
-
 InstanceModelHeader::InstanceModelHeader(PSX::ModelHeader& modelHeader, PSX::ModelFrame& baseFrame, uint32_t colorCount,
 	std::vector<ModelAnimation> animations, bool isAnimated)
 {
 	m_name = std::string(modelHeader.name, strnlen(modelHeader.name, sizeof(modelHeader.name)));
 	m_maxDistLOD = ConvertFP(modelHeader.maxDistanceLOD, FP_ONE_GEO);
 	m_flags = modelHeader.flags;
-	m_scale = ConvertPSXVec3(modelHeader.scale, FP_ONE_MODEL);
+	m_scale = ConvertPSXVec3(modelHeader.scale, FP_ONE_MODEL_SCALE);
 	m_scaleOrPad = modelHeader.maybeScaleMaybePadding;
-	m_origin = ConvertPSXVec3(baseFrame.pos, FP_ONE_GEO); // TODO VERIFY
-	m_originOrPad = baseFrame.maybePosMaybePadding;
 	m_unk1 = modelHeader.unk1;
-	m_colorCount = colorCount;
+	m_bannerWave = colorCount > 63;
 	m_hasScale = true;
-	m_hasOrigin = true;
 	m_animations = std::move(animations);
 	m_isAnimated = isAnimated;
 }
@@ -1119,11 +697,9 @@ InstanceModelHeader::InstanceModelHeader(const nlohmann::json& headerJson, const
 	, m_maxDistLOD(headerJson.value("maxDistanceLOD", 0.0f))
 	, m_flags(headerJson.value("flags", static_cast<uint16_t>(0)))
 	, m_scale()
-	, m_origin()
 	, m_scaleOrPad(headerJson.value("scaleOrPad", static_cast<int16_t>(0)))
-	, m_originOrPad(headerJson.value("originOrPad", static_cast<int16_t>(0)))
 	, m_unk1(headerJson.value("unk1", static_cast<uint32_t>(0)))
-	, m_colorCount(headerJson.value("colorCount", static_cast<uint32_t>(0)))
+	, m_bannerWave(headerJson.value("bannerWave", false))
 {
 	m_hasScale = false;
 	if (headerJson.contains("scale"))
@@ -1134,50 +710,27 @@ InstanceModelHeader::InstanceModelHeader(const nlohmann::json& headerJson, const
 		m_scale.z = scaleJson.value("z", 0.0f);
 		m_hasScale = true;
 	}
-	m_hasOrigin = false;
-	if (headerJson.contains("m_origin"))
+	
+	
+	std::string gltfFilename = headerJson.value("gltfFile", std::string());
+	printf("filename : %s\n", gltfFilename.c_str());
+	std::filesystem::path gltfPath = modelDir / gltfFilename;
+	std::vector<ModelAnimation> animations;
+	bool isAnimated = false;
+	if (LoadGLTFHeaderData(gltfPath, materialToTexture, animations, isAnimated))
 	{
-		const nlohmann::json& scaleJson = headerJson["m_origin"];
-		m_origin.x = scaleJson.value("x", 0.0f);
-		m_origin.y = scaleJson.value("y", 0.0f);
-		m_origin.z = scaleJson.value("z", 0.0f);
-		m_hasOrigin = true;
+		m_animations = std::move(animations);
+		m_isAnimated = isAnimated;
+	}
+	else
+	{
+		printf("ERROR: failed to import %s -- header will have empty geometry\n", gltfPath.string().c_str());
+		ModelAnimation empty{};
+		empty.frames.push_back({});
+		m_animations.push_back(std::move(empty));
+		m_isAnimated = false;
 	}
 	
-
-	//if (headerJson.value("animated", false))
-	{
-		std::string gltfFilename = headerJson.value("gltfFile", std::string());
-		printf("filename : %s\n", gltfFilename.c_str());
-		std::filesystem::path gltfPath = modelDir / gltfFilename;
-		std::vector<ModelAnimation> animations;
-		bool isAnimated = false;
-		if (LoadGLTFHeaderData(gltfPath, materialToTexture, animations, isAnimated))
-		{
-			m_animations = std::move(animations);
-			m_isAnimated = isAnimated;
-		}
-		else
-		{
-			printf("ERROR: failed to import %s -- header will have empty geometry\n", gltfPath.string().c_str());
-			ModelAnimation empty{};
-			empty.frames.push_back({});
-			m_animations.push_back(std::move(empty));
-			m_isAnimated = false;
-		}
-	}
-	//else
-	//{
-	//	std::string objFile = headerJson.value("objFile", std::string());
-	//	std::string mtlFile = headerJson.value("mtlFile", std::string());
-	//	std::vector<bool> doubleSided;
-	//	//std::vector<Tri> faces = LoadFacesFromObjMtl(modelDir / objFile, modelDir / mtlFile, materialToTexture, doubleSided);
-	//	ModelAnimation staticAnim{};
-	//	//staticAnim.frames.push_back(WrapFaces(faces, doubleSided));
-	//	m_animations.push_back(std::move(staticAnim));
-	//	m_isAnimated = false;
-	//}
-
 }
 
 
@@ -1189,10 +742,8 @@ void InstanceModelHeader::Clear()
 	m_flags = 0;
 	m_hasScale = false;
 	m_scaleOrPad = 0;
-	m_hasOrigin = false;
-	m_originOrPad = 0;
 	m_unk1 = 0;
-	m_colorCount = 0;
+	m_bannerWave = false;
 	m_animations.clear();
 }
 
@@ -1200,20 +751,9 @@ const std::string& InstanceModelHeader::GetName() const
 { 
 	return m_name; 
 }
-std::vector<AnimatedFace>& InstanceModelHeader::GetGeometry()  
+std::vector<Tri>& InstanceModelHeader::GetGeometry()
 {
 	return m_animations[0].frames[0];
-}
-
-void InstanceModelHeader::LoadOBJ(const std::filesystem::path& objFilename, std::unordered_map<std::string, Texture>& materialToTexture)
-{
-	std::filesystem::path mtlFilename = objFilename;
-	mtlFilename.replace_extension(".mtl");
-	//TODO IMPLEMENT
-	//m_faces = LoadFacesFromObjMtl(objFilename, mtlFilename, materialToTexture);
-	//m_faceDoubleSided = std::vector<bool>(m_faces.size(), false); // TODO IMPLEMENT
-	m_hasScale = false;
-	m_hasOrigin = false;
 }
 
 bool InstanceModelHeader::LoadGLTF(const std::filesystem::path& gltfPath, std::unordered_map<std::string, Texture>& materialToTexture)
@@ -1229,90 +769,19 @@ bool InstanceModelHeader::LoadGLTF(const std::filesystem::path& gltfPath, std::u
 	return false;
 }
 
-void InstanceModelHeader::ExportOBJ(const std::filesystem::path& modelDir, std::string baseFileName, std::unordered_map<std::string, Texture>& materialToTexture)
-{
-	std::unordered_map<std::string, std::vector<size_t>> materialToTris; //material name -> list of triangle index
-	for (size_t i = 0; i < m_animations[0].frames[0].size(); i++)
-		materialToTris[m_animations[0].frames[0][i].tri.texture].push_back(i);
-
-	// --- .mtl ---
-	std::ofstream mtl(modelDir / (baseFileName + ".mtl"));
-	if (mtl)
-	{
-		for (const auto& [matName, indices] : materialToTris)
-		{
-			if (materialToTexture[matName].IsEmpty()) continue;
-			std::filesystem::path sourcePath = materialToTexture[matName].GetPath();
-			std::filesystem::path destPath = modelDir / sourcePath.filename();
-
-			mtl << "newmtl " << matName << "\nKd 1 1 1\n";
-			mtl << "map_Kd " << sourcePath.filename() << "\n";
-			mtl << "\n";
-
-			// Copy .png to the modelDir aswell. (not directly extracted there, so they are initially extracted once if several quad/models share the same texture)
-			std::filesystem::copy_file(sourcePath, destPath, std::filesystem::copy_options::overwrite_existing);
-		}
-	}
-
-	// --- .obj ---
-	std::ofstream obj(modelDir / (baseFileName + ".obj"));
-	if (!obj) { return; }
-
-	obj << "# Auto-exported from .ctrmodel (triangle soup, no shared vertex indices)\n";
-	obj << "mtllib " << baseFileName << ".mtl\n";
-	obj << "o " << baseFileName << "\n\n";
-
-	size_t runningIndex = 0; // 1-based OBJ v/vt index, advances by 3 per triangle
-	for (const auto& [matName, indices] : materialToTris)
-	{
-		obj << "usemtl " << matName << "\n";
-		for (size_t triIdx : indices)
-		{
-			const Tri& tri = m_animations[0].frames[0][triIdx].tri;
-
-			Vec3 e1 = tri.p[1].pos - tri.p[0].pos;
-			Vec3 e2 = tri.p[2].pos - tri.p[0].pos;
-			Vec3 n = e1.Cross(e2);
-			if (n.LengthSquared() > 0.0001f) { n.Normalize(); }
-
-			for (int i = 0; i < 3; i++)
-			{
-				obj << "v " << tri.p[i].pos.x << " " << tri.p[i].pos.y << " " << tri.p[i].pos.z
-					<< " " << (tri.p[i].color.r / 255.0f) << " " << (tri.p[i].color.g / 255.0f)
-					<< " " << (tri.p[i].color.b / 255.0f) << "\n"; // nonstandard v+rgb extension (Blender/MeshLab)
-			}
-			for (int i = 0; i < 3; i++)
-			{
-				// PNG/PSX v origin is top-left, OBJ vt origin is bottom-left
-				obj << "vt " << tri.p[i].uv.x << " " << (1.0f - tri.p[i].uv.y) << "\n";
-			}
-			obj << "vn " << n.x << " " << n.y << " " << n.z << "\n";
-
-			size_t i0 = runningIndex + 1, i1 = runningIndex + 2, i2 = runningIndex + 3;
-			size_t vn = runningIndex / 3 + 1;
-			obj << "f " << i0 << "/" << i0 << "/" << vn
-				<< " " << i1 << "/" << i1 << "/" << vn
-				<< " " << i2 << "/" << i2 << "/" << vn << "\n";
-			runningIndex += 3;
-		}
-		obj << "\n";
-	}
-}
-
-
 
 
 void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, const std::string& baseFileName,
 	std::unordered_map<std::string, Texture>& materialToTexture) const
 {
-	const std::vector<AnimatedFace>& baseFaces = m_animations[0].frames[0];
+	const std::vector<Tri>& baseFaces = m_animations[0].frames[0];
 	std::map<std::pair<std::string, bool>, std::vector<size_t>> groups;
 	for (size_t i = 0; i < baseFaces.size(); i++)
-		groups[{baseFaces[i].tri.texture, baseFaces[i].doubleSided}].push_back(i);
+		groups[{baseFaces[i].texture, baseFaces[i].doubleSided}].push_back(i);
 
 	struct AnimRange { size_t firstTarget; size_t frameCount; };
 	std::vector<AnimRange> animRanges(m_animations.size());
-	std::vector<const std::vector<AnimatedFace>*> targetFrames;
+	std::vector<const std::vector<Tri>*> targetFrames;
 	for (size_t a = 0; a < m_animations.size(); a++)
 	{
 		animRanges[a] = { targetFrames.size(), m_animations[a].frames.size() };
@@ -1322,8 +791,8 @@ void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, cons
 	const size_t numTargets = targetFrames.size();
 
 	tinygltf::Model model;
-	model.asset.version = "2.0";
-	model.asset.generator = "CTR Instance Model Exporter";
+	model.asset.version = "1.0";
+	model.asset.generator = "CTE Instance Model Exporter";
 
 	std::vector<uint8_t> bin;
 	auto AddAccessor = [&](const float* data, size_t elemCount, int elemFloats, int type, bool withBounds) -> int
@@ -1382,9 +851,9 @@ void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, cons
 		for (size_t fi : faceIndices)
 			for (int c = 0; c < 3; c++)
 			{
-				positions.push_back(baseFaces[fi].tri.p[c].pos);
-				uvs.push_back(baseFaces[fi].tri.p[c].uv);
-				const Color& col = baseFaces[fi].tri.p[c].color;
+				positions.push_back(baseFaces[fi].p[c].pos);
+				uvs.push_back(baseFaces[fi].p[c].uv);
+				const Color& col = baseFaces[fi].p[c].color;
 				colors.push_back(Vec3(col.r / 255.0f, col.g / 255.0f, col.b / 255.0f));
 			}
 
@@ -1400,7 +869,7 @@ void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, cons
 			deltas.reserve(faceIndices.size() * 3);
 			for (size_t fi : faceIndices)
 				for (int c = 0; c < 3; c++)
-					deltas.push_back((*targetFrames[t])[fi].tri.p[c].pos - baseFaces[fi].tri.p[c].pos);
+					deltas.push_back((*targetFrames[t])[fi].p[c].pos - baseFaces[fi].p[c].pos);
 			std::map<std::string, int> target;
 			target["POSITION"] = AddAccessor(&deltas[0].x, deltas.size(), 3, TINYGLTF_TYPE_VEC3, true);
 			prim.targets.push_back(target);
@@ -1499,10 +968,6 @@ void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, cons
 	model.buffers.push_back(buffer);
 
 	tinygltf::TinyGLTF writer;
-	// embedBuffers=false + no buffer.uri set -> tinygltf writes an external
-	// .bin next to the .gltf and fills in the uri itself. embedImages=false
-	// since our Images only ever carry a .uri (the PNG copied above), never
-	// pixel data -- nothing for tinygltf to embed.
 	bool ok = writer.WriteGltfSceneToFile(&model, (modelDir / (baseFileName + ".gltf")).string(),
 		/*embedImages=*/false, /*embedBuffers=*/false,
 		/*prettyPrint=*/true, /*writeBinary=*/false);
@@ -1512,13 +977,11 @@ void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, cons
 	}
 }
 
-nlohmann::json InstanceModelHeader::WriteMetadataJson(const std::string& objFile, const std::string& mtlFile, const std::string& gltfFile) const
+nlohmann::json InstanceModelHeader::WriteMetadataJson(const std::string& gltfFile) const
 {
 	nlohmann::json json;
 	json["name"] = m_name;
 	json["animated"] = m_isAnimated;
-	json["objFile"] = objFile;
-	json["mtlFile"] = mtlFile;
 	json["gltfFile"] = gltfFile;
 	json["triangleCount"] = m_animations[0].frames[0].size();
 	json["maxDistanceLOD"] = m_maxDistLOD;
@@ -1526,13 +989,38 @@ nlohmann::json InstanceModelHeader::WriteMetadataJson(const std::string& objFile
 	if (m_hasScale)
 		json["scale"] = { {"x", m_scale.x}, {"y", m_scale.y}, {"z", m_scale.z} };
 	json["scaleOrPad"] = m_scaleOrPad;
-	if (m_hasOrigin)
-		json["origin"] = { {"x", m_origin.x}, {"y", m_origin.y}, {"z", m_origin.z} };
-	json["originOrPad"] = m_originOrPad;
 	json["unk1"] = m_unk1;
-	json["colorCount"] = m_colorCount;
+	json["bannerWave"] = m_bannerWave;
 	return json;
 }
+
+
+namespace // SerializeInto
+{
+	void AppendBytes(std::vector<uint8_t>& buffer, const void* data, size_t size)
+	{
+		const uint8_t* bytes = reinterpret_cast<const uint8_t*>(data);
+		buffer.insert(buffer.end(), bytes, bytes + size);
+	}
+
+	template <typename T>
+	void AppendValue(std::vector<uint8_t>& buffer, const T& value)
+	{
+		AppendBytes(buffer, &value, sizeof(T));
+	}
+
+	void AppendPadding(std::vector<uint8_t>& buffer, size_t alignment)
+	{
+		size_t remainder = buffer.size() % alignment;
+		if (remainder != 0)
+		{
+			buffer.insert(buffer.end(), alignment - remainder, uint8_t(0));
+		}
+	}
+
+}
+
+
 
 void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t modelOffset, size_t headerStructOffset,
 	std::unordered_map<std::string, Texture>& materialToTexture,
@@ -1546,17 +1034,10 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	else header.maxDistanceLOD = ConvertFloat(m_maxDistLOD, FP_ONE_GEO);
 	header.flags = m_flags;
 	header.maybeScaleMaybePadding = m_scaleOrPad;
-	header.offStaticDeltaArray = 0; // compressed static vertices unsupported by this encoder -- intentional
+	header.offStaticDeltaArray = 0;
 
-	const std::vector<AnimatedFace>& baseFaces = m_animations[0].frames[0];
-	
-	auto PreFlip = [](const Vec3& pos) { return Vec3(-pos.x, pos.y, -pos.z); };
+	const std::vector<Tri>& baseFaces = m_animations[0].frames[0];
 
-	// --- Keep only animations whose every frame still matches base topology
-	// (face count). m_animations can, in principle, be edited/imported
-	// independently per-entry, so a stale one is possible -- drop it with a
-	// warning rather than encode misaligned data. m_animations[0] is always
-	// kept as a guaranteed fallback (it defines "base topology" itself). ---
 	std::vector<const ModelAnimation*> validAnims;
 	for (const ModelAnimation& anim : m_animations)
 	{
@@ -1575,148 +1056,142 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	}
 	if (validAnims.empty()) { validAnims.push_back(&m_animations[0]); }
 
-	// Real motion iff more than one clip survived, or the single surviving
-	// clip has more than one frame -- a single-frame single-clip case is
-	// indistinguishable from "static" and is encoded that way.
 	const bool effectivelyAnimated = m_isAnimated &&
 		(validAnims.size() > 1 || (validAnims.size() == 1 && validAnims[0]->frames.size() > 1));
 
 	// --- Bounding box refit: union of every pose across every surviving
 	// animation, so the single shared `scale` fits all of them. ---
-	Vec3 preFlipMin(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
-	Vec3 preFlipMax(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest());
-	auto ExpandBox = [&](const Vec3& pos)
-		{
-			Vec3 pf = PreFlip(pos);
-			preFlipMin.x = std::min(preFlipMin.x, pf.x); preFlipMax.x = std::max(preFlipMax.x, pf.x);
-			preFlipMin.y = std::min(preFlipMin.y, pf.y); preFlipMax.y = std::max(preFlipMax.y, pf.y);
-			preFlipMin.z = std::min(preFlipMin.z, pf.z); preFlipMax.z = std::max(preFlipMax.z, pf.z);
-		};
+	BoundingBox framesBBox;
+	framesBBox.min = Vec3(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+	framesBBox.max = Vec3(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest());
 	for (const ModelAnimation* anim : validAnims)
 		for (const auto& frame : anim->frames)
-			for (const AnimatedFace& af : frame)
+			for (const Tri& tri : frame)
 				for (int c = 0; c < 3; c++)
-					ExpandBox(af.tri.p[c].pos);
+					framesBBox.Expand(tri.p[c].pos);
 
-	if (baseFaces.empty()) { preFlipMin = Vec3(0, 0, 0); preFlipMax = Vec3(0, 0, 0); }
+	if (baseFaces.empty()) { framesBBox.min = Vec3(0, 0, 0); framesBBox.max = Vec3(0, 0, 0); }
 
-	constexpr float MIN_BOX_SIZE = 1.0f / (2.0f * FP_ONE_MODEL); // smallest extent guaranteed nonzero after int16 rounding
-	Vec3 boxSize(
-		std::max(preFlipMax.x - preFlipMin.x, MIN_BOX_SIZE),
-		std::max(preFlipMax.y - preFlipMin.y, MIN_BOX_SIZE),
-		std::max(preFlipMax.z - preFlipMin.z, MIN_BOX_SIZE)
-	);
+	header.scale = m_hasScale ? ConvertVec3(m_scale, FP_ONE_MODEL_SCALE) : ConvertVec3(framesBBox.AxisLength(), FP_ONE_MODEL_SCALE);
+	if (header.scale.x < 1) header.scale.x = 1;
+	if (header.scale.y < 1) header.scale.y = 1;
+	if (header.scale.z < 1) header.scale.z = 1;
 
-	header.scale = m_hasScale ? ConvertVec3(m_scale, FP_ONE_MODEL) : ConvertVec3(boxSize, FP_ONE_MODEL);
-	// Recompute float scale FROM the rounded int16 (not from boxSize/m_scale
-	// directly) so quantization below agrees exactly with what the decoder
-	// reconstructs.
-	Vec3 effScale = ConvertPSXVec3(header.scale, FP_ONE_MODEL);
+	Vec3 effScale = ConvertPSXVec3(header.scale, FP_ONE_MODEL_SCALE);
 
-	// Encodes one full pose into a tight-fit ModelFrame + vertex bytes,
-	// using the shared effScale (always big enough, since it was sized
-	// from the union of every pose we'll ever call this with).
-	auto EncodePose = [&](const std::vector<AnimatedFace>& pose) -> std::pair<PSX::ModelFrame, std::vector<uint8_t>>
+	// Encode a ModelFrame + vertices + padding
+	auto EncodeFrame = [&](const std::vector<Tri>& frame) -> std::vector<uint8_t>
 		{
-			Vec3 poseMin(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
-			for (const AnimatedFace& af : pose)
+			Vec3 frameMin(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+			for (const Tri& tri : frame)
 				for (int c = 0; c < 3; c++)
 				{
-					Vec3 pf = PreFlip(af.tri.p[c].pos);
-					poseMin.x = std::min(poseMin.x, pf.x);
-					poseMin.y = std::min(poseMin.y, pf.y);
-					poseMin.z = std::min(poseMin.z, pf.z);
+					frameMin.x = std::min(frameMin.x, tri.p[c].pos.x);
+					frameMin.y = std::min(frameMin.y, tri.p[c].pos.y);
+					frameMin.z = std::min(frameMin.z, tri.p[c].pos.z);
 				}
-			if (pose.empty()) { poseMin = Vec3(0, 0, 0); }
+			if (frame.empty()) { frameMin = Vec3(0, 0, 0); }
+			Vec3 origin = frameMin / effScale;
 
-			Vec3 originF = SafeDivide(poseMin, effScale);
+			std::vector<uint8_t> res;
+			PSX::ModelFrame modelFrame{};
+			modelFrame.pos = ConvertVec3(origin, FP_ONE_MODEL_ORIGIN);
+			modelFrame.maybePosMaybePadding = 0;
+			std::memset(modelFrame.unk16, 0, sizeof(modelFrame.unk16));
+			modelFrame.vertexOffset = sizeof(PSX::ModelFrame);
+			AppendValue(res, modelFrame);
 
-			PSX::ModelFrame frame{};
-			frame.pos = ConvertVec3(originF, 256);
-			frame.maybePosMaybePadding = m_originOrPad;
-			std::memset(frame.unk16, 0, sizeof(frame.unk16));
-			frame.vertexOffset = sizeof(PSX::ModelFrame);
-
-			Vec3 effOrigin = ConvertPSXVec3(frame.pos, 256);
-
-			std::vector<uint8_t> vertexBytes;
-			vertexBytes.reserve(pose.size() * 9);
-			for (const AnimatedFace& af : pose)
+			Vec3 effOrigin = ConvertPSXVec3(modelFrame.pos, FP_ONE_MODEL_ORIGIN);
+			for (const Tri& tri : frame)
 			{
 				for (int pushOrder = 0; pushOrder < 3; pushOrder++)
 				{
-					int cornerIdx = 2 - pushOrder; // matches command push order below
-					uint8_t bytes[3];
-					EncodeVertexBytes(af.tri.p[cornerIdx].pos, effScale, effOrigin, bytes);
-					vertexBytes.push_back(bytes[0]);
-					vertexBytes.push_back(bytes[1]);
-					vertexBytes.push_back(bytes[2]);
+					int cornerIdx = 2 - pushOrder; 
+					PSX::Vec3b vert = ConvertVec3b((tri.p[cornerIdx].pos / effScale) - effOrigin, 255) ;
+					AppendValue(res, vert);
 				}
 			}
-			return { frame, std::move(vertexBytes) };
+			AppendPadding(res, 4);
+			return res;
 		};
 
-	// --- Command list: topology/color/texture/doubleSided from baseFaces
-	// only -- identical across every frame of every animation by construction. ---
+	// Command list: topology/color/texture/doubleSided
 	std::vector<PSX::InstDrawCommand> commands;
 	std::vector<PSX::TextureLayout> layouts;
-	std::vector<uint32_t> colorPalette;
-	std::unordered_map<uint32_t, uint32_t> colorLookup;
-	bool warnedColorOverflow = false;
-	bool warnedTexOverflow = false;
+	std::unordered_map<PSX::TextureLayout, uint32_t> layoutLookup; // TextureLayout -> index into layouts
+	std::vector<PSX::Color> colorPalette;
+	std::unordered_map<PSX::Color, uint32_t> colorLookup;
 
-	for (const AnimatedFace& af : baseFaces)
+	auto GetColorIndex = [&](const Color col) -> uint32_t
+		{
+			PSX::Color psxCol = ConvertColor(col);
+			if (!colorLookup.contains(psxCol))
+			{
+				if (colorPalette.size() > 63)
+				{
+					printf("WARNING: header '%s' needs more than 63 unique colors; some colors will be approximated\n", m_name.c_str());
+					colorLookup[psxCol] = 63;
+				}
+				else
+				{
+					colorLookup[psxCol] = static_cast<uint32_t>(colorPalette.size());
+					colorPalette.push_back(psxCol);
+				}
+			}
+			return colorLookup[psxCol];
+		};
+
+	for (const Tri& tri : baseFaces)
 	{
-		const Tri& tri = af.tri;
 		uint32_t colorIdx[3];
-		colorIdx[2] = GetOrAddColorIndex(colorPalette, colorLookup, tri.p[0].color, m_name, warnedColorOverflow);
-		colorIdx[1] = GetOrAddColorIndex(colorPalette, colorLookup, tri.p[1].color, m_name, warnedColorOverflow);
-		colorIdx[0] = GetOrAddColorIndex(colorPalette, colorLookup, tri.p[2].color, m_name, warnedColorOverflow);
+		colorIdx[2] = GetColorIndex(tri.p[0].color);
+		colorIdx[1] = GetColorIndex(tri.p[1].color);
+		colorIdx[0] = GetColorIndex(tri.p[2].color);
 
 		uint32_t texCoordIndex = 0;
-		// Todo : Make layout uniques, can be deduped.
-		if (materialToTexture.contains(tri.texture) && !materialToTexture[tri.texture].IsEmpty())
+		bool hasTexture = materialToTexture.contains(tri.texture) && !materialToTexture[tri.texture].IsEmpty();
+		if (hasTexture)
 		{
 			Vec2 centroid(
 				(tri.p[0].uv.x + tri.p[1].uv.x + tri.p[2].uv.x) / 3.0f,
 				(tri.p[0].uv.y + tri.p[1].uv.y + tri.p[2].uv.y) / 3.0f
 			);
 			QuadUV quadUV = { tri.p[2].uv, tri.p[1].uv, tri.p[0].uv, centroid };
-			layouts.push_back(materialToTexture[tri.texture].Serialize(quadUV));
+			PSX::TextureLayout layout = materialToTexture[tri.texture].Serialize(quadUV);
 
-			if (layouts.size() > 511)
+			if (!layoutLookup.contains(layout))
 			{
-				if (!warnedTexOverflow)
+				if (layouts.size() >= 511)
 				{
-					printf("WARNING: header '%s' needs more than 511 texture layouts; reusing last one for the rest\n", m_name.c_str());
-					warnedTexOverflow = true;
+					printf("WARNING: header '%s' needs more than 511 unique texture layouts; reusing last one for the rest\n", m_name.c_str());
+					layoutLookup[layout] = static_cast<uint32_t>(511);
 				}
-				layouts.pop_back();
-				texCoordIndex = 511;
+				else
+				{
+					layoutLookup[layout] = static_cast<uint32_t>(layouts.size()) + 1; // 1-index
+					layouts.push_back(layout);
+				}
 			}
-			else
-			{
-				texCoordIndex = static_cast<uint32_t>(layouts.size());
-			}
+			texCoordIndex = layoutLookup[layout];
 		}
 
 		for (int cmdSlot = 0; cmdSlot < 3; cmdSlot++)
 		{
 			PSX::InstDrawCommand cmd{};
-			cmd.stackWriteLocationIndex = 87; // safe: never emits readNextVertFromStackIndexFlag=1, so never read back
+			cmd.stackWriteLocationIndex = 87;
 			cmd.readNextVertFromStackIndexFlag = 0;
 			cmd.resetFlag = (cmdSlot == 0) ? 1 : 0;
 			cmd.colorCoordIndex = colorIdx[cmdSlot];
 			cmd.texCoordIndex = texCoordIndex;
-			cmd.colorFromScratchpadOrRamFlag = static_cast<uint32_t>(materialToTexture[tri.texture].IsEmpty()); // TODO : Verify other spot where texture can be default
-			cmd.noBackfaceFlag = af.doubleSided ? 0 : 1; 
+			cmd.colorFromScratchpadOrRamFlag = static_cast<uint32_t>(!hasTexture);
+			cmd.noBackfaceFlag = tri.doubleSided ? 0 : 1;
 			commands.push_back(cmd);
 		}
 	}
 
-	if (m_colorCount > 63)
+	if (m_bannerWave)
 	{
-		while (colorPalette.size() < 64) { colorPalette.push_back(0u); }
+		while (colorPalette.size() < 64) { colorPalette.push_back(PSX::Color{}); }
 	}
 
 	const size_t commandListOffset = output.size();
@@ -1729,12 +1204,9 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	// --- Frame data: one static pose, or one ModelAnim block per surviving animation. ---
 	if (!effectivelyAnimated)
 	{
-		auto [frame, vertexBytes] = EncodePose(baseFaces);
 		const size_t frameDataOffset = output.size();
-		AppendValue(output, frame);
-		AppendBytes(output, vertexBytes.data(), vertexBytes.size());
-		AppendPadding(output, 4);
-
+		std::vector<uint8_t> encodedFrame = EncodeFrame(baseFaces);
+		AppendBytes(output, encodedFrame.data(), encodedFrame.size());
 		header.offFrameData = static_cast<uint32_t>(modelOffset + frameDataOffset);
 		header.numAnimations = 0;
 		header.offAnimations = 0;
@@ -1750,66 +1222,38 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 			const ModelAnimation& anim = *validAnims[a];
 			const size_t numStoredFrames = anim.frames.size();
 
-			std::vector<std::pair<PSX::ModelFrame, std::vector<uint8_t>>> encodedFrames;
+			std::vector<std::vector<uint8_t>> encodedFrames;
 			encodedFrames.reserve(numStoredFrames);
 			for (size_t f = 0; f < numStoredFrames; f++)
 			{
-				encodedFrames.push_back(EncodePose(anim.frames[f]));
+				encodedFrames.push_back(EncodeFrame(anim.frames[f]));
 			}
 
-			const size_t payloadBytes = encodedFrames.empty() ? 0 : encodedFrames[0].second.size();
-			const size_t frameStride = Align4(sizeof(PSX::ModelFrame) + payloadBytes);
+			const size_t frameStride = encodedFrames.empty() ? 0 : encodedFrames[0].size();
 			if (frameStride > 0x7FFF)
 			{
 				printf("WARNING: header '%s' animation '%s' frameSize 0x%zx exceeds int16_t range\n",
 					m_name.c_str(), anim.name.c_str(), frameStride);
 			}
 
-			// Prefer the exact original numFrames bit pattern when it still
-			// describes what we're about to write (round-trips interpolated
-			// parity exactly); recompute only if the data no longer matches
-			// (edited frame count/interpolation, or glTF-authored with no
-			// raw value to begin with).
-			uint16_t numFramesField;
-			bool useRaw = anim.hasRawNumFrames;
-			if (useRaw)
-			{
-				uint16_t storedLogical = anim.rawNumFrames & PSX::ANIM_FRAME_COUNT_MASK;
-				bool storedInterp = (anim.rawNumFrames & PSX::ANIM_INTERPOLATED_BIT) != 0;
-				size_t expectedStoredFrames = storedInterp ? (storedLogical > 0 ? (storedLogical >> 1) + 1 : 0) : storedLogical;
-				if (storedInterp != anim.interpolated || expectedStoredFrames != numStoredFrames)
-				{
-					printf("WARNING: header '%s' animation '%s' no longer matches its original frame metadata -- recomputing numFrames\n",
-						m_name.c_str(), anim.name.c_str());
-					useRaw = false;
-				}
-			}
-			if (useRaw)
-			{
-				numFramesField = anim.rawNumFrames;
-			}
-			else
-			{
-				uint16_t logicalCount = anim.interpolated
-					? static_cast<uint16_t>(numStoredFrames > 0 ? (numStoredFrames - 1) * 2 : 0)
-					: static_cast<uint16_t>(numStoredFrames);
-				numFramesField = logicalCount | (anim.interpolated ? PSX::ANIM_INTERPOLATED_BIT : 0);
-			}
+			uint16_t logicalCount = anim.interpolated
+				? static_cast<uint16_t>(numStoredFrames > 0 ? (numStoredFrames - 1) * 2 : 0)
+				: static_cast<uint16_t>(numStoredFrames);
+			uint16_t numFramesField = logicalCount | (anim.interpolated ? PSX::ANIM_INTERPOLATED_BIT : 0);
 
 			PSX::ModelAnim animHeader{};
 			std::memset(animHeader.name, 0, sizeof(animHeader.name));
 			std::memcpy(animHeader.name, anim.name.data(), std::min(anim.name.size(), sizeof(animHeader.name)));
 			animHeader.numFrames = numFramesField;
 			animHeader.frameSize = static_cast<int16_t>(frameStride);
-			animHeader.offDeltaArray = 0; // uncompressed -- always valid, always decodable
+			animHeader.offDeltaArray = 0;
 
 			const size_t animBlockOffset = output.size();
 			AppendValue(output, animHeader);
-			for (const auto& [frame, vertexBytes] : encodedFrames)
+			for (const std::vector<uint8_t>& encodedFrame: encodedFrames)
 			{
 				const size_t frameStart = output.size();
-				AppendValue(output, frame);
-				AppendBytes(output, vertexBytes.data(), vertexBytes.size());
+				AppendBytes(output, encodedFrame.data(), encodedFrame.size());
 				const size_t written = output.size() - frameStart;
 				if (written < frameStride) { output.insert(output.end(), frameStride - written, uint8_t(0)); }
 			}
@@ -1846,7 +1290,7 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	if (!colorPalette.empty())
 	{
 		colorsOffset = output.size();
-		for (uint32_t packed : colorPalette) { AppendValue(output, packed); }
+		for (PSX::Color psxCol : colorPalette) { AppendValue(output, psxCol); }
 	}
 
 	header.offCommandList = static_cast<uint32_t>(modelOffset + commandListOffset);
@@ -1855,10 +1299,6 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 
 	std::memcpy(output.data() + headerStructOffset, &header, sizeof(PSX::ModelHeader));
 
-	// offFrameData and offAnimations are each legitimately 0 depending on
-	// effectivelyAnimated -- SaveLEV rebases every registered field
-	// unconditionally, so a registered zero would become a bogus non-null
-	// pointer. Guarded, as before.
 	const uint32_t headerAbsoluteOffset = static_cast<uint32_t>(modelOffset + headerStructOffset);
 	outPointerLocations.push_back(CALCULATE_OFFSET(PSX::ModelHeader, offCommandList, headerAbsoluteOffset));
 	if (header.offFrameData != 0)
@@ -1879,7 +1319,14 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 	}
 }
 
-
+InstanceModel::InstanceModel()
+{
+	m_name = "NewModel";
+	m_id = ModelId::NOFUNC;
+	m_parsedGeometry.clear();
+	m_parsed = false;
+	m_valid = true;
+}
 
 InstanceModel::InstanceModel(const std::filesystem::path& jsonPath, std::unordered_map<std::string, Texture>& materialToTexture)
 {
@@ -1902,10 +1349,14 @@ InstanceModel::InstanceModel(const std::filesystem::path& jsonPath, std::unorder
 	}
 }
 
-
-InstanceModel::InstanceModel(PSX::Model model, std::string modelName)
+static size_t global_model_id_count = 0;
+size_t GenerateUniqueModelKey()
 {
-	m_name = modelName;
+	return global_model_id_count++;
+}
+InstanceModel::InstanceModel(PSX::Model model)
+{
+	m_name = std::string(model.name, strnlen(model.name, sizeof(model.name)));
 	m_id = static_cast<ModelId>(model.id);
 	m_valid = true;
 	m_headers.clear();
@@ -1917,18 +1368,13 @@ void InstanceModel::Export(const std::filesystem::path& exportDir, std::unordere
 	std::filesystem::path modelDir = exportDir / m_name;
 	std::filesystem::create_directories(modelDir);
 
-	std::vector<std::string> objFiles(m_headers.size());
-	std::vector<std::string> mtlFiles(m_headers.size());
 	std::vector<std::string> gltfFiles(m_headers.size());
 
 	for (size_t headerID = 0; headerID < m_headers.size(); headerID++)
 	{
 		InstanceModelHeader& header = m_headers[headerID];
 		std::string baseFileName = m_name + "LOD" + std::to_string(headerID);
-		header.ExportOBJ(modelDir, baseFileName, materialToTexture);
 		header.ExportGLTF(modelDir, baseFileName, materialToTexture);
-		objFiles[headerID] = baseFileName + ".obj";
-		mtlFiles[headerID] = baseFileName + ".mtl";
 		gltfFiles[headerID] = baseFileName + ".gltf";
 	}
 
@@ -1940,7 +1386,7 @@ void InstanceModel::Export(const std::filesystem::path& exportDir, std::unordere
 	nlohmann::json headersArray = nlohmann::json::array();
 	for (size_t headerID = 0; headerID < m_headers.size(); headerID++)
 	{
-		headersArray.push_back(m_headers[headerID].WriteMetadataJson(objFiles[headerID], mtlFiles[headerID], gltfFiles[headerID]));
+		headersArray.push_back(m_headers[headerID].WriteMetadataJson(gltfFiles[headerID]));
 	}
 	json["headers"] = headersArray;
 
@@ -1953,11 +1399,11 @@ void InstanceModel::Export(const std::filesystem::path& exportDir, std::unordere
 
 std::vector<Primitive> InstanceModel::GetGeometry()
 {
-	/*if (!m_headers.empty())
+	if (!m_headers.empty())
 	{
 		std::vector<Tri>& geom = m_headers[0].GetGeometry();
 		return std::vector<Primitive>(geom.begin(), geom.end());
-	}*/
+	}
 		 
 	return {};
 }
@@ -2004,7 +1450,7 @@ std::vector<uint8_t> InstanceModel::Serialize(uint32_t modelOffset, std::unorder
 	return output;
 }
 
-Instance::Instance(std::string model)
+Instance::Instance(size_t modelKey)
 {
 	m_name = "NewInstance";
 	m_scale = Vec3(1.0f, 1.0f, 1.0f);
@@ -2012,14 +1458,14 @@ Instance::Instance(std::string model)
 	m_rot = Vec3(0.0f, 0.0f, 0.0f);
 	m_modelID = ModelId::NOFUNC;
 	m_color = Color(0.0f, 0.0f, 0.0f);
-	m_modelName = model;
+	m_modelKey = modelKey;
 	m_flags = 0xB;
 	m_unk24 = 0;
 	m_unk28 = 0;
 	m_hitbox = InstanceHitbox();
 }
 
-Instance::Instance(PSX::InstDef inst)
+Instance::Instance(PSX::InstDef inst, size_t modelKey)
 {
 	m_name = std::string(inst.name, strnlen(inst.name, sizeof(inst.name)));
 	m_scale = ConvertPSXVec3(inst.scale, FP_ONE);
@@ -2031,7 +1477,7 @@ Instance::Instance(PSX::InstDef inst)
 	m_unk24 = inst.unk24;
 	m_unk28 = inst.unk28;
 
-	m_modelName = "";
+	m_modelKey = modelKey;
 	m_hitbox = InstanceHitbox();
 }
 
@@ -2066,9 +1512,9 @@ std::vector<uint8_t> Instance::Serialize(uint32_t offModel) const
 	return buffer;
 }
 
-BoundingBox Instance::ComputeBBox()
+BoundingBox Instance::ComputeBBox() const 
 {
-	Vec3 center = m_pos + Vec3(0.0f, m_hitbox.yOffset, 0.0f);
+	Vec3 center = Center();
 	Vec3 half_ext = Vec3(m_hitbox.halfExtent, m_hitbox.halfExtent, m_hitbox.halfExtent);
 	BoundingBox bbox{};
 	bbox.min = center - half_ext;
@@ -2076,6 +1522,10 @@ BoundingBox Instance::ComputeBBox()
 	return bbox;
 }
 
+Vec3 Instance::Center() const
+{
+	return m_pos + Vec3(0.0f, m_hitbox.yOffset, 0.0f);
+}
 
 PSX::InstHitbox Instance::SerializeHitbox(uint32_t insatnceOffset) const
 {	// Don't call on Instances that have hitbox disabled. 

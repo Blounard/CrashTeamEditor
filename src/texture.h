@@ -189,7 +189,9 @@ public:
 	Texture() : m_width(0), m_height(0), m_imageX(0), m_imageY(0), m_clutX(0), m_clutY(0), m_blendMode(0), m_semiTransparent(false) {};
 	Texture(const std::filesystem::path& path);
 	Texture(const LayoutKey& key, const PixelBounds& bounds, const std::vector<uint16_t>& vram, const std::string& newMatName, const std::filesystem::path& tempDir, bool crop = true);
+	Texture(const Texture& top, const Texture& bottom, const std::string& newMatName, const std::filesystem::path& tempDir);
 	void UpdateTexture(const std::filesystem::path& path);
+	void ClearTexture();
 	Texture::BPP GetBPP() const;
 	int GetWidth() const;
 	int GetVRAMWidth() const;
@@ -204,6 +206,7 @@ public:
 	size_t GetCLUTX() const;
 	size_t GetCLUTY() const;
 	bool IsSemiTransparent() const;
+	bool IsPlaced() const;
 	void SetImageCoords(size_t x, size_t y);
 	void SetCLUTCoords(size_t x, size_t y);
 	void SetBlendMode(uint16_t mode);
@@ -217,7 +220,6 @@ public:
 
 private:
 	void FillShapes(const std::vector<size_t>& colorIndexes);
-	void ClearTexture();
 	bool CreateTexture();
 	uint16_t ConvertColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a);
 	void ConvertPixels(const std::vector<size_t>& colorIndexes, unsigned indexesPerPixel);
@@ -225,6 +227,7 @@ private:
 private:
 	int m_width, m_height;
 	uint16_t m_blendMode;
+	bool m_placed;
 	size_t m_imageX, m_imageY;
 	size_t m_clutX, m_clutY;
 	bool m_semiTransparent;
@@ -235,6 +238,7 @@ private:
 };
 
 std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures);
+
 inline QuadUV MakeUV(const PixelBounds& bounds, const RawUV rawUV) 
 {
 	float croppedWidth = 1.0f + static_cast<float>(bounds.maxU - bounds.minU);

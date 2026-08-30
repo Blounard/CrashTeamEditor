@@ -122,16 +122,20 @@ struct BoundingBox
 	Vec3 min;
 	Vec3 max;
 
+	void Expand(const Vec3& pos);
 	float Area() const;
 	float SemiPerimeter() const;
 	float NormL(int power) const;
 	float MaxAxisLength() const;
 	Vec3 AxisLength() const;
 	Vec3 Midpoint() const;
-	BoundingBox Union(const BoundingBox other) const;
+	float Distance(const Vec3& point) const;
+	float Distance(const BoundingBox& other) const;
+	BoundingBox Union(const BoundingBox& other) const;
 	BoundingBox Intersect(const BoundingBox& other) const;
 	std::vector<Primitive> ToGeometry() const;
 	void RenderUI() const;
+	static BoundingBox Empty();
 };
 
 struct Quaternion
@@ -221,6 +225,7 @@ struct Primitive
 		, texture()
 		, p()
 		, pointCount(pointCount)
+		, doubleSided(false)
 	{
 	}
 
@@ -228,6 +233,7 @@ struct Primitive
 	std::string texture;
 	Point p[4];
 	unsigned pointCount;
+	bool doubleSided;
 };
 
 struct Tri : public Primitive
