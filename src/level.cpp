@@ -4374,18 +4374,6 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 				if (json.has_extension() && json.extension() == ".json") { LoadPreset(json); }
 			}
 		}
-
-		//Load preset models
-		std::filesystem::path folderPath(Settings::m_lastOpenedModelFolder);
-		if (std::filesystem::exists(folderPath) && std::filesystem::is_directory(folderPath))
-		{
-			for (const auto& entry : std::filesystem::directory_iterator(folderPath))
-			{
-				if (!entry.is_regular_file())
-					continue;
-				//todo
-			}
-		}
 	}
 	GenerateRenderLevData();
 	GenerateBSP();

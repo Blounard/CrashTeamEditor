@@ -363,11 +363,6 @@ namespace PSX
 	enum LevelExtra
 	{
 		MINIMAP = 0,
-		// Array of int16_t "cycle timing" values, one per hazard instance. Hazard
-		// birth handlers index it by the LAST DIGIT OF THE INSTANCE NAME:
-		//   timeAtEdge = metaArray[inst->name[strlen(inst->name) - 1] - '0'];
-		// which is why vanilla names them "armadillo#0", "armadillo#1", ... The
-		// handlers do NOT null-check this pointer. See the SaveLEV gotcha note.
 		SPAWN = 1,
 		CAMERA_END_OF_RACE = 2,
 		CAMERA_DEMO = 3,

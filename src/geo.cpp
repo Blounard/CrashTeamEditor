@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <unordered_set>
+#include <unordered_map>
 
 
 Tri::Tri(const Point& p0, const Point& p1, const Point& p2)
@@ -397,31 +398,28 @@ bool SnapTriangle(const Vec3& A, const Vec3& B, const Vec3& C,
 	return true;
 }
 
-
+// Load an .obj file that contain a path. Read and return the list of Vec3 it contains.
 std::vector<Vec3> LoadPath(const std::filesystem::path& path)
 {
-	// AI MADE, TODO : RECODE / VERIFY
 	std::ifstream file(path);
 	if (!file.is_open())
 		return {};
 
-	std::vector<Vec3>                        rawVertices;
-	std::unordered_map<int, int>             adjacency;   // edge map: from -> to (1-based)
-	bool                                     inFirstObject = false;
+	std::vector<Vec3> rawVertices;
+	std::unordered_map<int, int> adjacency; // 1 based
+	bool inFirstObject = false;
 
 	std::string line;
 	while (std::getline(file, line))
 	{
 		if (line.empty() || line[0] == '#')
 			continue;
-
 		std::istringstream ss(line);
-		std::string        token;
+		std::string token;
 		ss >> token;
 
 		if (token == "o")
 		{
-			// Only parse the first object
 			if (!inFirstObject)
 				inFirstObject = true;
 			else
@@ -437,46 +435,38 @@ std::vector<Vec3> LoadPath(const std::filesystem::path& path)
 		{
 			int a, b;
 			if (ss >> a >> b)
-				adjacency[a] = b;  // directed edge a -> b (OBJ indices are 1-based)
+				adjacency[a] = b;
 		}
 	}
 
 	if (rawVertices.empty() || adjacency.empty())
-		return rawVertices;
+		return {};
 
 	// Find the start of the chain: a vertex that appears as a source but never as a destination
 	std::unordered_set<int> destinations;
-	for (auto& [from, to] : adjacency)
-		destinations.insert(to);
+	for (auto& [source, target] : adjacency)
+		destinations.insert(target);
 
-	int start = -1;
-	for (auto& [from, to] : adjacency)
+	int start = 1; // Default value is just the first vertices (1 indexed)
+	for (auto& [source, target] : adjacency)
 	{
-		if (destinations.find(from) == destinations.end())
+		if (!destinations.contains(source))
 		{
-			start = from;
+			start = source;
 			break;
 		}
 	}
 
-	// Fallback: if it's a closed loop, just pick any start
-	if (start == -1 && !adjacency.empty())
-		start = adjacency.begin()->first;
-
-	// Walk the chain in edge order
 	std::vector<Vec3> ordered;
-	ordered.reserve(rawVertices.size());
-
 	int current = start;
-	while (adjacency.count(current))
+	while (adjacency.contains(current))
 	{
-		// OBJ indices are 1-based
 		ordered.push_back(rawVertices[current - 1]);
 		int next = adjacency[current];
 		adjacency.erase(current);  // prevent infinite loops on malformed data
 		current = next;
 	}
-	// Push the final vertex (the chain end that has no outgoing edge)
+
 	if (current >= 1 && current <= static_cast<int>(rawVertices.size()))
 		ordered.push_back(rawVertices[current - 1]);
 
