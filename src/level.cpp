@@ -1536,19 +1536,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		}
 	}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 	m_configFlags = header.config;
 	m_clearColor = ConvertColor(header.clear);
 	m_stars = ConvertStars(header.stars);
@@ -1583,30 +1570,12 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		vertices.push_back(vertex);
 	}
 
-
-
-
-
-	//Load preset models
-	std::filesystem::path folderPath(Settings::m_lastOpenedModelFolder);
-	if (std::filesystem::exists(folderPath) && std::filesystem::is_directory(folderPath))
-	{
-		for (const auto& entry : std::filesystem::directory_iterator(folderPath))
-		{
-			if (!entry.is_regular_file())
-				continue;
-
-			//todo
-		}
-	}
-
-
-
-
 	// Loading textures and animated textures and quadblocks
 	std::filesystem::path vrmPath = levFile;
 	vrmPath.replace_extension(".vrm");
 	std::vector<uint16_t> vram =  ReadRawVRAM(vrmPath);
+	std::filesystem::path tempDir = levFile.parent_path() / (levFile.stem().string() + "_textures");
+	std::filesystem::create_directories(tempDir);
 	int texCounter = 0;
 	std::vector<uint32_t> quadblocksVisibleSetOff; // List of VisibleSetOffset for quadblock. Needed for vistree loading, parsed with quadblocks.
 	std::unordered_map<LayoutKey, PixelBounds> textureToPixelBounds; // Map Layout key -> Pixels bounds of the texture.
@@ -1622,10 +1591,16 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	{
 		file.seekg(offLev + std::streampos(header.offEnvironmentMap));
 		Read(file, m_rawWaterLayout);
+		LayoutKey waterkey(m_rawWaterLayout);
+		PixelBounds waterBound{};
+		waterBound.Update(RawUV(m_rawWaterLayout));
+		m_envMapTex = Texture(waterkey, waterBound, vram, "envMap", tempDir, true);
 	}
+	
 
 	//ICONS
 	std::vector<PSX::Icon> levelIcons;
+	Texture minimapTop; Texture minimapBottom; Texture minimapMerged;
 	if (header.offIconsLookup != 0)
 	{
 		PSX::LevelIconHeader levelIconHeader{};
@@ -1639,59 +1614,37 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				PSX::Icon icon{};
 				Read(file, icon);
 				levelIcons.push_back(icon);
-				/*PSX::TextureLayout& layout = icon.texLayout;
-				LayoutKey key(layout);
-
-				if (!materialCache.contains(key))
-				{
-					std::string newMatName = "icon_" + std::to_string(texCounter++);
-					materialCache[key] = newMatName;
-				}
-				RawUV rawUV(layout);
-				textureToPixelBounds[key].Update(rawUV);*/
-				//printf("Icon %I32u, name :%s, tex:%s, globalArrayId %I32u\n", iconId, icon.name, materialCache[key].c_str(), icon.globalIconArrayIndex);
 			}
+		}
+
+		for (PSX::Icon& icon : levelIcons)
+		{
+			if (icon.globalIconArrayIndex == PSX::ICON_INDEX_MAP_TOP)
+			{
+				LayoutKey mapKey(icon.texLayout);
+				PixelBounds bounds{};
+				bounds.Update(RawUV(icon.texLayout));
+				minimapTop = Texture(mapKey, bounds, vram, "minimap_top", tempDir, true);
+
+			}
+			if (icon.globalIconArrayIndex == PSX::ICON_INDEX_MAP_BOTTOM)
+			{
+				LayoutKey mapKey(icon.texLayout);
+				PixelBounds bounds{};
+				bounds.Update(RawUV(icon.texLayout));
+				minimapBottom = Texture(mapKey, bounds, vram, "minimap_bottom", tempDir, true);
+			}
+		}
+		if (!minimapTop.IsEmpty() && !minimapBottom.IsEmpty())
+		{
+			minimapMerged = Texture(minimapTop, minimapBottom, "minimap", tempDir);
 		}
 	}
 
-	std::filesystem::path tempDir = levFile.parent_path() / (levFile.stem().string() + "_textures");
-	std::filesystem::create_directories(tempDir);
+
 
 	bool hasAnimData = header.offAnimTex > 0;
 	size_t offAnimStart = header.offAnimTex;
-
-
-	//Extract Environment map
-	LayoutKey waterkey(m_rawWaterLayout);
-	PixelBounds waterBound{};
-	waterBound.Update(RawUV(m_rawWaterLayout));
-	m_envMapTex = Texture(waterkey, waterBound, vram, "envMap", tempDir, true);
-
-	Texture minimapTop; Texture minimapBottom; Texture minimapMerged;
-	for (PSX::Icon& icon : levelIcons)
-	{
-		if (icon.globalIconArrayIndex == PSX::ICON_INDEX_MAP_TOP)
-		{
-			LayoutKey mapKey(icon.texLayout);
-			PixelBounds bounds{};
-			bounds.Update(RawUV(icon.texLayout));
-			minimapTop = Texture(mapKey, bounds, vram, "minimap_top", tempDir, true);
-
-		} 
-		if (icon.globalIconArrayIndex == PSX::ICON_INDEX_MAP_BOTTOM)
-		{
-			LayoutKey mapKey(icon.texLayout);
-			PixelBounds bounds{};
-			bounds.Update(RawUV(icon.texLayout));
-			minimapBottom = Texture(mapKey, bounds, vram, "minimap_bottom", tempDir, true);
-		}
-	}
-	if (!minimapTop.IsEmpty() && !minimapBottom.IsEmpty())
-	{
-		minimapMerged = Texture(minimapTop, minimapBottom, "minimap", tempDir);
-	}
-
-
 
 	
 	// 1st pass : Parse Quadblock, find TextureGroups, and caclulate UV bounds
@@ -1705,16 +1658,19 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		for (int f = 0; f < NUM_FACES_QUADBLOCK + 1; f++)
 		{
 			uint32_t texOffset = f == NUM_FACES_QUADBLOCK ? psxQuad.offLowTexture : psxQuad.offMidTextures[f];
+			if (texOffset == 0)
+				continue;
+			uint32_t ptrAnimatedFlag = texOffset & 0x3;
+			uint32_t realOffset = texOffset & ~0x3;
 
-			// How to know if a texture is animated or not : POINTERFLAG. ODD = ANIMTEX. EVEN = STATICTEX
-			if (hasAnimData && texOffset >= offAnimStart && pointerMap.contains(texOffset - 1)) // Anim Textures
+			if (hasAnimData && ptrAnimatedFlag > 0) // Anim Textures
 			{
-				if (!m_rawAnimTex.contains(texOffset-1))
+				if (!m_rawAnimTex.contains(realOffset))
 				{
-					file.seekg(offLev + std::streampos(texOffset-1));
+					file.seekg(offLev + std::streampos(realOffset));
 					PSX::AnimTex animTex;
 					Read(file, animTex);
-					m_rawAnimTex[texOffset - 1] = animTex;
+					m_rawAnimTex[realOffset] = animTex;
 
 					std::vector<uint32_t> frameTextureGroupOffset;
 					for (uint16_t frame = 0; frame < animTex.frameCount; frame++)
@@ -1749,10 +1705,10 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 						textureToPixelBounds[key].Update(rawUV);
 
 					}
-					m_rawAnimTexFrames[texOffset - 1] = frameTextureGroupOffset;
+					m_rawAnimTexFrames[realOffset] = frameTextureGroupOffset;
 				}
 
-				quadblockFaceToAnimOffset[i][f] = texOffset - 1;
+				quadblockFaceToAnimOffset[i][f] = realOffset;
 
 			}
 			else // Regular Textures
@@ -1849,12 +1805,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 									std::string newMatName = "tex_model_" + std::to_string(texCounter++);
 									materialCache[key] = newMatName;
 								}
-								/*printf("Instance %s, Model %s, ModelHeader %s, texturename %s\n",
-									std::string(inst.name, strnlen(inst.name, sizeof(inst.name))).c_str(),
-									std::string(model.name, strnlen(model.name, sizeof(model.name))).c_str(),
-									std::string(modelHeader.name, strnlen(modelHeader.name, sizeof(modelHeader.name))).c_str(),
-									materialCache[key].c_str());*/
-								//
 								RawUV rawUV(layout);
 								textureToPixelBounds[key].Update(rawUV);
 							}
@@ -2172,7 +2122,12 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		for (int f = 0; f < NUM_FACES_QUADBLOCK + 1 ; f++) 
 		{
 			uint32_t texOffset = f == NUM_FACES_QUADBLOCK ? psxQuad.offLowTexture : psxQuad.offMidTextures[f];
-			if (hasAnimData && texOffset >= offAnimStart && pointerMap.contains(texOffset - 1)) // Anim Texture
+			if (texOffset == 0)
+				continue;
+			uint32_t ptrAnimatedFlag = texOffset & 0x3;
+			uint32_t realOffset = texOffset & ~0x3;
+
+			if (hasAnimData && ptrAnimatedFlag > 0) // Anim Texture
 			{
 				qb.SetAnimated(true);
 			}
