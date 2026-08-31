@@ -120,43 +120,12 @@ bool BotPath::IsValid()
 
 bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& quadblocks)
 {
-    m_nodes.clear();
-    if (nodesPos.empty()) { return false; }
-
-
     const size_t nodeCount = nodesPos.size();
-    constexpr float GROUND_THRESHOLD = 8.0f;
-    constexpr float NEARBY_THRESHOLD = 2.0f;
-    constexpr float REVERB_THRESHOLD = 50.0f; // broader search for reverb, not just ground
-    constexpr float SHARP_TURN_THRESHOLD = 15.0f; // degrees, for drift detection
-    constexpr float DRIFT_BONUS_YAW = 45; // degrees, for drift yaw addition
     constexpr float SKIDMARK_LENGTH = 15.0f; // degrees, for drift yaw addition
     constexpr float BOT_SPEED = 25.0f;
     constexpr float SHARP_TURN_CIRCLE_SECONDS = 10.0f;
     constexpr float SHARP_TURN_DEG_PER_UNIT = 360.0f / (BOT_SPEED * SHARP_TURN_CIRCLE_SECONDS); // 2.4 deg/unit
-    constexpr float DRIFT_MIN_DISTANCE = 25.0f;   // at least 2s worth of distance
-    constexpr int   DRIFT_ANTICIPATION_NODES = 2; // start drift this many nodes before the sharp section
 
-    
-    // --- Helper: any nearby quad matching a predicate ---
-    auto HasNearbyQuad = [&](const Vec3& pos, float radius,
-        const std::function<bool(const Quadblock&)>& predicate) -> bool
-        {
-            for (const Quadblock& quad : quadblocks)
-            {
-                const BoundingBox& bb = quad.GetBoundingBox();
-                // Closest point on the AABB to pos � clamp each axis independently
-                float cx = std::clamp(pos.x, bb.min.x, bb.max.x);
-                float cy = std::clamp(pos.y, bb.min.y, bb.max.y);
-                float cz = std::clamp(pos.z, bb.min.z, bb.max.z);
-                float dx = pos.x - cx;
-                float dy = pos.y - cy;
-                float dz = pos.z - cz;
-                float distSq = dx * dx + dy * dy + dz * dz;
-                if (distSq <= radius * radius && predicate(quad)) { return true; }
-            }
-            return false;
-        };
 
     //Helper : return an angle in between -180 and 180, modulo 360
     auto NormalizeAngle = [](float angle)
@@ -167,74 +136,58 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
             return angle - 180.0f;
         };
 
+    m_nodes.clear();
+    if (nodesPos.empty()) { return false; }
     m_nodes.resize(nodeCount);
     const std::vector<Vec3> nodesRot = ComputeYaw(nodesPos, true);
+
+    std::vector<size_t> groundQuadIndexes;
+    for (size_t i = 0; i < quadblocks.size(); i++)
+    {
+        if (quadblocks[i].GetFlags() & QuadFlags::GROUND)
+            groundQuadIndexes.push_back(i);
+    }
 
     // Pass 1 : Detect AirTime + Snap to Ground + construct up vec list
     std::vector<const Quadblock*> groundQuads(nodeCount);
     std::vector<bool> grounded(nodeCount);
     std::vector<Vec3> upVec(nodeCount);
-    std::vector<Vec3> forwardVec(nodeCount);
-    std::vector<float> segmentDist(nodeCount);
     const Vec3 upGlobal = Vec3(0.0f, 1.0f, 0.0f);
     for (size_t i = 0; i < nodeCount; i++)
     {
         Vec3 pos = nodesPos[i];
         Vec3 rot = nodesRot[i];
-        float bestDist = GROUND_THRESHOLD;
-
-        grounded[i] = false;
-        upVec[i] = { 0.0f, 1.0f, 0.0f };
-        for (const Quadblock& quad : quadblocks)
+        int quadID = SnapToClosestQuad(quadblocks, groundQuadIndexes, pos, rot, upGlobal, -1.0f, 1.0f);
+        if (quadID == -1)
         {
-            if (!(quad.GetFlags() & QuadFlags::GROUND))
-                continue;
-
-            const BoundingBox& bb = quad.GetBoundingBox();
-            if (pos.x < bb.min.x || pos.x > bb.max.x) continue;
-            if (pos.z < bb.min.z || pos.z > bb.max.z) continue;
-
-            float dist = 0.0f;
-            Vec3 normal;
-            if (!quad.IntersectRay(pos, upGlobal, dist, normal))
-                continue;
-            if (std::abs(dist) > bestDist)
-                continue;
-            bestDist = std::abs(dist);
-            quad.SnapPoint(pos, rot, upGlobal);
-            groundQuads[i] = &quad;
-            upVec[i] = normal;
-            grounded[i] = true;
+            grounded[i] = false;
+            upVec[i] = { 0.0f, 1.0f, 0.0f };
+            groundQuads[i] = nullptr;
         }
-            
+        else
+        {
+            grounded[i] = true;
+            upVec[i] = quadblocks[quadID].GetNormal();
+            groundQuads[i] = &quadblocks[quadID];
+        }
         m_nodes[i].SetPos(pos);
-        m_nodes[i].SetRot(rot);
+        m_nodes[i].SetRot(rot);          
     }
-
-    /// --- Pre-pass: compute yaw ---
-    std::vector<float> yaws(nodeCount);
-    for (size_t i = 0; i < nodeCount; i++)
-    {
-        const Vec3& curr = nodesPos[i];
-        const Vec3& next = nodesPos[(i + 1) % nodeCount];
-        const Vec3 delta = next - curr;
-        forwardVec[i] = delta - upVec[i] * (upVec[i].Dot(delta));
-        forwardVec[i].Normalize();
-        yaws[i] = std::atan2(delta.x, delta.z) * (180.0f / MATH_PI);
-        segmentDist[i] = delta.Length();
-    }
-
-
-    // --- Pre-pass: drift ---
+    
+    // Pass : Distance + AngularVel
+    std::vector<float> segmentDist(nodeCount);
     std::vector<float> angularVel(nodeCount);
     for (size_t i = 0; i < nodeCount; i++)
     {
-        float dist = segmentDist[i];
-        if (dist < 1e-6f) { angularVel[i] = 0.0f; continue; }
-        float yawDelta = NormalizeAngle(yaws[(i + 1) % nodeCount] - yaws[i]);
-        angularVel[i] = yawDelta / dist; // degrees per unit of distance
+        const BotNode& curr = m_nodes[i];
+        const BotNode& next = m_nodes[(i + 1) % nodeCount];
+        float dist = (next.GetPos() - curr.GetPos()).Length();
+        float yawDelta = NormalizeAngle(next.GetRot().y - curr.GetRot().y);
+        segmentDist[i] = dist;
+        angularVel[i] = yawDelta / dist;
     }
 
+    // Pass : drift
     std::vector<int> driftDir(nodeCount, 0); // -1 = right, 0 = none, +1 = left
     for (size_t i = 0; i < nodeCount; i++)
     {
@@ -248,21 +201,18 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
         int dir;           // -1 or +1
     };
 
-    // Helper: sum of segmentDist[start..end] inclusive
     auto chunkDist = [&](size_t start, size_t end) {
         float d = 0.f;
         for (size_t i = start; i <= end; i++) d += segmentDist[i];
         return d;
         };
 
-    // Helper: distance of the gap between two chunks (exclusive indices between them)
     auto gapDist = [&](const DriftChunk& a, const DriftChunk& b) {
         float d = 0.f;
         for (size_t i = a.end + 1; i < b.start; i++) d += segmentDist[i];
         return d;
         };
 
-    // Helper: rebuild DriftChunk list from current driftDir array
     auto buildChunks = [&]() {
         std::vector<DriftChunk> chunks;
         size_t i = 0;
@@ -279,10 +229,10 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
         return chunks;
         };
 
-    const float MIN_DRIFT_DIST = 15.0f;
+    const float MIN_DRIFT_DIST = 10.0f;
     const float MIN_GAP_DIST = 15.0f;
 
-    // --- Step 1: Merge same-direction chunks that are too close ---
+    // Merge close same dir chuncks
     auto chunks = buildChunks();
     for (size_t i = 0; i + 1 < chunks.size(); i++) 
     {
@@ -294,18 +244,14 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
                 driftDir[j] = a.dir;
         }
     }
-
-    // --- Step 2: Remove drift chunks shorter than MIN_DRIFT_DIST ---
+    //Remove short dritfs
     chunks = buildChunks();
     for (auto& c : chunks) {
         if (chunkDist(c.start, c.end) < MIN_DRIFT_DIST) {
             for (size_t i = c.start; i <= c.end; i++) driftDir[i] = 0;
         }
     }
-
-
-
-    // --- Step 3: Trim first chunk when different-direction chunks are too close ---
+    // Reduce drift size when 2 very close opposite drift
     bool changed = true;
     while (changed) {
         changed = false;
@@ -329,8 +275,7 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
             }
         }
     }
-
-    // --- Step 4: After trimming, some chunks may now be too short � repeat step 2 ---
+    //Remove short dritfs again
     chunks = buildChunks();
     for (auto& c : chunks) {
         if (chunkDist(c.start, c.end) < MIN_DRIFT_DIST) {
@@ -339,156 +284,80 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
     }
 
 
-
-
-    const float DRIFT_ANGLE_DEG = 30.0f;
-    const float DRIFT_ANGLE_RAD = DRIFT_ANGLE_DEG * (MATH_PI / 180.0f);
-    for (size_t i = 0; i < nodeCount; i++)
-    {
-        //Rotate forward to simulate drift.
-        /*Vec3& forward = forwardVec[i];
-        Vec3& up = upVec[i];
-        float angle = driftDir[i] * DRIFT_ANGLE_RAD;
-        forwardVec[i] = forward * std::cos(angle) + (up.Cross(forward)) * std::sin(angle);*/
-
-        if (driftDir[i] == 1)
-        {
-            BotFlags flags{};
-            flags.driftRight = true;
-            m_nodes[i].SetFlags(flags);
-        }
-        if (driftDir[i] == -1)
-        {
-            BotFlags flags{};
-            flags.driftRight = true;
-            m_nodes[i].SetFlags(flags);
-        }
-    }
-
+    // Pass flags and settings
     uint8_t lastckpt = 0;
     for (size_t i = 0; i < nodeCount; i++)
     {
         BotNode& node = m_nodes[i];
         node.SetPathChange(3); // no path change
-        node.SetPathChangeIndex(static_cast<int>((i + 4) % nodeCount));
-        const Quadblock* groundQuad = groundQuads[i];
-        bool isGrounded = grounded[i];
+        node.SetPathChangeIndex(static_cast<int>(i));
 
-        // --- Rotation ---
-        Vec3& forward = forwardVec[i];
-        Vec3& up = upVec[i];
-        Vec3 right = forward.Cross(up);
-        
-        // --- Terrain & go back count from ground quad ---
-        
-        if (groundQuad)
+        BotFlags flags = node.GetFlags();
+        if (driftDir[i] == -1)
+            flags.driftLeft = true;      
+        if (driftDir[i] == 1)
+            flags.driftRight = true;
+        if (driftDir[i] != 0)
         {
-            int cur_ckpt = groundQuad->GetCheckpoint();
-            if (cur_ckpt >=  0) { lastckpt = static_cast<uint8_t>(std::clamp(cur_ckpt, 0, 255)); }
-            node.SetCheckpoint(lastckpt);
-            // Terrain from the quad directly underfoot
-            node.SetTerrain(groundQuad->GetTerrain());
-
+            flags.skidmarkBack = true;
+            flags.skidmarkFront = true;
+        }        
+        
+        if (groundQuads[i])
+        {
+            if (groundQuads[i]->GetCheckpoint() >=  0) 
+                lastckpt = static_cast<uint8_t>(groundQuads[i]->GetCheckpoint());
+            node.SetTerrain(groundQuads[i]->GetTerrain());
+            if (!groundQuads[(i + 1) % nodeCount])
+                flags.jump = true;
+            uint8_t t = groundQuads[i]->GetTerrain();
+            if (t == TerrainType::WATER || t == TerrainType::FAST_WATER || t == TerrainType::MUD)
+                flags.sink = true;
+            if (groundQuads[i]->GetFlags() & QuadFlags::REVERB)
+                flags.echo = true;
+            if (groundQuads[i]->GetFlags() & QuadFlags::MOON_GRAVITY)
+                flags.lowGrav = true;
         }
         else
         {
-            node.SetCheckpoint(lastckpt);
             node.SetTerrain(TerrainType::ASPHALT);
-        }
-
-        // --- Flags ---
-
-        const Vec3& pos = nodesPos[i];
-        BotFlags flags = node.GetFlags();
-
-        // MID_AIR: not grounded
-        if (!isGrounded)
-        {
             flags.midAir = true;
         }
+        node.SetCheckpoint(lastckpt);
 
-        // JUMP: last grounded node before becoming airborne
-        if (isGrounded)
+        for (const Quadblock& quad : quadblocks)
         {
-            bool nextAirborne = !grounded[(i + 1) % nodeCount];
-            if (nextAirborne) { flags.jump = true; }
-        }
-
-        // SINK_KART: ground quad has water / fast water / mud terrain
-        if (groundQuad)
-        {
-            uint8_t t = groundQuad->GetTerrain();
-            if (t == TerrainType::WATER ||
-                t == TerrainType::FAST_WATER ||
-                t == TerrainType::MUD)
+            float dist = quad.GetBoundingBox().Distance(node.GetPos());
+            if (dist < 2.0f)
             {
-                flags.sink = true;
+                if (quad.GetFlags() & QuadFlags::TRIGGER_SCRIPT && quad.GetTerrain() == TerrainType::DIRT)
+                {
+                    flags.turboPad = true;
+                    flags.skidmarkFront = true;
+                }                
+                if (quad.GetFlags() & QuadFlags::TRIGGER_SCRIPT && quad.GetTerrain() == TerrainType::GRASS)
+                {
+                    flags.turboPadLow = true;
+                    flags.skidmarkFront = true;
+                }
             }
         }
 
-        //ECHO 
-        if (groundQuad)
+        if (groundQuads[i] && !groundQuads[(i + nodeCount - 1) % nodeCount]) // just landed, skidmark for 10u
         {
-            if (groundQuad->GetFlags() & QuadFlags::REVERB)
-                flags.echo = true;
-        }
-
-        //MOON GRAV 
-        if (groundQuad)
-        {
-            if (groundQuad->GetFlags() & QuadFlags::MOON_GRAVITY)
-                flags.lowGrav = true;
-        }
-
-        // TURBO_PAD_HIGH: nearby quad with TRIGGER_SCRIPT and Dirt terrain
-        bool onTurboPad = HasNearbyQuad(pos, NEARBY_THRESHOLD, [](const Quadblock& q)
-            {
-                return (q.GetFlags() & QuadFlags::TRIGGER_SCRIPT) &&
-                    (q.GetTerrain() == TerrainType::DIRT);
-            });
-        if (onTurboPad) { flags.turboPad = true; }
-
-        // TURBO_PAD_LOW: nearby quad with TRIGGER_SCRIPT and Grass terrain (super turbo pad)
-        bool onSuperTurboPad = HasNearbyQuad(pos, NEARBY_THRESHOLD, [](const Quadblock& q)
-            {
-                return (q.GetFlags() & QuadFlags::TRIGGER_SCRIPT) &&
-                    (q.GetTerrain() == TerrainType::GRASS);
-            });
-        if (onSuperTurboPad) { flags.turboPadLow = true; }
-
-        // SKIDMARKS_BACK: when drifting
-        bool drifting = flags.driftLeft || flags.driftRight;
-        if (drifting) { flags.skidmarkBack = true; }
-
-        // SKIDMARKS_FRONT: drifting, or on a turbo/super turbo pad,
-        // or the ~10 units after landing (transitioning from air to ground)
-        bool prevAirborne = !grounded[(i + nodeCount - 1) % nodeCount];
-        bool justLanded = isGrounded && prevAirborne;
-
-        // Count how many nodes ago we landed to cover the ~10 unit window
-        bool withinLandingWindow = false;
-        if (isGrounded)
-        {
+            flags.skidmarkFront = true; 
             float distSinceLanding = 0.0f;
-            for (size_t k = 1; k < nodeCount && distSinceLanding < SKIDMARK_LENGTH; k++)
+            size_t k = 0;
+            while (distSinceLanding < SKIDMARK_LENGTH && k < 15)
             {
-                size_t idx = (i + nodeCount - k) % nodeCount;
-                if (!grounded[idx] || (m_nodes[idx].GetFlags().turboPad || m_nodes[idx].GetFlags().turboPadLow)) { withinLandingWindow = true; break; }
-                size_t idxNext = (idx + 1) % nodeCount;
-                Vec3 d = {
-                    nodesPos[idxNext].x - nodesPos[idx].x,
-                    nodesPos[idxNext].y - nodesPos[idx].y,
-                    nodesPos[idxNext].z - nodesPos[idx].z
-                };
-                distSinceLanding += std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
+                BotNode& nextNode = m_nodes[(i + k) % nodeCount];
+                BotFlags nextFlags = nextNode.GetFlags();
+                nextFlags.skidmarkFront = true;
+                nextNode.SetFlags(nextFlags);
+                distSinceLanding += (nextNode.GetPos() - node.GetPos()).Length();
+                k++;
             }
         }
-
-        if (drifting || onTurboPad || onSuperTurboPad || withinLandingWindow)
-        {
-            flags.skidmarkFront = true;
-        }
-
         node.SetFlags(flags);
     }
     return true;

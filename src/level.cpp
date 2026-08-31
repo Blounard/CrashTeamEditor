@@ -264,7 +264,7 @@ bool Level::GenerateSpawn(float colSpacing, float rowSpacing, float centerOffset
 		{
 			int index = row * 4 + col;
 			float lateralOffset = (col - 1.5f) * colSpacing;
-			float forwardOffset = (row - 0.5f) * rowSpacing;
+			float forwardOffset = (0.5f - row) * rowSpacing;
 			Vec3 pos = center + right * lateralOffset + forward * forwardOffset + forward * centerOffset;
 			Vec3 rot(0.0f, yaw, 0.0f);
 
@@ -520,79 +520,70 @@ bool Level::GenerateVisTreeOnly()
 
 void Level::GenerateBotPathChangeCode()
 {
-	// For each node on a path, find the closest node on the target path
-	// and set the PathChange and PathChangeIndex accordingly.
-	auto findClosestNode = [](const std::vector<BotNode>& targetNodes, const Vec3& pos) -> int
+	constexpr float DIST_NEXT_NODE = 10.0f;
+	auto findTargetNode = [](const std::vector<BotNode>& targetNodes, const Vec3& pos) -> int
 		{
-			int   bestIndex = 0;
-			float bestDist = FLT_MAX;
+			size_t nodeCount = targetNodes.size();
+			// Find closest first
+			int   targetIndex = 0;
+			float bestDist = std::numeric_limits<float>::max();
 			for (int i = 0; i < static_cast<int>(targetNodes.size()); i++)
 			{
-				const Vec3& targetPos = targetNodes[i].GetPos();
-				const float dx = pos.x - targetPos.x;
-				const float dy = pos.y - targetPos.y;
-				const float dz = pos.z - targetPos.z;
-				const float dist = dx * dx + dy * dy + dz * dz; // squared, no need for sqrt
+				const float dist = (targetNodes[i].GetPos() - pos).LengthSquared();
 				if (dist < bestDist)
 				{
 					bestDist = dist;
-					bestIndex = i;
+					targetIndex = i;
 				}
 			}
-			return bestIndex;
+			// Take a node some distance after
+			float dist = 0.0f;
+			int k = 0;
+			while (dist < DIST_NEXT_NODE && k < 15)
+			{
+				dist += (targetNodes[(targetIndex + 1) % nodeCount].GetPos() - targetNodes[targetIndex].GetPos()).Length();
+				targetIndex = (targetIndex + 1) % nodeCount; 
+				k++;
+			}
+			return targetIndex;
 		};
 
-	// Validate that all 3 paths are valid before proceeding
 	for (int i = 0; i < 3; i++)
 	{
-		if (!m_botPaths[i].IsValid())
-		{
-			// Can't generate path change codes without all 3 paths
-			return;
-		}
+		if (!m_botPaths[i].IsValid()) return;
 	}
-
 	const std::vector<BotNode>& leftNodes = m_botPaths[0].GetNodes();
 	const std::vector<BotNode>& middleNodes = m_botPaths[1].GetNodes();
 	const std::vector<BotNode>& rightNodes = m_botPaths[2].GetNodes();
 
-	// --- Path 0 (Left): can only switch to Middle (1) ---
 	for (int i = 0; i < static_cast<int>(leftNodes.size()); i++)
 	{
 		BotNode& node = m_botPaths[0].GetNode(i);
-		const int closestMid = findClosestNode(middleNodes, node.GetPos());
+		const int closestMid = findTargetNode(middleNodes, node.GetPos());
 		node.SetPathChange(1);
 		node.SetPathChangeIndex(closestMid);
 	}
 
-	// --- Path 2 (Right): can only switch to Middle (1) ---
 	for (int i = 0; i < static_cast<int>(rightNodes.size()); i++)
 	{
 		BotNode& node = m_botPaths[2].GetNode(i);
-		const int closestMid = findClosestNode(middleNodes, node.GetPos());
+		const int closestMid = findTargetNode(middleNodes, node.GetPos());
 		node.SetPathChange(1);
 		node.SetPathChangeIndex(closestMid);
 	}
 
-	// --- Path 1 (Middle): can switch to Left (0) or Right (2) ---
-	// Alternate between left and right to distribute switches evenly,
-	// so the AI doesn't always prefer one side.
 	for (int i = 0; i < static_cast<int>(middleNodes.size()); i++)
 	{
 		BotNode& node = m_botPaths[1].GetNode(i);
 		if (i % 2 == 0)
 		{
-			// Switch to Left
-			const int closestLeft = findClosestNode(leftNodes, node.GetPos());
 			node.SetPathChange(0);
-			node.SetPathChangeIndex(closestLeft);
+			node.SetPathChangeIndex(findTargetNode(leftNodes, node.GetPos()));
 		}
 		else
 		{
-			// Switch to Right
-			const int closestRight = findClosestNode(rightNodes, node.GetPos());
 			node.SetPathChange(2);
-			node.SetPathChangeIndex(closestRight);
+			node.SetPathChangeIndex(findTargetNode(rightNodes, node.GetPos()));
 		}
 	}
 }
