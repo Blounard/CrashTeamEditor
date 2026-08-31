@@ -333,7 +333,7 @@ void BotNode::RenderUI(int index, bool& deleteRequested)
 		if (ImGui::InputInt("Checkpoint##botnode", &goBack))
 			m_checkpoint = static_cast<uint8_t>(std::clamp(goBack, 0, 255));
 
-		const char* options[] = { "Ram Physics", "Reflection", "Transparency"};
+		const char* options[] = { "Ram Physics", "Reflection", "Shadow"};
 		int selectMode = static_cast<int>(m_specialBits);
 		if (ImGui::Combo("Special Option##botnode", &selectMode, options, 3))
 		{
@@ -343,9 +343,9 @@ void BotNode::RenderUI(int index, bool& deleteRequested)
 		if (m_specialBits == BotSpecialBits::RAM_PHYS)
 			if (ImGui::InputInt("RamPhysID##botnode", &m_ramPhysID))
 				m_ramPhysID = Clamp(m_ramPhysID, 0, 15);
-		if (m_specialBits == BotSpecialBits::TRANSPARENCY)
-			if (ImGui::InputInt("Transparency##botnode", &m_transparency))
-				m_transparency = Clamp(m_transparency, 0, 15);
+		if (m_specialBits == BotSpecialBits::SHADOW)
+			if (ImGui::InputInt("Shadow##botnode", &m_shadow))
+				m_shadow = Clamp(m_shadow, 0, 15);
 		if (m_specialBits == BotSpecialBits::REFLECTION)
 			if (ImGui::InputInt("SplitlineID##botnode", &m_splitLineID))
 				m_splitLineID = Clamp(m_splitLineID, 0, 1);

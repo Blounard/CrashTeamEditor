@@ -39,8 +39,8 @@ BotNode::BotNode(const PSX::NavFrame& frame)
     }
     else 
     {
-        m_transparency = flags2 & PSXBotNodeFlags2::SPECIAL_MASK;
-        m_specialBits = BotSpecialBits::TRANSPARENCY;
+        m_shadow = flags2 & PSXBotNodeFlags2::SPECIAL_MASK;
+        m_specialBits = BotSpecialBits::SHADOW;
     }
 }
 
@@ -79,7 +79,7 @@ std::vector<uint8_t> BotNode::Serialize(const Vec3& nextPos, std::vector<Instanc
     else if (m_specialBits == BotSpecialBits::REFLECTION)
         frame.specialBits |= static_cast<uint8_t>(m_splitLineID) & PSXBotNodeFlags2::SPECIAL_MASK;
     else
-        frame.specialBits |= static_cast<uint8_t>(m_transparency) & PSXBotNodeFlags2::SPECIAL_MASK;
+        frame.specialBits |= static_cast<uint8_t>(m_shadow) & PSXBotNodeFlags2::SPECIAL_MASK;
 
     for (Instance& inst : instances)
     {
@@ -317,6 +317,28 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
                 flags.echo = true;
             if (groundQuads[i]->GetFlags() & QuadFlags::MOON_GRAVITY)
                 flags.lowGrav = true;
+            if (groundQuads[i]->GetFlags() & QuadFlags::REFLECTION_1)
+            {
+                node.SetReflection(0);
+                node.SetSpecialMode(BotSpecialBits::REFLECTION);
+            }
+            if (groundQuads[i]->GetFlags() & QuadFlags::REFLECTION_2)
+            {
+                node.SetReflection(1);
+                node.SetSpecialMode(BotSpecialBits::REFLECTION);
+            }
+            // Shadow
+            int sumColor = 0;
+            for (const Vertex& vert : groundQuads[i]->GetVertices())
+            {
+                Color col = vert.GetColor(true);
+                sumColor += col.r + col.g + col.b;
+            }
+            float ratio = static_cast<float>(sumColor) / (9.0f * 255.0f * 3.0f);
+            if (ratio > 0.5f)
+                node.SetShadow(0);
+            else
+                node.SetShadow(static_cast<int>(15.0f - ratio * 30.0f));
         }
         else
         {

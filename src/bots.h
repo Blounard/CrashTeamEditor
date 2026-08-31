@@ -50,7 +50,7 @@ enum class BotSpecialBits : int
 {
     RAM_PHYS = 0,
     REFLECTION = 1,
-    TRANSPARENCY = 2,
+    SHADOW = 2,
 };
 
 struct BotFlags
@@ -100,15 +100,23 @@ public:
     int GetPathChangeIndex() const { return m_pathChangeIndex; }
     void SetPathChangeIndex(int v) { m_pathChangeIndex = v; }
 
+    int GetShadow() const { return m_shadow; }
+    void SetShadow(int v) { m_shadow = v; }
+
+    int GetReflection() const { return m_splitLineID; }
+    void SetReflection(int v) { m_splitLineID = v; }
+
+    void SetSpecialMode(BotSpecialBits v) { m_specialBits = v; }
+
 private:
     Vec3 m_pos = {};
     Vec3 m_rot = {};
 
     BotFlags m_flags = {};
-    BotSpecialBits m_specialBits = BotSpecialBits::TRANSPARENCY;
+    BotSpecialBits m_specialBits = BotSpecialBits::SHADOW;
     int m_splitLineID = 0;
     int m_ramPhysID = 0;
-    int m_transparency = 0;
+    int m_shadow = 0;
 
     uint8_t m_terrain = TerrainType::ASPHALT;
     int m_pathChange = 0;
