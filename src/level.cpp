@@ -591,12 +591,7 @@ void Level::GenerateBotPathChangeCode()
 
 void Level::GenerateBotPathLeft()
 {
-	std::vector<Vec3> pos;
-	for (BotNode& node : m_botPaths[0].GetNodes())
-	{
-		pos.push_back(node.GetPos());
-	}
-	m_botPaths[0].GeneratePath(pos, m_quadblocks);
+	return;
 }
 
 bool Level::GenerateCheckpoints()

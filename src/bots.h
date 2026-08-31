@@ -44,6 +44,8 @@ struct BotPathSettings
     bool  normalizeNodeDist = true;
     float nodeDistance = 4.0f;
     float sidewayOffset = 6.0f;
+    float negSnapDist = -6.0f; // MUST BE NEGATIVE
+    float posSnapDist = 6.0f; // MUST BE POSITIVE
 };
 
 enum class BotSpecialBits : int
@@ -133,7 +135,7 @@ public:
     void Clear();
     bool IsValid();
     bool LoadFromOBJ(const std::filesystem::path& path, std::vector<Quadblock>& quadblocks);
-    bool GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& quadblocks);
+    bool GeneratePath(std::vector<Vec3>& nodesPos, const std::vector<Quadblock>& quadblocks, const BotPathSettings& settings, int pathID);
 
     std::vector<uint8_t> Serialize(std::vector<Instance>& instances) const;
     void RenderUI(int pathIndex);
@@ -158,4 +160,3 @@ private:
     uint16_t m_physUnk[0x20] = {};
 };
 
-std::vector<Vec3> GenerateLateralPath(const std::vector<BotNode>& nodes, float lateralOffset, std::vector<Quadblock>& quadblocks);

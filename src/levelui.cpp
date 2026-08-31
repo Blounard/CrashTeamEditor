@@ -405,7 +405,7 @@ void BotPath::RenderUI(int pathIndex)
 
 
 bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, const std::unordered_map<size_t, InstanceModel>& modelInstances, Vec3& queryPoint, std::vector<Quadblock>& quadblocks)
-{
+{// TODO : Make sure it doesn't crash when your instance has an invalid model
 	bool modelChanged = false;
 
 	std::string headerLabel = m_name.empty() ? ("Instance " + std::to_string(index + 1)) : m_name;
@@ -2576,6 +2576,13 @@ void Level::RenderUI(Renderer& renderer)
 				ImGui::SetNextItemWidth(200.0f);
 				ImGui::DragFloat("Node Distance", &m_botPathSettings.nodeDistance, 0.1f, 0.1f, 30.0f, "%.1f");
 			}
+			ImGui::SetNextItemWidth(150.0f);
+			ImGui::DragFloat("Below ground threshold##bot", &m_botPathSettings.negSnapDist, 0.1f, -50.0f, -0.1f, "%.1f");
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(150.0f);
+			ImGui::DragFloat("Above ground threshold##bot", &m_botPathSettings.posSnapDist, 0.1f, 0.1f, 50.0f, "%.1f");
+
+
 
 			for (int i = 0; i < 3; i++)
 			{
@@ -2618,36 +2625,20 @@ void Level::RenderUI(Renderer& renderer)
 					if (m_botPathSettings.useManualPath && !s_objPaths[i].empty())
 					{
 						std::vector<Vec3> vec = LoadPath(s_objPaths[i]);
-						if (m_botPathSettings.normalizeNodeDist)
-							vec = NormalizePos(vec, m_botPathSettings.nodeDistance, true); 
-						success = m_botPaths[i].GeneratePath(vec, m_quadblocks);
+						success = m_botPaths[i].GeneratePath(vec, m_quadblocks, m_botPathSettings, i);
 					}
 					else
 					{
-						// use checkpoint node for the bot node.
 						std::vector<Vec3> vec;
-						int ckpt_id = 0;
-						while (m_checkpoints[ckpt_id].GetUp() > 0)
+						int ckpt_id = 2;
+						while (m_checkpoints[ckpt_id].GetUp() != 2)
 						{
 							vec.push_back(m_checkpoints[ckpt_id].GetPos());
 							ckpt_id = m_checkpoints[ckpt_id].GetUp();
 						}
 
-						if (m_botPathSettings.normalizeNodeDist) 
-							vec = NormalizePos(vec, m_botPathSettings.nodeDistance, true); 
-						if (i == 1) // Middle Path
-						{
-							success = m_botPaths[i].GeneratePath(vec, m_quadblocks);
-						}
-						else
-						{
-							BotPath middlePath{};
-							middlePath.GeneratePath(vec, m_quadblocks);
-							vec = GenerateLateralPath(middlePath.GetNodes(), i == 0 ? -m_botPathSettings.sidewayOffset : +m_botPathSettings.sidewayOffset, m_quadblocks);
-							if (m_botPathSettings.normalizeNodeDist) 
-								vec = NormalizePos(vec, m_botPathSettings.nodeDistance, true);
-							success = m_botPaths[i].GeneratePath(vec, m_quadblocks);
-						}
+						success = m_botPaths[i].GeneratePath(vec, m_quadblocks, m_botPathSettings, i);
+
 					}
 
 					if (!success)
@@ -3107,7 +3098,7 @@ bool AnimTexture::RenderUI(std::vector<std::string>& animTexNames, std::vector<Q
 		}
 		if (ImGui::TreeNode("Textures"))
 		{
-			for (Texture& tex : m_textures) { tex.RenderUI(); }
+			for (Texture& tex : m_textures) { ImGui::PushID(tex.GetPath().string().c_str()); tex.RenderUI(); ImGui::PopID(); }
 			ImGui::TreePop();
 		}
 		if (ImGui::TreeNode("Manage"))

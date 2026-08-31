@@ -118,8 +118,54 @@ bool BotPath::IsValid()
 }
 
 
-bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& quadblocks)
+bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, const std::vector<Quadblock>& quadblocks, const BotPathSettings& settings, int pathID)
 {
+    std::vector<size_t> groundQuadIndexes;
+    for (size_t i = 0; i < quadblocks.size(); i++)
+    {
+        if (quadblocks[i].GetFlags() & QuadFlags::GROUND)
+            groundQuadIndexes.push_back(i);
+    }
+    const Vec3 upGlobal = Vec3(0.0f, 1.0f, 0.0f);
+
+
+
+    if (settings.normalizeNodeDist)
+        nodesPos = NormalizePos(nodesPos, settings.nodeDistance, true);
+
+    if (!settings.useManualPath)
+    {
+        const size_t nodeCount = nodesPos.size();
+        std::vector<Vec3> lateralPos;
+        std::vector<Vec3> nodesRot = ComputeYaw(nodesPos, true);
+        float lateralOffset = settings.sidewayOffset * (pathID - 1);
+        float currLateralOffset = lateralOffset;
+        for (size_t i = 0; i < nodeCount; i++)
+        {
+            int quadID = SnapToClosestQuad(quadblocks, groundQuadIndexes, nodesPos[i], nodesRot[i], upGlobal, settings.negSnapDist, settings.posSnapDist);
+            Vec3 forward = nodesPos[(i + 1) % nodeCount] - nodesPos[i];
+            forward.Normalize();
+            Vec3 right = forward.Cross(upGlobal);
+            right.Normalize();
+            Vec3 currPos = nodesPos[i] + right * currLateralOffset;
+            if (quadID != -1)
+            {
+                int k = 0;
+                while (-1 == SnapToClosestQuad(quadblocks, groundQuadIndexes, currPos, nodesRot[i], upGlobal, settings.negSnapDist, settings.posSnapDist) && k < 10)
+                {
+                    k++;
+                    currLateralOffset *= 0.85f;
+                    currPos = nodesPos[i] + right * currLateralOffset;
+                }
+            }
+            lateralPos.push_back(currPos);
+            if (currLateralOffset * currLateralOffset < lateralOffset * lateralOffset)
+                currLateralOffset /= 0.85f;
+        }
+        nodesPos = NormalizePos(lateralPos, settings.nodeDistance, true);
+    }
+
+
     const size_t nodeCount = nodesPos.size();
     constexpr float SKIDMARK_LENGTH = 15.0f; // degrees, for drift yaw addition
     constexpr float BOT_SPEED = 25.0f;
@@ -141,35 +187,15 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
     m_nodes.resize(nodeCount);
     const std::vector<Vec3> nodesRot = ComputeYaw(nodesPos, true);
 
-    std::vector<size_t> groundQuadIndexes;
-    for (size_t i = 0; i < quadblocks.size(); i++)
-    {
-        if (quadblocks[i].GetFlags() & QuadFlags::GROUND)
-            groundQuadIndexes.push_back(i);
-    }
-
-    // Pass 1 : Detect AirTime + Snap to Ground + construct up vec list
+    // Pass 1 : Detect AirTime + Snap to Ground
     std::vector<const Quadblock*> groundQuads(nodeCount);
-    std::vector<bool> grounded(nodeCount);
-    std::vector<Vec3> upVec(nodeCount);
-    const Vec3 upGlobal = Vec3(0.0f, 1.0f, 0.0f);
+    
     for (size_t i = 0; i < nodeCount; i++)
     {
         Vec3 pos = nodesPos[i];
         Vec3 rot = nodesRot[i];
-        int quadID = SnapToClosestQuad(quadblocks, groundQuadIndexes, pos, rot, upGlobal, -1.0f, 1.0f);
-        if (quadID == -1)
-        {
-            grounded[i] = false;
-            upVec[i] = { 0.0f, 1.0f, 0.0f };
-            groundQuads[i] = nullptr;
-        }
-        else
-        {
-            grounded[i] = true;
-            upVec[i] = quadblocks[quadID].GetNormal();
-            groundQuads[i] = &quadblocks[quadID];
-        }
+        int quadID = SnapToClosestQuad(quadblocks, groundQuadIndexes, pos, rot, upGlobal, settings.negSnapDist, settings.posSnapDist);
+        groundQuads[i] = quadID == -1 ? nullptr : groundQuads[i] = &quadblocks[quadID];
         m_nodes[i].SetPos(pos);
         m_nodes[i].SetRot(rot);          
     }
@@ -191,7 +217,7 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
     std::vector<int> driftDir(nodeCount, 0); // -1 = right, 0 = none, +1 = left
     for (size_t i = 0; i < nodeCount; i++)
     {
-        if (!grounded[i]) { continue; }
+        if (!groundQuads[i]) { continue; }
         if (std::abs(angularVel[i]) >= SHARP_TURN_DEG_PER_UNIT)
             driftDir[i] = (angularVel[i] > 0.0f) ? 1 : -1;
     }
@@ -383,111 +409,4 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
         node.SetFlags(flags);
     }
     return true;
-}
-
-
-
-
-std::vector<uint8_t> BotPath::Serialize(std::vector<Instance>& instances) const
-{
-    // Crash if called with invalid nodes. Never serialize empty path.
-    PSX::NavHeader header = {};
-    std::vector<uint8_t> buffer(sizeof(header));
-    header.magic = BOT_PATH_MAGIC;
-    header.numPoints = static_cast<uint16_t>(m_nodes.size()-1);
-    header.unk1 = 0;
-    header.posY = ConvertFloat(m_nodes[0].GetPos().y, FP_ONE_GEO);
-    header.offLastPoint = 0;//m_offLastPoint;
-    std::copy(std::begin(m_physUnk), std::end(m_physUnk), std::begin(header.physUnk)); // can't be removed (on crash cove, ramp fails), need to be understood
-    std::memcpy(buffer.data(), &header, sizeof(header));
-
-    for (int i = 0; i < m_nodes.size() - 1 ; i++)
-    {
-        int next_id = i == (m_nodes.size() - 2) ? 0 : i + 1; //2nd to last's next is the first. Last is handled differently
-        const BotNode& node = m_nodes[i];
-        const Vec3& nextPos = m_nodes[next_id].GetPos();
-        auto nodeBytes = node.Serialize(nextPos, instances);
-        buffer.insert(buffer.end(), nodeBytes.begin(), nodeBytes.end());
-    }
-    //Placeholder behavior for the last. Need to investigate how it works. It doesn't seem to be the distance to first.
-    const BotNode& node = m_nodes[m_nodes.size() - 1];
-    const Vec3& nextPos = m_nodes[0].GetPos();
-    auto nodeBytes = node.Serialize(nextPos, instances);
-    buffer.insert(buffer.end(), nodeBytes.begin(), nodeBytes.end());
-    return buffer;
-}
-
-
-std::vector<Vec3> GenerateLateralPath(const std::vector<BotNode>& nodes, float lateralOffset, std::vector<Quadblock>& quadblocks)
-{
-    if (nodes.size() < 2)
-    {
-        std::vector<Vec3> fallback;
-        fallback.reserve(nodes.size());
-        for (const BotNode& node : nodes)
-            fallback.push_back(node.GetPos());
-        return fallback;
-    }
-
-    float sign = lateralOffset < 0 ? -1.0f : 1.0f;
-    const Vec3 up(0.0f, 1.0f, 0.0f);
-
-    // Check if a given XZ position falls within the XZ bounds of any quadblock with the given checkpoint ID
-    auto isAboveAnyQuadblock = [&](const Vec3& testPos, int checkpointID, float& height) -> bool
-        {
-            for (const Quadblock& quad : quadblocks)
-            {
-                if (quad.GetCheckpoint() > checkpointID + 1 || quad.GetCheckpoint() < checkpointID - 1)
-                    continue;
-                Vec3 _;
-                if (quad.IntersectRay(testPos, up, height, _))
-                    return true;
-            }
-            return false;
-        };
-
-    std::vector<Vec3> result;
-    result.reserve(nodes.size());
-
-    float currLateralOffset = lateralOffset;
-    constexpr float reductionFactor = 0.8f;
-    constexpr int   maxAttempts = 10;
-
-    for (int i = 0; i < nodes.size(); i++)
-    {
-        const Vec3 nodePos = nodes[i].GetPos();
-        const int  checkpointID = static_cast<int>(nodes[i].GetCheckpoint());
-
-        Vec3 forward = nodes[(i == nodes.size() - 1) ? 0 : i + 1].GetPos() - nodes[i].GetPos();
-        forward.Normalize();
-
-        Vec3 right = forward.Cross(up);
-        right.Normalize();
-        if (right.Length() < EPSILON)
-            right = Vec3(1.0f, 0.0f, 0.0f);
-        float _ = 0.0f;
-        if (!isAboveAnyQuadblock(nodePos, checkpointID, _))
-        {
-            result.push_back(nodePos + right * currLateralOffset);
-            continue;
-        }
-
-        float tempLateralOffset = sign * std::fmin(std::abs(currLateralOffset) / reductionFactor, std::abs(lateralOffset));
-        Vec3 candidatePos;
-        float target_height = 0.0f;
-
-        for (int attempt = 0; attempt < maxAttempts; attempt++)
-        {
-            candidatePos = nodePos + right * tempLateralOffset;
-            if (isAboveAnyQuadblock(candidatePos, checkpointID, target_height))
-            {
-                currLateralOffset = tempLateralOffset;
-                //candidatePos.y = target_height;
-                break;
-            }   
-            tempLateralOffset *= reductionFactor;
-        }
-        result.push_back(candidatePos);
-    }
-    return result;
 }
