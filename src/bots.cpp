@@ -3,15 +3,45 @@
 BotNode::BotNode(const PSX::NavFrame& frame)
 {
     m_pos = ConvertPSXVec3(frame.pos, FP_ONE_GEO);
-    m_rot.x = BamToAngle(frame.rot[0]);
-    m_rot.y = BamToAngle(frame.rot[1]);
-    m_rot.z = BamToAngle(frame.rot[2]);
-    m_flags = frame.flags;
-    m_terrain = (frame.flags & BotNodeFlags::TERRAIN_MASK) >> 3;
+    m_rot.x = ConvertBotAngle(frame.rot[0]);
+    m_rot.y = ConvertBotAngle(frame.rot[1]);
+    m_rot.z = ConvertBotAngle(frame.rot[2]);
+    m_terrain = (frame.flags & PSXBotNodeFlags::TERRAIN_MASK) >> 3;
     m_pathChangeIndex = static_cast<int>(frame.pathChangeOpCode & 0x3FF) ;
     m_pathChange = static_cast<int>(frame.pathChangeOpCode >> 10);
-    m_goBackCount = frame.goBackCount;
-    m_specialBits = frame.specialBits;
+    m_checkpoint = frame.goBackCount;
+
+    uint16_t flags = frame.flags;
+    if (flags & PSXBotNodeFlags::TURBO_PAD_HIGH) m_flags.turboPad = true;
+    if (flags & PSXBotNodeFlags::SKIDMARKS_FRONT) m_flags.skidmarkFront = true;
+    if (flags & PSXBotNodeFlags::SKIDMARKS_BACK) m_flags.skidmarkBack = true;
+    if (flags & PSXBotNodeFlags::TURBO_PAD_LOW) m_flags.turboPadLow = true;
+    if (flags & PSXBotNodeFlags::MASK_GRAB_STP) m_flags.maskGrabSTP = true;
+    if (flags & PSXBotNodeFlags::JUMP) m_flags.jump = true;
+    if (flags & PSXBotNodeFlags::DRIFT_LEFT) m_flags.driftLeft = true;
+    if (flags & PSXBotNodeFlags::DRIFT_RIGHT) m_flags.driftRight = true;
+    if (flags & PSXBotNodeFlags::ENGINE_ECHO) m_flags.echo = true;
+    if (flags & PSXBotNodeFlags::MID_AIR) m_flags.midAir = true;
+    if (flags & PSXBotNodeFlags::SINK_KART) m_flags.sink = true;
+
+    uint8_t flags2 = frame.specialBits;
+    if (flags2 & PSXBotNodeFlags2::MOON_GRAV) m_flags.lowGrav = true;
+
+    if (flags2 & PSXBotNodeFlags2::USE_RAMPHYS) 
+    {
+        m_ramPhysID = flags2 & PSXBotNodeFlags2::SPECIAL_MASK;
+        m_specialBits = BotSpecialBits::RAM_PHYS;
+    }
+    else if (flags2 & PSXBotNodeFlags2::USE_REFLECTION) 
+    {
+        m_splitLineID = flags2 & PSXBotNodeFlags2::SPECIAL_MASK;
+        m_specialBits = BotSpecialBits::REFLECTION;
+    }
+    else 
+    {
+        m_transparency = flags2 & PSXBotNodeFlags2::SPECIAL_MASK;
+        m_specialBits = BotSpecialBits::TRANSPARENCY;
+    }
 }
 
 
@@ -20,33 +50,46 @@ std::vector<uint8_t> BotNode::Serialize(const Vec3& nextPos, std::vector<Instanc
     PSX::NavFrame frame = {};
     std::vector<uint8_t> buffer(sizeof(frame));
     frame.pos = ConvertVec3(m_pos, FP_ONE_GEO);
-    frame.rot[0] = AngleToBam(m_rot.x);
-    frame.rot[1] = AngleToBam(m_rot.y);
-    frame.rot[2] = AngleToBam(m_rot.z);
+    frame.rot[0] = ConvertBotAngle(m_rot.x);
+    frame.rot[1] = ConvertBotAngle(m_rot.y);
+    frame.rot[2] = ConvertBotAngle(m_rot.z);
     frame.rot[3] = -frame.rot[0]; // Not sure what this is
     frame.distXYZ = ConvertFloat((m_pos - nextPos).Length(), FP_ONE_GEO);
     frame.distXZ = ConvertFloat((m_pos - nextPos).LengthHorizontal(), FP_ONE_GEO);
-    frame.flags = m_flags;
-    frame.flags &= ~BotNodeFlags::TERRAIN_MASK; 
-    frame.flags |= (m_terrain << 3) & BotNodeFlags::TERRAIN_MASK;
     frame.pathChangeOpCode = (static_cast<uint16_t>(m_pathChange) << 10) | (static_cast<uint16_t>(m_pathChangeIndex));
-    frame.goBackCount = m_goBackCount;
-    frame.specialBits = m_specialBits;
+    frame.goBackCount = m_checkpoint;
+
+    if (m_flags.turboPad) frame.flags |= PSXBotNodeFlags::TURBO_PAD_HIGH;
+    if (m_flags.skidmarkFront) frame.flags |= PSXBotNodeFlags::SKIDMARKS_FRONT;
+    if (m_flags.skidmarkBack) frame.flags |= PSXBotNodeFlags::SKIDMARKS_BACK;
+    if (m_flags.turboPadLow) frame.flags |= PSXBotNodeFlags::TURBO_PAD_LOW;
+    if (m_flags.maskGrabSTP) frame.flags |= PSXBotNodeFlags::MASK_GRAB_STP;
+    if (m_flags.jump) frame.flags |= PSXBotNodeFlags::JUMP;
+    if (m_flags.driftLeft) frame.flags |= PSXBotNodeFlags::DRIFT_LEFT;
+    if (m_flags.driftRight) frame.flags |= PSXBotNodeFlags::DRIFT_RIGHT;
+    if (m_flags.echo) frame.flags |= PSXBotNodeFlags::ENGINE_ECHO;
+    if (m_flags.midAir) frame.flags |= PSXBotNodeFlags::MID_AIR;
+    if (m_flags.sink) frame.flags |= PSXBotNodeFlags::SINK_KART;
+    frame.flags &= ~PSXBotNodeFlags::TERRAIN_MASK;
+    frame.flags |= (static_cast<uint16_t>(m_terrain) << 3) & PSXBotNodeFlags::TERRAIN_MASK;
+
+    if (m_flags.lowGrav) frame.specialBits |= PSXBotNodeFlags2::MOON_GRAV;
+    if (m_specialBits == BotSpecialBits::RAM_PHYS)
+        frame.specialBits |= static_cast<uint8_t>(m_ramPhysID) & PSXBotNodeFlags2::SPECIAL_MASK;
+    else if (m_specialBits == BotSpecialBits::REFLECTION)
+        frame.specialBits |= static_cast<uint8_t>(m_splitLineID) & PSXBotNodeFlags2::SPECIAL_MASK;
+    else
+        frame.specialBits |= static_cast<uint8_t>(m_transparency) & PSXBotNodeFlags2::SPECIAL_MASK;
 
     for (Instance& inst : instances)
     {
         if (inst.GetHitbox().enabled)
         {
             BoundingBox bbox = inst.ComputeBBox();
-            if (m_pos.x < bbox.max.x && m_pos.x > bbox.min.x
-                && m_pos.y < bbox.max.y && m_pos.y > bbox.min.y
-                && m_pos.z < bbox.max.z && m_pos.z > bbox.min.z)
-            {
-                frame.specialBits |= BotNodeFlags2::INSTANCE_COLL;
-            }
+            if (bbox.Distance(m_pos) < EPSILON)
+                frame.specialBits |= PSXBotNodeFlags2::INSTANCE_COLL;
         }
     }
-
 
     std::memcpy(buffer.data(), &frame, sizeof(frame));
     return buffer;
@@ -310,11 +353,15 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
 
         if (driftDir[i] == 1)
         {
-            m_nodes[i].SetFlags(BotNodeFlags::DRIFT_RIGHT);
+            BotFlags flags{};
+            flags.driftRight = true;
+            m_nodes[i].SetFlags(flags);
         }
         if (driftDir[i] == -1)
         {
-            m_nodes[i].SetFlags(BotNodeFlags::DRIFT_LEFT);
+            BotFlags flags{};
+            flags.driftRight = true;
+            m_nodes[i].SetFlags(flags);
         }
     }
 
@@ -322,7 +369,6 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
     for (size_t i = 0; i < nodeCount; i++)
     {
         BotNode& node = m_nodes[i];
-        node.SetSpecialBits(0);
         node.SetPathChange(3); // no path change
         node.SetPathChangeIndex(static_cast<int>((i + 4) % nodeCount));
         const Quadblock* groundQuad = groundQuads[i];
@@ -339,33 +385,33 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
         {
             int cur_ckpt = groundQuad->GetCheckpoint();
             if (cur_ckpt >=  0) { lastckpt = static_cast<uint8_t>(std::clamp(cur_ckpt, 0, 255)); }
-            node.SetGoBackCount(lastckpt);
+            node.SetCheckpoint(lastckpt);
             // Terrain from the quad directly underfoot
             node.SetTerrain(groundQuad->GetTerrain());
 
         }
         else
         {
-            node.SetGoBackCount(lastckpt);
+            node.SetCheckpoint(lastckpt);
             node.SetTerrain(TerrainType::ASPHALT);
         }
 
         // --- Flags ---
 
         const Vec3& pos = nodesPos[i];
-        uint16_t flags = node.GetFlags();
+        BotFlags flags = node.GetFlags();
 
         // MID_AIR: not grounded
         if (!isGrounded)
         {
-            flags |= BotNodeFlags::MID_AIR;
+            flags.midAir = true;
         }
 
         // JUMP: last grounded node before becoming airborne
         if (isGrounded)
         {
             bool nextAirborne = !grounded[(i + 1) % nodeCount];
-            if (nextAirborne) { flags |= BotNodeFlags::JUMP; }
+            if (nextAirborne) { flags.jump = true; }
         }
 
         // SINK_KART: ground quad has water / fast water / mud terrain
@@ -376,8 +422,22 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
                 t == TerrainType::FAST_WATER ||
                 t == TerrainType::MUD)
             {
-                flags |= BotNodeFlags::SINK_KART;
+                flags.sink = true;
             }
+        }
+
+        //ECHO 
+        if (groundQuad)
+        {
+            if (groundQuad->GetFlags() & QuadFlags::REVERB)
+                flags.echo = true;
+        }
+
+        //MOON GRAV 
+        if (groundQuad)
+        {
+            if (groundQuad->GetFlags() & QuadFlags::MOON_GRAVITY)
+                flags.lowGrav = true;
         }
 
         // TURBO_PAD_HIGH: nearby quad with TRIGGER_SCRIPT and Dirt terrain
@@ -386,7 +446,7 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
                 return (q.GetFlags() & QuadFlags::TRIGGER_SCRIPT) &&
                     (q.GetTerrain() == TerrainType::DIRT);
             });
-        if (onTurboPad) { flags |= BotNodeFlags::TURBO_PAD_HIGH; }
+        if (onTurboPad) { flags.turboPad = true; }
 
         // TURBO_PAD_LOW: nearby quad with TRIGGER_SCRIPT and Grass terrain (super turbo pad)
         bool onSuperTurboPad = HasNearbyQuad(pos, NEARBY_THRESHOLD, [](const Quadblock& q)
@@ -394,18 +454,11 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
                 return (q.GetFlags() & QuadFlags::TRIGGER_SCRIPT) &&
                     (q.GetTerrain() == TerrainType::GRASS);
             });
-        if (onSuperTurboPad) { flags |= BotNodeFlags::TURBO_PAD_LOW; }
-
-        // ENGINE_ECHO: any nearby quad (not necessarily ground) with REVERB flag
-        bool hasReverb = HasNearbyQuad(pos, REVERB_THRESHOLD, [](const Quadblock& q)
-            {
-                return (q.GetFlags() & QuadFlags::REVERB) != 0;
-            });
-        if (hasReverb) { flags |= BotNodeFlags::ENGINE_ECHO; }
+        if (onSuperTurboPad) { flags.turboPadLow = true; }
 
         // SKIDMARKS_BACK: when drifting
-        bool drifting = (flags & (BotNodeFlags::DRIFT_LEFT | BotNodeFlags::DRIFT_RIGHT)) != 0;
-        if (drifting) { flags |= BotNodeFlags::SKIDMARKS_BACK; }
+        bool drifting = flags.driftLeft || flags.driftRight;
+        if (drifting) { flags.skidmarkBack = true; }
 
         // SKIDMARKS_FRONT: drifting, or on a turbo/super turbo pad,
         // or the ~10 units after landing (transitioning from air to ground)
@@ -420,7 +473,7 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
             for (size_t k = 1; k < nodeCount && distSinceLanding < SKIDMARK_LENGTH; k++)
             {
                 size_t idx = (i + nodeCount - k) % nodeCount;
-                if (!grounded[idx] || (m_nodes[idx].GetFlags() & (BotNodeFlags::TURBO_PAD_LOW | BotNodeFlags::TURBO_PAD_HIGH))) { withinLandingWindow = true; break; }
+                if (!grounded[idx] || (m_nodes[idx].GetFlags().turboPad || m_nodes[idx].GetFlags().turboPadLow)) { withinLandingWindow = true; break; }
                 size_t idxNext = (idx + 1) % nodeCount;
                 Vec3 d = {
                     nodesPos[idxNext].x - nodesPos[idx].x,
@@ -433,7 +486,7 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, std::vector<Quadblock>& 
 
         if (drifting || onTurboPad || onSuperTurboPad || withinLandingWindow)
         {
-            flags |= BotNodeFlags::SKIDMARKS_FRONT;
+            flags.skidmarkFront = true;
         }
 
         node.SetFlags(flags);
@@ -452,7 +505,7 @@ std::vector<uint8_t> BotPath::Serialize(std::vector<Instance>& instances) const
     header.magic = BOT_PATH_MAGIC;
     header.numPoints = static_cast<uint16_t>(m_nodes.size()-1);
     header.unk1 = 0;
-    header.posY = ConvertFloat(m_nodes[0].GetPosY(), FP_ONE_GEO);
+    header.posY = ConvertFloat(m_nodes[0].GetPos().y, FP_ONE_GEO);
     header.offLastPoint = 0;//m_offLastPoint;
     std::copy(std::begin(m_physUnk), std::end(m_physUnk), std::begin(header.physUnk)); // can't be removed (on crash cove, ramp fails), need to be understood
     std::memcpy(buffer.data(), &header, sizeof(header));
@@ -512,7 +565,7 @@ std::vector<Vec3> GenerateLateralPath(const std::vector<BotNode>& nodes, float l
     for (int i = 0; i < nodes.size(); i++)
     {
         const Vec3 nodePos = nodes[i].GetPos();
-        const int  checkpointID = static_cast<int>(nodes[i].GetGoBackCount());
+        const int  checkpointID = static_cast<int>(nodes[i].GetCheckpoint());
 
         Vec3 forward = nodes[(i == nodes.size() - 1) ? 0 : i + 1].GetPos() - nodes[i].GetPos();
         forward.Normalize();

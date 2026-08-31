@@ -554,16 +554,13 @@ void init_crashteameditor(py::module_& m)
 
 	py::class_<BotNode>(m, "BotNode")
 		.def(py::init<>())
-		.def_property("pos", [](const BotNode& n) { return n.GetPos(); },[](BotNode& n, const Vec3& v) { n.SetPos(v); })
-		.def_property("yaw",&BotNode::GetYaw,&BotNode::SetYaw)
-		.def_property("pitch",&BotNode::GetPitch,&BotNode::SetPitch)
-		.def_property("roll",&BotNode::GetRoll,&BotNode::SetRoll)
-		.def_property("flags",&BotNode::GetFlags,&BotNode::SetFlags)
-		.def_property("go_back_count",&BotNode::GetGoBackCount,&BotNode::SetGoBackCount)
-		.def_property("path_change",&BotNode::GetPathChange,&BotNode::SetPathChange)
-		.def_property("path_change_index", &BotNode::GetPathChangeIndex, &BotNode::SetPathChangeIndex)
-		.def_property("special_bits", &BotNode::GetSpecialBits, &BotNode::SetSpecialBits);
-
+		.def_property("rot", &BotNode::GetRot, &BotNode::SetRot)
+		.def_property("pos", &BotNode::GetPos, &BotNode::SetPos)
+		//.def_property("flags",&BotNode::GetFlags,&BotNode::SetFlags) // TODO BotFlags Python
+		.def_property("checkpoint", &BotNode::GetCheckpoint, &BotNode::SetCheckpoint)
+		.def_property("path_change", &BotNode::GetPathChange, &BotNode::SetPathChange)
+		.def_property("path_change_index", &BotNode::GetPathChangeIndex, &BotNode::SetPathChangeIndex);
+		
 
 	py::class_<Level> level(m, "Level");
 	level

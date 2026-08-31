@@ -9,21 +9,9 @@
 #include <cstdint>
 #include <vector>
 
-//Yaw : 0 yaw -> +Z ;; 90 yaw -> +X
-// Pitch : Positive is downward.
-// BAM (Binary Angle Measurement) conversion for rot[], which uses 256 units per full circle
-// stored as int8, distinct from the FP_ONE fixed-point system used elsewhere.
-static inline float BamToAngle(int8_t bam) { return (static_cast<float>(bam) * 360.0f) / 256.0f; }
-static inline int8_t AngleToBam(float deg) {
-    // Normalize to [-180, 180) first
-    deg = std::fmod(deg, 360.0f);
-    if (deg >= 180.0f)  deg -= 360.0f;
-    if (deg < -180.0f)  deg += 360.0f;
-    return static_cast<int8_t>(std::round((deg * 256.0f) / 360.0f));
-}
 
 static constexpr uint16_t BOT_PATH_MAGIC = 0xECFD;
-struct BotNodeFlags
+struct PSXBotNodeFlags
 {
     static constexpr uint16_t NONE = 0;
     static constexpr uint16_t TURBO_PAD_HIGH = 1 << 0;
@@ -40,12 +28,12 @@ struct BotNodeFlags
     static constexpr uint16_t SINK_KART = 1 << 15;
 };
 
-struct BotNodeFlags2
+struct PSXBotNodeFlags2
 {
     static constexpr uint16_t NONE = 0;
     static constexpr uint16_t SPECIAL_MASK = 0xF; // if USE_RAMPHYS : id of RamPhys ; if REFLECTION : id of splitline (0 or 1) ; else : transparency
     static constexpr uint16_t USE_RAMPHYS = 1 << 4;
-    static constexpr uint16_t REFLECTION = 1 << 5;
+    static constexpr uint16_t USE_REFLECTION = 1 << 5;
     static constexpr uint16_t INSTANCE_COLL = 1 << 6;
     static constexpr uint16_t MOON_GRAV = 1 << 7;
 };
@@ -58,6 +46,28 @@ struct BotPathSettings
     float sidewayOffset = 6.0f;
 };
 
+enum class BotSpecialBits : int
+{
+    RAM_PHYS = 0,
+    REFLECTION = 1,
+    TRANSPARENCY = 2,
+};
+
+struct BotFlags
+{
+    bool turboPad = false;
+    bool skidmarkFront = false;
+    bool skidmarkBack = false;
+    bool turboPadLow = false;
+    bool maskGrabSTP = false;
+    bool jump = false;
+    bool driftLeft = false;
+    bool driftRight = false;
+    bool echo = false;
+    bool midAir = false;
+    bool sink = false;
+    bool lowGrav = false;
+};
 
 class BotNode
 {
@@ -70,77 +80,40 @@ public:
     void RenderUI(int index, bool& deleteRequested);
     
     const Vec3& GetPos() const { return m_pos; }
-    void        SetPos(const Vec3& pos) { m_pos = pos; }
-
-    float GetPosX() const { return m_pos.x; }
-    float GetPosY() const { return m_pos.y; }
-    float GetPosZ() const { return m_pos.z; }
-    void  SetPosX(float x) { m_pos.x = x; }
-    void  SetPosY(float y) { m_pos.y = y; }
-    void  SetPosZ(float z) { m_pos.z = z; }
+    void SetPos(const Vec3& pos) { m_pos = pos; }
 
     const Vec3& GetRot() const { return m_rot; }
-    void        SetRot(const Vec3& rot) { m_rot = rot; }
-    // Yaw: 0 = facing +Z, 90 = facing +X. Increases counter-clockwise (left turns).
-    float GetYaw()   const { return m_rot.y; }
-    void  SetYaw(float deg) { m_rot.y = deg; }
+    void SetRot(const Vec3& rot) { m_rot = rot; }
 
-    // Pitch: positive = nose down (descending), negative = nose up (climbing).
-    float GetPitch() const { return m_rot.x; }
-    void  SetPitch(float deg) { m_rot.x = deg; }
+    const BotFlags& GetFlags() const { return m_flags; }
+    void SetFlags(const BotFlags& flags) { m_flags = flags; }
 
-    // Roll: lateral road banking.
-    float GetRoll()  const { return m_rot.z; }
-    void  SetRoll(float deg) { m_rot.z = deg; }
+    uint8_t GetTerrain() const { return m_terrain; }
+    void SetTerrain(uint8_t v) { m_terrain = v; }
 
-    uint16_t GetFlags()            const { return m_flags; }
-    void     SetFlags(uint16_t f) { m_flags = f; }
+    uint8_t GetCheckpoint() const { return m_checkpoint; }
+    void SetCheckpoint(uint8_t v) { m_checkpoint = v; }
 
-    uint8_t  GetTerrain()      const { return m_terrain; }
-    void     SetTerrain(uint8_t v) { m_terrain = v; }
+    int GetPathChange() const { return m_pathChange; }
+    void SetPathChange(int v) { m_pathChange = v; }
 
-    uint8_t  GetGoBackCount()      const { return m_goBackCount; }
-    void     SetGoBackCount(uint8_t v) { m_goBackCount = v; }
-
-    int  GetPathChange()      const { return m_pathChange; }
-    void     SetPathChange(int v) { m_pathChange = v; }
-
-    int  GetPathChangeIndex()      const { return m_pathChangeIndex; }
-    void     SetPathChangeIndex(int v) { m_pathChangeIndex = v; }
-
-    uint8_t  GetSpecialBits()      const { return m_specialBits; }
-    void     SetSpecialBits(uint8_t v) { m_specialBits = v; }
+    int GetPathChangeIndex() const { return m_pathChangeIndex; }
+    void SetPathChangeIndex(int v) { m_pathChangeIndex = v; }
 
 private:
     Vec3 m_pos = {};
     Vec3 m_rot = {};
-    bool m_TurboPad;
-    bool m_SkidmarkFront;
-    bool m_SkidmarkBack;
-    bool m_TurboPadLow;
-    bool m_MaskGrabSTP;
-    bool m_jump;
-    bool m_driftLeft;
-    bool m_driftRight;
-    bool m_echo;
-    bool m_midAir;
-    bool m_sink;
-    bool m_instanceColl;
-    bool m_lowGrav;
-    bool m_useSplitLine;
-    int m_splitLineID;
-    bool m_useRamPhys;
-    int m_ramPhysID;
-    int m_transparency;
 
+    BotFlags m_flags = {};
+    BotSpecialBits m_specialBits = BotSpecialBits::TRANSPARENCY;
+    int m_splitLineID = 0;
+    int m_ramPhysID = 0;
+    int m_transparency = 0;
 
-
-    uint16_t m_flags = 0;
     uint8_t m_terrain = TerrainType::ASPHALT;
     int m_pathChange = 0;
     int m_pathChangeIndex = 0;
-    uint8_t  m_goBackCount = 0;
-    uint8_t  m_specialBits = 0;
+    uint8_t  m_checkpoint = 0;
 };
 
 class BotPath

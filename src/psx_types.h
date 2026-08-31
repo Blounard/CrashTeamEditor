@@ -679,6 +679,14 @@ static inline float ConvertFP(uint16_t fp, int16_t one = FP_ONE) { return static
 static inline float ConvertFP(int8_t fp, int16_t one = FP_ONE) { return static_cast<float>(fp) / static_cast<float>(one); }
 static inline float ConvertFP(uint8_t fp, int16_t one = FP_ONE) { return static_cast<float>(fp) / static_cast<float>(one); }
 static inline float ConvertFPAngle(int16_t fp, int16_t one = FP_ONE) { return (static_cast<float>(fp) * 360.0f) / static_cast<float>(FP_ONE); }
+static inline float ConvertBotAngle(int8_t angle) { return (static_cast<float>(angle) * 360.0f) / 256.0f; }
+
+static inline int8_t ConvertBotAngle(float deg) {
+	deg = std::fmod(deg, 360.0f);
+	if (deg >= 180.0f)  deg -= 360.0f;
+	if (deg < -180.0f)  deg += 360.0f;
+	return static_cast<int8_t>(std::round((deg * 256.0f) / 360.0f));
+}
 
 static inline PSX::Vec3 ConvertAngle(const Vec3& v, int16_t one = FP_ONE)
 {

@@ -280,23 +280,18 @@ void BotNode::RenderUI(int index, bool& deleteRequested)
 
 		// Flags — one checkbox per named flag bit
 		ImGui::SeparatorText("Flags");
-		auto FlagCheckbox = [&](const char* label, uint16_t bit)
-			{
-				bool v = (m_flags & bit) != 0;
-				if (ImGui::Checkbox(label, &v))
-					m_flags = v ? (m_flags | bit) : (m_flags & ~bit);
-			};
-		FlagCheckbox("Turbo Pad (High)", BotNodeFlags::TURBO_PAD_HIGH);
-		FlagCheckbox("Skidmarks Front", BotNodeFlags::SKIDMARKS_FRONT);
-		FlagCheckbox("Skidmarks Back", BotNodeFlags::SKIDMARKS_BACK);
-		FlagCheckbox("Turbo Pad (Low)", BotNodeFlags::TURBO_PAD_LOW);
-		FlagCheckbox("Mask Grab STP", BotNodeFlags::MASK_GRAB_STP);
-		FlagCheckbox("Jump", BotNodeFlags::JUMP);
-		FlagCheckbox("Drift Left", BotNodeFlags::DRIFT_LEFT);
-		FlagCheckbox("Drift Right", BotNodeFlags::DRIFT_RIGHT);
-		FlagCheckbox("Engine Echo", BotNodeFlags::ENGINE_ECHO);
-		FlagCheckbox("Mid Air", BotNodeFlags::MID_AIR);
-		FlagCheckbox("Sink Kart", BotNodeFlags::SINK_KART);
+		ImGui::Checkbox("Turbo Pad (High)", &m_flags.turboPad);
+		ImGui::Checkbox("Skidmarks Front", &m_flags.skidmarkFront);
+		ImGui::Checkbox("Skidmarks Back", &m_flags.skidmarkBack);
+		ImGui::Checkbox("Turbo Pad (Low)", &m_flags.turboPadLow);
+		ImGui::Checkbox("Mask Grab STP", &m_flags.maskGrabSTP);
+		ImGui::Checkbox("Jump", &m_flags.jump);
+		ImGui::Checkbox("Drift Left", &m_flags.driftLeft);
+		ImGui::Checkbox("Drift Right", &m_flags.driftRight);
+		ImGui::Checkbox("Engine Echo", &m_flags.echo);
+		ImGui::Checkbox("Mid Air", &m_flags.midAir);
+		ImGui::Checkbox("Sink Kart", &m_flags.sink);
+		ImGui::Checkbox("Low Grav", &m_flags.lowGrav);
 
 		// Terrain dropdown — built from TerrainType::LABELS, sorted by value
 		ImGui::SeparatorText("Terrain");
@@ -334,12 +329,9 @@ void BotNode::RenderUI(int index, bool& deleteRequested)
 
 		// Misc
 		ImGui::SeparatorText("Misc");
-		int goBack = static_cast<int>(m_goBackCount);
-		if (ImGui::InputInt("Go Back Count", &goBack))
-			m_goBackCount = static_cast<uint8_t>(std::clamp(goBack, 0, 255));
-		int special = static_cast<int>(m_specialBits);
-		if (ImGui::InputInt("Special Bits", &special))
-			m_specialBits = static_cast<uint8_t>(std::clamp(special, 0, 255));
+		int goBack = static_cast<int>(m_checkpoint);
+		if (ImGui::InputInt("Checkpoint", &goBack))
+			m_checkpoint = static_cast<uint8_t>(std::clamp(goBack, 0, 255));
 
 		// Delete button at the bottom of each node
 		ImGui::Spacing();
