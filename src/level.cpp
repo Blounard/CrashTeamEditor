@@ -2475,6 +2475,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 
 	m_tropyGhost.clear();
 	m_oxideGhost.clear();
+	// TODO : read fixed filesize
 	if (header.offExtra > 0)
 	{
 		file.seekg(offLev + std::streampos(header.offExtra));
@@ -5107,21 +5108,13 @@ void Level::UpdateRenderBotData()
 		return;
 	}
 
-	// One fixed color per path (left, middle, right)
-	static const Color pathColors[3] =
-	{
-		Color(0.86f, 0.31f, 0.31f), // left   red
-		Color(0.31f, 0.78f, 0.31f), // mid    green
-		Color(0.31f, 0.51f, 0.86f), // right  blue
-	};
-
 	constexpr float labelHeightOffset = 1.5f;
 	std::vector<Primitive> botTriangles;
 
 	for (int pathIndex = 0; pathIndex < 3; pathIndex++)
 	{
 		const BotPath& path = m_botPaths[pathIndex];
-		const Color& c = pathColors[pathIndex % 3];
+		const Color& c = m_botPathSettings.pathColor[pathIndex];
 
 		for (size_t nodeIndex = 0; nodeIndex < path.GetNodeCount(); nodeIndex++)
 		{

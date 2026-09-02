@@ -2657,6 +2657,13 @@ void Level::RenderUI(Renderer& renderer)
 					UpdateRenderBotData();
 					GenerateBotPathChangeCode();
 				}
+				ImGui::SameLine();
+				float colorBot[3] = { m_botPathSettings.pathColor[i].Red(), m_botPathSettings.pathColor[i].Green(), m_botPathSettings.pathColor[i].Blue()};
+				if (ImGui::ColorEdit3("Path Color##botcolor", colorBot))
+				{
+					m_botPathSettings.pathColor[i] = Color(static_cast<float>(colorBot[0]), colorBot[1], colorBot[2]);
+					UpdateRenderBotData();
+				}
 				m_botPaths[i].RenderUI(i);
 				if (i<2){ ImGui::Separator(); }
 				ImGui::PopID();

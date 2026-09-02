@@ -46,8 +46,11 @@ struct BotPathSettings
     float sidewayOffset = 6.0f;
     float negSnapDist = -6.0f; // MUST BE NEGATIVE
     float posSnapDist = 6.0f; // MUST BE POSITIVE
-    float ghostStart;
-    float ghostEnd;
+    float ghostStart = 0.0f;
+    float ghostEnd = 60.0f;
+    Color pathColor[3] = { Color(0.86f, 0.31f, 0.31f),
+                            Color(0.31f, 0.78f, 0.31f),
+                            Color(0.31f, 0.51f, 0.86f) };
 };
 
 enum class BotSpecialBits : int
