@@ -410,3 +410,32 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, const std::vector<Quadbl
     }
     return true;
 }
+
+std::vector<uint8_t> BotPath::Serialize(std::vector<Instance>& instances) const
+{
+    // Crash if called with invalid nodes. Never serialize empty path.
+    PSX::NavHeader header = {};
+    std::vector<uint8_t> buffer(sizeof(header));
+    header.magic = BOT_PATH_MAGIC;
+    header.numPoints = static_cast<uint16_t>(m_nodes.size() - 1);
+    header.unk1 = 0;
+    header.posY = ConvertFloat(m_nodes[0].GetPos().y, FP_ONE_GEO);
+    header.offLastPoint = 0;//m_offLastPoint;
+    std::copy(std::begin(m_physUnk), std::end(m_physUnk), std::begin(header.physUnk)); // can't be removed (on crash cove, ramp fails), need to be understood
+    std::memcpy(buffer.data(), &header, sizeof(header));
+
+    for (int i = 0; i < m_nodes.size() - 1; i++)
+    {
+        int next_id = i == (m_nodes.size() - 2) ? 0 : i + 1; //2nd to last's next is the first. Last is handled differently
+        const BotNode& node = m_nodes[i];
+        const Vec3& nextPos = m_nodes[next_id].GetPos();
+        auto nodeBytes = node.Serialize(nextPos, instances);
+        buffer.insert(buffer.end(), nodeBytes.begin(), nodeBytes.end());
+    }
+    //Placeholder behavior for the last. Need to investigate how it works. It doesn't seem to be the distance to first.
+    const BotNode& node = m_nodes[m_nodes.size() - 1];
+    const Vec3& nextPos = m_nodes[0].GetPos();
+    auto nodeBytes = node.Serialize(nextPos, instances);
+    buffer.insert(buffer.end(), nodeBytes.begin(), nodeBytes.end());
+    return buffer;
+}

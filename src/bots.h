@@ -46,6 +46,8 @@ struct BotPathSettings
     float sidewayOffset = 6.0f;
     float negSnapDist = -6.0f; // MUST BE NEGATIVE
     float posSnapDist = 6.0f; // MUST BE POSITIVE
+    float ghostStart;
+    float ghostEnd;
 };
 
 enum class BotSpecialBits : int

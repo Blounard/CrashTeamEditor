@@ -473,6 +473,143 @@ std::vector<Vec3> LoadPath(const std::filesystem::path& path)
 	return ordered;
 }
 
+std::vector<Vec3> LoadGhostPath(const std::filesystem::path& path, float startTime, float endTime)
+{
+	std::ifstream file(path, std::ios::binary);
+	if (!file.is_open())
+		return {};
+
+	int startTimeMs = static_cast<int>(startTime * 960.0f);
+	int endTimeMs = static_cast<int>(endTime * 960.0f);
+
+	// ---- Header: 0x28 bytes, little-endian ----
+	uint8_t header[0x28];
+	file.read(reinterpret_cast<char*>(header), sizeof(header));
+	if (!file)
+		return {};
+
+	auto ReadS16LE = [](const uint8_t* p) -> int16_t { return static_cast<int16_t>(p[0] | (p[1] << 8)); };
+
+	const int16_t version = ReadS16LE(header + 0x00);
+	const int16_t dataSize = ReadS16LE(header + 0x02);
+
+	if (version != -4) // GHOST_TAPE_VERSION_RETAIL (bytes FC FF)
+		return {};
+	if (dataSize <= 0)
+		return {};
+
+	// ---- Packet stream: data_size bytes, starts at 0x28 ----
+	std::vector<uint8_t> stream(static_cast<size_t>(dataSize));
+	file.read(reinterpret_cast<char*>(stream.data()), stream.size());
+	const std::streamsize got = file.gcount();
+	if (got <= 0)
+		return {};
+	stream.resize(static_cast<size_t>(got)); // tolerate a truncated file
+
+	auto ReadS16BE = [](const uint8_t* p) -> int16_t { return static_cast<int16_t>((p[0] << 8) | p[1]); };
+	auto ReadU16BE = [](const uint8_t* p) -> uint16_t { return static_cast<uint16_t>((p[0] << 8) | p[1]); };
+
+	std::vector<Vec3> result;
+
+	// Absolute running position in world units (raw * 8), rebuilt the same
+	// way the game does: 0x80 sets it directly, velocity packets add to it.
+	float curPos[3] = { 0.0f, 0.0f, 0.0f };
+
+	// Cumulative time (ms) at the last 0x80 keyframe we resolved.
+	int32_t segmentStartMs = 0;
+
+	// Samples (velocity/idle) seen since that keyframe, not yet timestamped
+	// because we don't know the segment's duration until the *next* 0x80.
+	std::vector<Vec3> pending;
+
+	auto emitIfInRange = [&](const Vec3& v, double timeMs)
+		{
+			if (timeMs >= startTimeMs && timeMs <= endTimeMs)
+				result.push_back(v);
+		};
+
+	// Distribute `pending` evenly across (segmentStartMs, segmentStartMs+timeDeltaMs],
+	// matching the equal-spacing assumption GhostReplay_ThTick itself makes.
+	auto flushPending = [&](int32_t timeDeltaMs)
+		{
+			const double intervals = static_cast<double>(pending.size() + 1);
+			for (size_t i = 0; i < pending.size(); ++i)
+			{
+				const double t = segmentStartMs + (static_cast<double>(i + 1) / intervals) * timeDeltaMs;
+				emitIfInRange(pending[i], t);
+			}
+			pending.clear();
+		};
+
+	size_t offset = 0;
+	while (offset < stream.size())
+	{
+		const uint8_t firstByte = stream[offset];
+		const bool isOpcode = (firstByte >= 0x80 && firstByte <= 0x84);
+
+		if (isOpcode)
+		{
+			switch (firstByte)
+			{
+			case 0x80: // position keyframe (11 bytes)
+			{
+				if (offset + 11 > stream.size())
+					return result; // truncated mid-packet, stop cleanly
+
+				const uint8_t* p = &stream[offset];
+				curPos[0] = static_cast<float>(ReadS16BE(p + 1)) / 8.0f;
+				curPos[1] = static_cast<float>(ReadS16BE(p + 3)) / 8.0f;
+				curPos[2] = static_cast<float>(ReadS16BE(p + 5)) / 8.0f;
+				const uint16_t timeDelta = ReadU16BE(p + 7);
+				// rot_y @p[9], rot_z @p[10] -- skipped
+
+				flushPending(timeDelta);
+
+				const Vec3 world(curPos[0], curPos[1], curPos[2]);
+				const double t = segmentStartMs + timeDelta;
+				emitIfInRange(world, t);
+				segmentStartMs = static_cast<int32_t>(t);
+
+				offset += 11;
+				break;
+			}
+			case 0x81: offset += 3; break; // animation, no position
+			case 0x82: offset += 6; break; // boost, no position
+			case 0x83: offset += 2; break; // instance flags, no position
+			case 0x84: // idle: reuses last position, still a timed sample
+				pending.emplace_back(curPos[0], curPos[1], curPos[2]);
+				offset += 1;
+				break;
+			}
+		}
+		else
+		{
+			// opcode-less velocity packet (5 bytes: dx, dy, dz, rot_y, rot_z)
+			if (offset + 5 > stream.size())
+				break; // truncated
+
+			const uint8_t* p = &stream[offset];
+			const int8_t dx = static_cast<int8_t>(firstByte);
+			const int8_t dy = static_cast<int8_t>(p[1]);
+			const int8_t dz = static_cast<int8_t>(p[2]);
+			// rot_y @p[3], rot_z @p[4] -- skipped
+
+			curPos[0] += static_cast<float>(dx) / 8.0f;
+			curPos[1] += static_cast<float>(dy) / 8.0f;
+			curPos[2] += static_cast<float>(dz) / 8.0f;
+
+			pending.emplace_back(curPos[0],curPos[1], curPos[2]);
+
+			offset += 5;
+		}
+	}
+
+	// Any samples left in `pending` (after the last 0x80) never get a real
+	// timestamp -- there's no following keyframe to derive one from, and the
+	// game itself never renders that trailing partial window either.
+	return result;
+}
+
 std::vector<Vec3> ComputeYaw(const std::vector<Vec3>& pos, bool loop)
 {
 	const Vec3 up(0.0f, 1.0f, 0.0f);

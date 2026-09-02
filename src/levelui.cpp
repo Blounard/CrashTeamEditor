@@ -2581,6 +2581,11 @@ void Level::RenderUI(Renderer& renderer)
 			ImGui::SameLine();
 			ImGui::SetNextItemWidth(150.0f);
 			ImGui::DragFloat("Above ground threshold##bot", &m_botPathSettings.posSnapDist, 0.1f, 0.1f, 50.0f, "%.1f");
+			ImGui::SetNextItemWidth(150.0f);
+			ImGui::DragFloat("Ghost Start Time##bot", &m_botPathSettings.ghostStart, 0.1f, 0.0f, 480.0f, "%.1f");
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(150.0f);
+			ImGui::DragFloat("Ghost End Time##bot", &m_botPathSettings.ghostEnd, 0.1f, 0.0f, 480.0f, "%.1f");
 
 
 
@@ -2598,8 +2603,8 @@ void Level::RenderUI(Renderer& renderer)
 				ImGui::BeginDisabled(!m_botPathSettings.useManualPath);
 				if (ImGui::Button(("Browse##selectbotpath" + std::to_string(i)).c_str()))
 				{
-					auto selection = pfd::open_file("Select Path OBJ", ".",
-						{ "OBJ Files", "*.obj", "All Files", "*" }).result();
+					auto selection = pfd::open_file("Select Path (obj or ghost)", GetParentPath().string().c_str(),
+						{ "OBJ Files", "*.obj", "Ghost Files" ,"*.ctrghost", "All Files", "*"}).result();
 
 					if (!selection.empty())
 					{
@@ -2624,7 +2629,11 @@ void Level::RenderUI(Renderer& renderer)
 					bool success = false;
 					if (m_botPathSettings.useManualPath && !s_objPaths[i].empty())
 					{
-						std::vector<Vec3> vec = LoadPath(s_objPaths[i]);
+						std::vector<Vec3> vec;
+						if (s_objPaths[i].extension() == ".obj")
+							 vec = LoadPath(s_objPaths[i]);
+						else
+							vec = LoadGhostPath(s_objPaths[i], m_botPathSettings.ghostStart, m_botPathSettings.ghostEnd);
 						success = m_botPaths[i].GeneratePath(vec, m_quadblocks, m_botPathSettings, i);
 					}
 					else
