@@ -83,8 +83,6 @@ void Level::Clear(bool clearErrors)
 	m_rendererSelectedQuadblockIndexes.clear();
 	//m_genVisTree = false;
 	m_bspVis.Clear();
-	m_bspSettings = BSPTreeSettings();
-	m_visTreeSettings = VisTreeSettings();
 	m_pythonConsole.clear();
 	m_saveScript = false;
 	m_vrm.clear();
@@ -412,7 +410,7 @@ bool Level::GenerateBSP()
 	m_bsp.SetId(0);
 	m_bsp.SetQuadblockIndexes(quadIndexes, m_quadblocks);
 	m_bsp.ComputeBoundingBox(m_quadblocks);
-	m_bsp.Generate(m_quadblocks, m_bspSettings);
+	m_bsp.Generate(m_quadblocks);
 	if (m_bsp.IsValid())
 	{
 		GenerateRenderBspData();
@@ -491,27 +489,12 @@ bool Level::EmplaceInstanceBSP() //Update BSP BBox and InstancesIndexes. One Lea
 	return true;
 }
 
-bool Level::GenerateVisTreeOnly(bool simpleVisTree, float distanceNearClip, float distanceFarClip)
-{
-	if (m_bsp.IsValid())
-	{
-		VisTreeSettings settings;
-		settings.farClipDistance = distanceFarClip;
-		settings.nearClipDistance = distanceNearClip;
-		settings.centerOnlySamples = simpleVisTree; 
-		settings.commutativeRays = false;
-		m_bspVis = GenerateVisTree(m_quadblocks, &m_bsp, settings);
-		return true;
-	}
-	return false;
-}
-
 
 bool Level::GenerateVisTreeOnly()
 {
 	if (m_bsp.IsValid())
 	{
-		m_bspVis = GenerateVisTree(m_quadblocks, &m_bsp, m_visTreeSettings);
+		m_bspVis = GenerateVisTree(m_quadblocks, &m_bsp);
 		return true;
 	}
 	return false;
@@ -813,12 +796,10 @@ bool Level::GenerateCheckpoints()
 
 
 bool Level::GenerateOceanVertices()
-{
-	WaterAnimSettings& p = m_waterAnimSettings;
-	
-	const int brightCyclesTime = p.brightWaveCycle;
-	const float baseBright = p.baseBrightness;
-	const float waveLength = std::max(p.waveLength, 1.0f);
+{	
+	const int brightCyclesTime = WaterAnimSettings::brightWaveCycle;
+	const float baseBright = WaterAnimSettings::baseBrightness;
+	const float waveLength = std::max(WaterAnimSettings::waveLength, 1.0f);
 	const float waveK = 2.0f * MATH_PI / waveLength;
 
 	for (Quadblock& quad : m_quadblocks)
@@ -829,8 +810,8 @@ bool Level::GenerateOceanVertices()
 		for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++)
 		{
 			Vec3 vPos = vertices[i].m_pos;
-			const float baseU = vPos.x * p.sizeTex;
-			const float baseV = vPos.z * p.sizeTex;
+			const float baseU = vPos.x * WaterAnimSettings::sizeTex;
+			const float baseV = vPos.z * WaterAnimSettings::sizeTex;
 			const float spaceWave = (std::cos(waveK * vPos.x) + std::cos(waveK * vPos.z)) / 2;
 
 			PSX::OceanVertex ov{};
@@ -838,15 +819,15 @@ bool Level::GenerateOceanVertices()
 			{
 				const float frac = static_cast<float>(f) / NUM_FRAME_OVERT;
 
-				const float scrollU = p.ScrollULoops * 64.0f * frac;
-				const float scrollV = p.ScrollVLoops * 64.0f * frac;
-				const float waveU = p.waveAmplitude  * spaceWave * std::sin(2.0f * MATH_PI * p.waveCyclesTimeU * frac);
-				const float waveV = p.waveAmplitude  * spaceWave * std::sin(2.0f * MATH_PI * p.waveCyclesTimeV * frac);
+				const float scrollU = WaterAnimSettings::ScrollULoops * 64.0f * frac;
+				const float scrollV = WaterAnimSettings::ScrollVLoops * 64.0f * frac;
+				const float waveU = WaterAnimSettings::waveAmplitude  * spaceWave * std::sin(2.0f * MATH_PI * WaterAnimSettings::waveCyclesTimeU * frac);
+				const float waveV = WaterAnimSettings::waveAmplitude  * spaceWave * std::sin(2.0f * MATH_PI * WaterAnimSettings::waveCyclesTimeV * frac);
 				const int u = static_cast<int>(std::round(baseU + scrollU + waveU));
 				const int v = static_cast<int>(std::round(baseV + scrollV + waveV));
 
 				const float brightTemporalPhase = 2.0f * MATH_PI * brightCyclesTime * frac;
-				const float waveBright = p.brightAmp * std::sin(brightTemporalPhase) * spaceWave;
+				const float waveBright = WaterAnimSettings::brightAmp * std::sin(brightTemporalPhase) * spaceWave;
 				const int b = static_cast<int>(std::round(baseBright + waveBright));
 
 				PSX::OceanVertexFrame frame{};
@@ -913,7 +894,7 @@ float ClipTriangleToBoxArea(Vec2 p0, Vec2 p1, Vec2 p2, float x0, float y0, float
 
 bool Level::GenerateMinimap()
 {
-	int targetHeight = m_minimapSettings.textureHeight;
+	int targetHeight = MinimapSettings::textureHeight;
 	if (targetHeight < 3)
 	{
 		printf("WARNING: MinimapConfig targetHeight (%d) too small once padding is reserved, using 3 instead\n", targetHeight);
@@ -925,11 +906,11 @@ bool Level::GenerateMinimap()
 	std::vector<size_t> usedQuadIds;
 	for (size_t i = 0; i < m_quadblocks.size(); i++)
 	{
-		if (m_minimapSettings.checkpointQuads && m_quadblocks[i].GetCheckpoint() != -1)
+		if (MinimapSettings::checkpointQuads && m_quadblocks[i].GetCheckpoint() != -1)
 			usedQuadIds.push_back(i);
-		else if (m_minimapSettings.checkpointPathableQuads && m_quadblocks[i].GetCheckpointPathable() && m_quadblocks[i].GetCheckpointStatus())
+		else if (MinimapSettings::checkpointPathableQuads && m_quadblocks[i].GetCheckpointPathable() && m_quadblocks[i].GetCheckpointStatus())
 			usedQuadIds.push_back(i);
-		else if (m_minimapSettings.materials.contains(m_quadblocks[i].GetMaterial()))
+		else if (MinimapSettings::materials.contains(m_quadblocks[i].GetMaterial()))
 			usedQuadIds.push_back(i);
 	}
 	if (usedQuadIds.empty()) return false;
@@ -959,13 +940,13 @@ bool Level::GenerateMinimap()
 	const float spanZ = m_minimap.worldBox.AxisLength().z;
 
 	// World -> pixel mapping
-	if (m_minimapSettings.orientation == MinimapOrientation::AUTO)
+	if (static_cast<MinimapOrientation>(MinimapSettings::orientation) == MinimapOrientation::AUTO)
 		if (spanX > spanZ)
 			m_minimap.orientationMode = MinimapOrientation::DOWN;
 		else
 			m_minimap.orientationMode = MinimapOrientation::RIGHT;
 	else
-		m_minimap.orientationMode = m_minimapSettings.orientation;
+		m_minimap.orientationMode = static_cast<MinimapOrientation>(MinimapSettings::orientation);
 
 	const bool swapped = (m_minimap.orientationMode == MinimapOrientation::DOWN || m_minimap.orientationMode == MinimapOrientation::UP);
 	const float colSpanWorld = swapped ? spanZ : spanX;
@@ -4662,12 +4643,12 @@ bool Level::HotReload(const std::string& levPath, const std::string& vrmPath, co
 	{
 		static int32_t hotReloadGlobalSequence = 0;
 		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, sequence)) = hotReloadGlobalSequence++;
-		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, relicSapphire)) = static_cast<int32_t>(m_hotReloadSettings.relicSapphire * 1000.0f);
-		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, relicGold)) = static_cast<int32_t>(m_hotReloadSettings.relicGold * 1000.0f);
-		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, relicPlatinum)) = static_cast<int32_t>(m_hotReloadSettings.relicPlatinum * 1000.0f);
-		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, crystalTime)) = static_cast<int32_t>(m_hotReloadSettings.crystalTime * 1000.0f);
-		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, introCutscene)) = m_hotReloadSettings.introCutscene ? 1 : 0;
-		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, ghost)) = m_hotReloadSettings.ghost ? 1 : 0;
+		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, relicSapphire)) = static_cast<int32_t>(HotReloadSettings::relicSapphire * 1000.0f);
+		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, relicGold)) = static_cast<int32_t>(HotReloadSettings::relicGold * 1000.0f);
+		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, relicPlatinum)) = static_cast<int32_t>(HotReloadSettings::relicPlatinum * 1000.0f);
+		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, crystalTime)) = static_cast<int32_t>(HotReloadSettings::crystalTime * 1000.0f);
+		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, introCutscene)) = HotReloadSettings::introCutscene ? 1 : 0;
+		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, ghost)) = HotReloadSettings::ghost ? 1 : 0;
 		Process::At<int32_t>(HOST_SETTINGS_LOCATION + offsetof(HostSettings, magic)) = static_cast<int32_t>(HOST_SETTINGS_MAGIC);
 	}
 
@@ -5114,7 +5095,7 @@ void Level::UpdateRenderBotData()
 	for (int pathIndex = 0; pathIndex < 3; pathIndex++)
 	{
 		const BotPath& path = m_botPaths[pathIndex];
-		const Color& c = m_botPathSettings.pathColor[pathIndex];
+		const Color& c = BotPathSettings::pathColor[pathIndex];
 
 		for (size_t nodeIndex = 0; nodeIndex < path.GetNodeCount(); nodeIndex++)
 		{

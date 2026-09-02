@@ -1,4 +1,6 @@
 #include "bots.h"
+#include "gui_render_settings.h"
+
 
 BotNode::BotNode(const PSX::NavFrame& frame)
 {
@@ -118,7 +120,7 @@ bool BotPath::IsValid()
 }
 
 
-bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, const std::vector<Quadblock>& quadblocks, const BotPathSettings& settings, int pathID)
+bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, const std::vector<Quadblock>& quadblocks, int pathID)
 {
     std::vector<size_t> groundQuadIndexes;
     for (size_t i = 0; i < quadblocks.size(); i++)
@@ -130,19 +132,19 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, const std::vector<Quadbl
 
 
 
-    if (settings.normalizeNodeDist)
-        nodesPos = NormalizePos(nodesPos, settings.nodeDistance, true);
+    if (BotPathSettings::normalizeNodeDist)
+        nodesPos = NormalizePos(nodesPos, BotPathSettings::nodeDistance, true);
 
-    if (!settings.useManualPath)
+    if (!BotPathSettings::useManualPath)
     {
         const size_t nodeCount = nodesPos.size();
         std::vector<Vec3> lateralPos;
         std::vector<Vec3> nodesRot = ComputeYaw(nodesPos, true);
-        float lateralOffset = settings.sidewayOffset * (pathID - 1);
+        float lateralOffset = BotPathSettings::sidewayOffset * (pathID - 1);
         float currLateralOffset = lateralOffset;
         for (size_t i = 0; i < nodeCount; i++)
         {
-            int quadID = SnapToClosestQuad(quadblocks, groundQuadIndexes, nodesPos[i], nodesRot[i], upGlobal, settings.negSnapDist, settings.posSnapDist);
+            int quadID = SnapToClosestQuad(quadblocks, groundQuadIndexes, nodesPos[i], nodesRot[i], upGlobal, BotPathSettings::negSnapDist, BotPathSettings::posSnapDist);
             Vec3 forward = nodesPos[(i + 1) % nodeCount] - nodesPos[i];
             forward.Normalize();
             Vec3 right = forward.Cross(upGlobal);
@@ -151,7 +153,7 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, const std::vector<Quadbl
             if (quadID != -1)
             {
                 int k = 0;
-                while (-1 == SnapToClosestQuad(quadblocks, groundQuadIndexes, currPos, nodesRot[i], upGlobal, settings.negSnapDist, settings.posSnapDist) && k < 10)
+                while (-1 == SnapToClosestQuad(quadblocks, groundQuadIndexes, currPos, nodesRot[i], upGlobal, BotPathSettings::negSnapDist, BotPathSettings::posSnapDist) && k < 10)
                 {
                     k++;
                     currLateralOffset *= 0.85f;
@@ -162,7 +164,7 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, const std::vector<Quadbl
             if (currLateralOffset * currLateralOffset < lateralOffset * lateralOffset)
                 currLateralOffset /= 0.85f;
         }
-        nodesPos = NormalizePos(lateralPos, settings.nodeDistance, true);
+        nodesPos = NormalizePos(lateralPos, BotPathSettings::nodeDistance, true);
     }
 
 
@@ -194,7 +196,7 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, const std::vector<Quadbl
     {
         Vec3 pos = nodesPos[i];
         Vec3 rot = nodesRot[i];
-        int quadID = SnapToClosestQuad(quadblocks, groundQuadIndexes, pos, rot, upGlobal, settings.negSnapDist, settings.posSnapDist);
+        int quadID = SnapToClosestQuad(quadblocks, groundQuadIndexes, pos, rot, upGlobal, BotPathSettings::negSnapDist, BotPathSettings::posSnapDist);
         groundQuads[i] = quadID == -1 ? nullptr : groundQuads[i] = &quadblocks[quadID];
         m_nodes[i].SetPos(pos);
         m_nodes[i].SetRot(rot);          

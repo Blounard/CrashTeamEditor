@@ -2,19 +2,12 @@
 
 #include "geo.h"
 #include "quadblock.h"
+#include "gui_render_settings.h"
+
 
 #include <vector>
 
-struct BSPTreeSettings
-{
-	int maxQuadPerLeaf;
-	float maxAxisDistance;
-	bool separateMaterial;
-	BSPTreeSettings() :
-		maxQuadPerLeaf(32),
-		maxAxisDistance(64.0f),
-		separateMaterial(false) {}
-};
+
 
 enum class BSPNode
 {
@@ -98,8 +91,8 @@ public:
 	bool SplitLeafMaterial(const std::vector<Quadblock>& quadblocks);
 	bool SplitLeafWater(const std::vector<Quadblock>& quadblocks);
 	void MergeBranch();
-	bool FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& outAxis, float& outMidpoint, BSPTreeSettings settings);
-	void Generate(const std::vector<Quadblock>& quadblocks, const BSPTreeSettings settings);
+	bool FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& outAxis, float& outMidpoint);
+	void Generate(const std::vector<Quadblock>& quadblocks);
 	std::vector<uint8_t> Serialize(size_t offQuads, const std::vector<Quadblock>& quadblocks) const;
 	void RenderUI(const std::vector<Quadblock>& quadblocks);
 

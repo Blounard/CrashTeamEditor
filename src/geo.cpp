@@ -551,7 +551,7 @@ std::vector<Vec3> LoadGhostPath(const std::filesystem::path& path, float startTi
 				const uint16_t timeDelta = ReadU16BE(p + 7);
 				flushPending(timeDelta);
 
-				const float t = segmentStartMs + timeDelta;
+				const float t = static_cast<float>(segmentStartMs + timeDelta);
 				emitIfInRange(curPos, t);
 				segmentStartMs = static_cast<int32_t>(t);
 				offset += 11;

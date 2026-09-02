@@ -7,20 +7,7 @@
 #include <vector>
 #include <cstdint>
 
-struct VisTreeSettings
-{
-	bool centerOnlySamples;
-	bool commutativeRays;
-	bool selfTargetNearClip;
-	float nearClipDistance;
-	float farClipDistance;
-	VisTreeSettings() :
-		centerOnlySamples(true),
-		commutativeRays(false),
-		selfTargetNearClip(true),
-		nearClipDistance(-1.0f), 
-		farClipDistance(1000.0f) {}
-};
+
 
 class BitMatrix
 {
@@ -42,4 +29,4 @@ private:
 	std::vector<uint8_t> m_data;
 };
 
-BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* root, const VisTreeSettings& settings);
+BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* root);

@@ -489,18 +489,18 @@ void BSP::MergeBranch()
 
 
 
-bool BSP::FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& outAxis, float& outMidpoint, BSPTreeSettings settings)
+bool BSP::FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& outAxis, float& outMidpoint)
 {	// Must return false when the node doesn't need split.
 
 	float bestCost = std::numeric_limits<float>::max();
 	float bestMidpoint = 0.0f;
 	AxisSplit bestAxis = AxisSplit::NONE;
 
-	bool hasTooMuchQuads = (int)m_quadblockIndexes.size() > settings.maxQuadPerLeaf;
+	bool hasTooMuchQuads = (int)m_quadblockIndexes.size() > BSPTreeSettings::maxQuadPerLeaf;
 	std::vector<AxisSplit> allowedAxis;
-	if (m_bbox.max.x - m_bbox.min.x > settings.maxAxisDistance) { allowedAxis.push_back(AxisSplit::X); }
-	if (m_bbox.max.y - m_bbox.min.y > settings.maxAxisDistance) { allowedAxis.push_back(AxisSplit::Y); }
-	if (m_bbox.max.z - m_bbox.min.z > settings.maxAxisDistance) { allowedAxis.push_back(AxisSplit::Z); }
+	if (m_bbox.max.x - m_bbox.min.x > BSPTreeSettings::maxAxisDistance) { allowedAxis.push_back(AxisSplit::X); }
+	if (m_bbox.max.y - m_bbox.min.y > BSPTreeSettings::maxAxisDistance) { allowedAxis.push_back(AxisSplit::Y); }
+	if (m_bbox.max.z - m_bbox.min.z > BSPTreeSettings::maxAxisDistance) { allowedAxis.push_back(AxisSplit::Z); }
 
 	if (allowedAxis.empty())
 	{
@@ -545,27 +545,26 @@ bool BSP::FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& out
 }
 
 
-void BSP::Generate(const std::vector<Quadblock>& quadblocks, const BSPTreeSettings settings)
+void BSP::Generate(const std::vector<Quadblock>& quadblocks)
 {
-	//printf("Generate Start for node %d, with %d quads\n", m_id, m_quadblockIndexes.size());
 	MergeBranch();
 	if (m_quadblockIndexes.size() < 2)
 		return;
 
 	AxisSplit axis; float midpoint;
-	if (FindBestSplit(quadblocks, axis, midpoint, settings))
+	if (FindBestSplit(quadblocks, axis, midpoint))
 	{
 		if (SplitLeafGeometry(quadblocks, axis, midpoint))
 		{
-			m_left->Generate(quadblocks, settings);
-			m_right->Generate(quadblocks, settings);
+			m_left->Generate(quadblocks);
+			m_right->Generate(quadblocks);
 		}
 		else
 			printf("BSP TREE GENERATION MISTAKE : FiNDBESTSPLIT TRUE, SPLIT LEAF FALSE ?\n");
 	}
 	else
 	{
-		if (settings.separateMaterial)
+		if (BSPTreeSettings::separateMaterial)
 		{
 			SplitLeafMaterial(quadblocks);
 		}

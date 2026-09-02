@@ -540,7 +540,7 @@ void init_crashteameditor(py::module_& m)
 				settings.maxQuadPerLeaf = maxQuadPerLeaf;
 				settings.maxAxisDistance = maxAxisDistance;
 				settings.separateMaterial = separateMaterial;
-				bsp.Generate(quadblocks, settings);
+				bsp.Generate(quadblocks);
 			}
 	, py::arg("quadblocks"), py::arg("max_quads_per_leaf"), py::arg("max_axis_length"), py::arg("separate_material") );
 
@@ -591,7 +591,7 @@ void init_crashteameditor(py::module_& m)
 		.def("get_material_quadblock_indexes", &Level::GetMaterialQuadblockIndexes, py::arg("material"), py::return_value_policy::copy)
 		.def("load_preset", &Level::LoadPreset, py::arg("filename"))
 		.def("save_preset", &Level::SavePreset, py::arg("path"))
-		.def("generate_vistree", static_cast<bool (Level::*)(bool, float, float)>(& Level::GenerateVisTreeOnly), py::arg("simple_vistree"), py::arg("distance_near_clip"), py::arg("distance_far_clip"))
+		.def("generate_vistree", &Level::GenerateVisTreeOnly)
 		.def("get_renderer_selected_data", [](Level& level) {
 			auto selection = level.GetRendererSelectedData();
 			const auto& quadblocks = std::get<0>(selection);

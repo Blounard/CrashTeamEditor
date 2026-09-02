@@ -1,3 +1,4 @@
+#include "gui_render_settings.h"
 #include "vistree.h"
 #include <omp.h>
 #include <cmath>
@@ -255,11 +256,11 @@ static float GetLeafDistanceSquared(const BSP& leaf1, const BSP& leaf2)
 	return (dx * dx + dy * dy + dz * dz);
 }
 
-BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* root, const VisTreeSettings& settings)
+BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* root)
 {
 	auto start_time = std::chrono::high_resolution_clock::now();
 
-	const float maxDistanceSquared = settings.farClipDistance * settings.farClipDistance;
+	const float maxDistanceSquared = VisTreeSettings::farClipDistance * VisTreeSettings::farClipDistance;
 	std::vector<const BSP*> leaves = root->GetLeaves();
 	BitMatrix vizMatrix = BitMatrix(leaves.size(), leaves.size());
 	const int leafCount = static_cast<int>(leaves.size());
@@ -279,8 +280,8 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 	std::vector<std::vector<Vec3>> targetSamples(leaves.size());
 	for (size_t i = 0; i < leaves.size(); i++)
 	{
-		sourceSamples[i] = GenerateSamplePointLeaf(quadblocks, *leaves[i], cameraHeight, settings.centerOnlySamples, true);
-		targetSamples[i] = GenerateSamplePointLeaf(quadblocks, *leaves[i], 0.0f, settings.centerOnlySamples, false);
+		sourceSamples[i] = GenerateSamplePointLeaf(quadblocks, *leaves[i], cameraHeight, VisTreeSettings::centerOnlySamples, true);
+		targetSamples[i] = GenerateSamplePointLeaf(quadblocks, *leaves[i], 0.0f, VisTreeSettings::centerOnlySamples, false);
 	}
 
 	std::vector<std::vector<uint8_t>> visibilityRows(leaves.size(), std::vector<uint8_t>(leaves.size(), 0));
@@ -298,7 +299,7 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 
 			float distBboxsquared = GetLeafDistanceSquared(*leaves[leafA], *leaves[leafB]);
 			// If minDistance is positive, and bigger than distBbox
-			if ((settings.nearClipDistance > -EPSILON) && (settings.nearClipDistance * settings.nearClipDistance >= distBboxsquared))
+			if ((VisTreeSettings::nearClipDistance > -EPSILON) && (VisTreeSettings::nearClipDistance * VisTreeSettings::nearClipDistance >= distBboxsquared))
 			{
 				foundLeafABHit = true;
 			}
@@ -374,16 +375,16 @@ BitMatrix GenerateVisTree(const std::vector<Quadblock>& quadblocks, const BSP* r
 			if (foundLeafABHit)
 			{
 				visibilityRows[leafA][leafB] = 1;
-				if (settings.commutativeRays) { visibilityRows[leafB][leafA] = 1; }
-				if (!settings.selfTargetNearClip)
+				if (VisTreeSettings::commutativeRays) { visibilityRows[leafB][leafA] = 1; }
+				if (!VisTreeSettings::selfTargetNearClip)
 				{
 					for (size_t leafC = 0; leafC < leafCount; leafC++)
 					{
 						// If minDistance is positive, and bigger than distBbox
-						if ((settings.nearClipDistance > -EPSILON) && (settings.nearClipDistance * settings.nearClipDistance >= GetLeafDistanceSquared(*leaves[leafA], *leaves[leafC])))
+						if ((VisTreeSettings::nearClipDistance > -EPSILON) && (VisTreeSettings::nearClipDistance * VisTreeSettings::nearClipDistance >= GetLeafDistanceSquared(*leaves[leafA], *leaves[leafC])))
 						{
 							visibilityRows[leafA][leafC] = 1;
-							if (settings.commutativeRays) { visibilityRows[leafC][leafA] = 1; }
+							if (VisTreeSettings::commutativeRays) { visibilityRows[leafC][leafA] = 1; }
 						}
 					}
 				}

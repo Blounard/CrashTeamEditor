@@ -38,20 +38,7 @@ struct PSXBotNodeFlags2
     static constexpr uint16_t MOON_GRAV = 1 << 7;
 };
 
-struct BotPathSettings
-{
-    bool  useManualPath = false;
-    bool  normalizeNodeDist = true;
-    float nodeDistance = 4.0f;
-    float sidewayOffset = 6.0f;
-    float negSnapDist = -6.0f; // MUST BE NEGATIVE
-    float posSnapDist = 6.0f; // MUST BE POSITIVE
-    float ghostStart = 0.0f;
-    float ghostEnd = 60.0f;
-    Color pathColor[3] = { Color(0.86f, 0.31f, 0.31f),
-                            Color(0.31f, 0.78f, 0.31f),
-                            Color(0.31f, 0.51f, 0.86f) };
-};
+
 
 enum class BotSpecialBits : int
 {
@@ -140,7 +127,7 @@ public:
     void Clear();
     bool IsValid();
     bool LoadFromOBJ(const std::filesystem::path& path, std::vector<Quadblock>& quadblocks);
-    bool GeneratePath(std::vector<Vec3>& nodesPos, const std::vector<Quadblock>& quadblocks, const BotPathSettings& settings, int pathID);
+    bool GeneratePath(std::vector<Vec3>& nodesPos, const std::vector<Quadblock>& quadblocks, int pathID);
 
     std::vector<uint8_t> Serialize(std::vector<Instance>& instances) const;
     void RenderUI(int pathIndex);

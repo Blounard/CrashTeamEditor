@@ -957,12 +957,12 @@ void Level::RenderUI(Renderer& renderer)
 			}
 			if (ImGui::TreeNode("Settings##hotreload"))
 			{
-				ImGui::InputFloat("Relic Sapphire time", &m_hotReloadSettings.relicSapphire);
-				ImGui::InputFloat("Relic Gold time", &m_hotReloadSettings.relicGold);
-				ImGui::InputFloat("Relic Platinum time", &m_hotReloadSettings.relicPlatinum);
-				ImGui::InputFloat("Crystal Challenge time", &m_hotReloadSettings.crystalTime);
-				ImGui::Checkbox("Intro Cutscene", &m_hotReloadSettings.introCutscene);
-				ImGui::Checkbox("Ghost", &m_hotReloadSettings.ghost);
+				ImGui::InputFloat("Relic Sapphire time", &HotReloadSettings::relicSapphire);
+				ImGui::InputFloat("Relic Gold time", &HotReloadSettings::relicGold);
+				ImGui::InputFloat("Relic Platinum time", &HotReloadSettings::relicPlatinum);
+				ImGui::InputFloat("Crystal Challenge time", &HotReloadSettings::crystalTime);
+				ImGui::Checkbox("Intro Cutscene", &HotReloadSettings::introCutscene);
+				ImGui::Checkbox("Ghost", &HotReloadSettings::ghost);
 				ImGui::TreePop();
 			}
 
@@ -1195,30 +1195,30 @@ void Level::RenderUI(Renderer& renderer)
 			if (ImGui::TreeNode("Moving Instances Path"))
 			{
 				ImGui::SeparatorText("Loading settings");
-				ImGui::Checkbox("Normalize Distances##mip", &m_instPathSettings.normalize); 
-				ImGui::BeginDisabled(!m_instPathSettings.normalize);
+				ImGui::Checkbox("Normalize Distances##mip", &InstanceLoadPathSettings::normalize); 
+				ImGui::BeginDisabled(!InstanceLoadPathSettings::normalize);
 				ImGui::SameLine();
 				ImGui::SetNextItemWidth(200.0f);
-				ImGui::DragFloat("Node Distance", &m_instPathSettings.normalizeDist, 0.1f, 0.1f, 100.0f, "%.1f");
+				ImGui::DragFloat("Node Distance", &InstanceLoadPathSettings::normalizeDist, 0.1f, 0.1f, 100.0f, "%.1f");
 				ImGui::EndDisabled();
-				ImGui::Checkbox("Snap to Ground##mip", &m_instPathSettings.groundSnap);
-				ImGui::BeginDisabled(!m_instPathSettings.groundSnap);
+				ImGui::Checkbox("Snap to Ground##mip", &InstanceLoadPathSettings::groundSnap);
+				ImGui::BeginDisabled(!InstanceLoadPathSettings::groundSnap);
 				ImGui::SameLine();
 				ImGui::SetNextItemWidth(150.0f);
-				ImGui::DragFloat("Below ground threshold##mip", &m_instPathSettings.negSnapDist, 0.1f, -50.0f, -0.1f, "%.1f");
+				ImGui::DragFloat("Below ground threshold##mip", &InstanceLoadPathSettings::negSnapDist, 0.1f, -50.0f, -0.1f, "%.1f");
 				ImGui::SameLine();
 				ImGui::SetNextItemWidth(150.0f);
-				ImGui::DragFloat("Above ground threshold##mip", &m_instPathSettings.posSnapDist, 0.1f, 0.1f, 50.0f, "%.1f");
+				ImGui::DragFloat("Above ground threshold##mip", &InstanceLoadPathSettings::posSnapDist, 0.1f, 0.1f, 50.0f, "%.1f");
 				ImGui::EndDisabled();
-				ImGui::Checkbox("Rolling##mip", &m_instPathSettings.rolling);
+				ImGui::Checkbox("Rolling##mip", &InstanceLoadPathSettings::rolling);
 				ImGui::SetItemTooltip("Only used for pos + rot");
-				ImGui::BeginDisabled(!m_instPathSettings.rolling);
+				ImGui::BeginDisabled(!InstanceLoadPathSettings::rolling);
 				ImGui::SameLine();
 				ImGui::SetNextItemWidth(200.0f);
-				ImGui::DragFloat("Object Radius##mip", &m_instPathSettings.radius, 0.1f, 0.1f, 100.0f, "%.1f");
+				ImGui::DragFloat("Object Radius##mip", &InstanceLoadPathSettings::radius, 0.1f, 0.1f, 100.0f, "%.1f");
 				ImGui::SetItemTooltip("Only used for pos + rot");
 				ImGui::EndDisabled();
-				ImGui::Checkbox("Loop##mip", &m_instPathSettings.loop);
+				ImGui::Checkbox("Loop##mip", &InstanceLoadPathSettings::loop);
 				ImGui::SetItemTooltip("Loop or Point to Point");
 
 				ImGui::SeparatorText("Path positions only");
@@ -1237,9 +1237,9 @@ void Level::RenderUI(Renderer& renderer)
 							if (!selection.empty())
 							{
 								std::vector<Vec3> vec = LoadPath(selection[0]);
-								if (m_instPathSettings.normalize)
-									vec = NormalizePos(vec, m_instPathSettings.normalizeDist, m_instPathSettings.loop);
-								if (m_instPathSettings.groundSnap)
+								if (InstanceLoadPathSettings::normalize)
+									vec = NormalizePos(vec, InstanceLoadPathSettings::normalizeDist, InstanceLoadPathSettings::loop);
+								if (InstanceLoadPathSettings::groundSnap)
 								{
 									std::vector<size_t> quadindexes;
 									for (size_t j = 0; j < m_quadblocks.size(); j++)
@@ -1251,7 +1251,7 @@ void Level::RenderUI(Renderer& renderer)
 									for (Vec3& pos : vec)
 									{
 										SnapToClosestQuad(m_quadblocks, quadindexes, pos, dummyRot, Vec3(0.0f, 1.0f, 0.0f),
-											m_instPathSettings.negSnapDist, m_instPathSettings.posSnapDist);
+											InstanceLoadPathSettings::negSnapDist, InstanceLoadPathSettings::posSnapDist);
 									}
 										
 								}
@@ -1307,11 +1307,11 @@ void Level::RenderUI(Renderer& renderer)
 							if (!selection.empty())
 							{
 								std::vector<Vec3> posvec = LoadPath(selection[0]);
-								if (m_instPathSettings.normalize)
-									posvec = NormalizePos(posvec, m_instPathSettings.normalizeDist, m_instPathSettings.loop);
-								std::vector<Vec3> rotvec = ComputeYaw(posvec, m_instPathSettings.loop);
+								if (InstanceLoadPathSettings::normalize)
+									posvec = NormalizePos(posvec, InstanceLoadPathSettings::normalizeDist, InstanceLoadPathSettings::loop);
+								std::vector<Vec3> rotvec = ComputeYaw(posvec, InstanceLoadPathSettings::loop);
 								std::vector<Vec3> upvec(rotvec.size(), Vec3(0.0f, 1.0f, 0.0f));
-								if (m_instPathSettings.groundSnap)
+								if (InstanceLoadPathSettings::groundSnap)
 								{
 									std::vector<size_t> quadindexes;
 									for (size_t j = 0; j < m_quadblocks.size(); j++)
@@ -1323,12 +1323,12 @@ void Level::RenderUI(Renderer& renderer)
 									{
 
 										int quadId = SnapToClosestQuad(m_quadblocks, quadindexes, posvec[j], rotvec[j], Vec3(0.0f, 1.0f, 0.0f),
-											m_instPathSettings.negSnapDist, m_instPathSettings.posSnapDist);
+											InstanceLoadPathSettings::negSnapDist, InstanceLoadPathSettings::posSnapDist);
 										if (quadId != -1)
 											upvec[j] = m_quadblocks[quadId].GetNormal();
 									}
 								}
-								if (m_instPathSettings.rolling)
+								if (InstanceLoadPathSettings::rolling)
 								{
 									float totalDist = 0.0f;
 									for (size_t j = 0; j < posvec.size() - 1; j++)
@@ -1336,14 +1336,14 @@ void Level::RenderUI(Renderer& renderer)
 										Vec3& pos = posvec[j + 1];
 										Vec3& prevpos = posvec[j];
 										totalDist += (pos - prevpos).Length();
-										float rotAngleRad = totalDist / m_instPathSettings.radius;
+										float rotAngleRad = totalDist / InstanceLoadPathSettings::radius;
 										Quaternion preRoll(rotvec[j + 1]);
 										Quaternion rolling(Vec3(1.0f, 0.0f, 0.0f), rotAngleRad);
 										rotvec[j + 1] = (preRoll * rolling).ToEulerYXZ();
 									}
 									for (size_t j = 0; j < posvec.size(); j++)
 									{
-										posvec[j] += upvec[j] * m_instPathSettings.radius;
+										posvec[j] += upvec[j] * InstanceLoadPathSettings::radius;
 									}
 								}
 								m_spawntypesPosRot[i].clear();
@@ -1419,34 +1419,35 @@ void Level::RenderUI(Renderer& renderer)
 			if (ImGui::TreeNode("Minimap"))
 			{
 				bool boundsChanged = false;
+				static std::string previewMatNameMinimap = "";
 
-				ImGui::InputInt("Target Height##minimap", &m_minimapSettings.textureHeight);
-				ImGui::Checkbox("Use checkpoint quads##minimap", &m_minimapSettings.checkpointQuads);
-				ImGui::Checkbox("Use checkpoint pathable quads##minimap", &m_minimapSettings.checkpointPathableQuads);
+				ImGui::InputInt("Target Height##minimap", &MinimapSettings::textureHeight);
+				ImGui::Checkbox("Use checkpoint quads##minimap", &MinimapSettings::checkpointQuads);
+				ImGui::Checkbox("Use checkpoint pathable quads##minimap", &MinimapSettings::checkpointPathableQuads);
 				const char* orientationModes[] = { "0°", "90°", "180°", "270°", "Auto" };
-				int selectOrientation = static_cast<int>(m_minimapSettings.orientation);
+				int selectOrientation = MinimapSettings::orientation;
 				if (ImGui::Combo("Relative rotation##minimapsettings", &selectOrientation, orientationModes, 5))
 				{
-					m_minimapSettings.orientation = static_cast<MinimapOrientation>(selectOrientation);
+					MinimapSettings::orientation = selectOrientation;
 				}
 				if (ImGui::TreeNode("Materials##minimapsettings"))
 				{
-					if (ImGui::BeginCombo("##minimapmatcombo", m_minimapSettings.previewMatName.c_str()))
+					if (ImGui::BeginCombo("##minimapmatcombo", previewMatNameMinimap.c_str()))
 					{
 						for (const auto& [material, indexes] : m_materialToQuadblocks)
 						{
 							if (ImGui::Selectable(material.c_str()))
 							{
-								m_minimapSettings.previewMatName = material;
+								previewMatNameMinimap = material;
 							}
 						}
 						ImGui::EndCombo();
 					}
 					ImGui::SameLine();
 					if (ImGui::Button("Add Material##minimapsettinbgd"))
-						m_minimapSettings.materials.insert(m_minimapSettings.previewMatName);
+						MinimapSettings::materials.insert(previewMatNameMinimap);
 					std::vector<std::string> toDel;
-					for (const std::string& matName : m_minimapSettings.materials)
+					for (const std::string& matName : MinimapSettings::materials)
 					{
 						ImGui::Text(matName.c_str());
 						ImGui::SameLine();
@@ -1454,7 +1455,7 @@ void Level::RenderUI(Renderer& renderer)
 							toDel.push_back(matName);
 					}
 					for (const std::string& matName : toDel)
-						m_minimapSettings.materials.erase(matName);
+						MinimapSettings::materials.erase(matName);
 					ImGui::TreePop();
 				}
 
@@ -1504,30 +1505,30 @@ void Level::RenderUI(Renderer& renderer)
 				if (ImGui::TreeNode("Settings##Water"))
 				{	
 					ImGui::SeparatorText("Base UV");
-					ImGui::DragFloat("World Tex size", &m_waterAnimSettings.sizeTex, 0.5f, 0.0f, 100.0f, "%.1f");
+					ImGui::DragFloat("World Tex size", &WaterAnimSettings::sizeTex, 0.5f, 0.0f, 100.0f, "%.1f");
 					ImGui::SetItemTooltip("Size of the full texture in world units");
 
 					ImGui::SeparatorText("Scrolling UV");
-					ImGui::InputInt("U Cycle count##scroll", &m_waterAnimSettings.ScrollULoops);
-					ImGui::InputInt("V Cycle count##scroll", &m_waterAnimSettings.ScrollVLoops);
+					ImGui::InputInt("U Cycle count##scroll", &WaterAnimSettings::ScrollULoops);
+					ImGui::InputInt("V Cycle count##scroll", &WaterAnimSettings::ScrollVLoops);
 
 					ImGui::SeparatorText("Waving UV");
-					ImGui::DragFloat("Wave Length##uv", &m_waterAnimSettings.waveLength, 0.1f, 0.0f, 1000.0f, "%.1f");
-					ImGui::InputInt("U Cycle count##wave", &m_waterAnimSettings.waveCyclesTimeU);
-					ImGui::InputInt("V Cycle count##wave", &m_waterAnimSettings.waveCyclesTimeV);
-					ImGui::DragFloat("Wave Amplitude", &m_waterAnimSettings.waveAmplitude, 0.1f, 0.0f, 64.0f, "%.1f pixels");
+					ImGui::DragFloat("Wave Length##uv", &WaterAnimSettings::waveLength, 0.1f, 0.0f, 1000.0f, "%.1f");
+					ImGui::InputInt("U Cycle count##wave", &WaterAnimSettings::waveCyclesTimeU);
+					ImGui::InputInt("V Cycle count##wave", &WaterAnimSettings::waveCyclesTimeV);
+					ImGui::DragFloat("Wave Amplitude", &WaterAnimSettings::waveAmplitude, 0.1f, 0.0f, 64.0f, "%.1f pixels");
 
 					ImGui::SeparatorText("Brightness");
 					// --- Brightness & Shimmer ---
-					ImGui::DragFloat("Base Brightness", &m_waterAnimSettings.baseBrightness, 0.1f, 0.0f, 15.0f, "%.1f");
+					ImGui::DragFloat("Base Brightness", &WaterAnimSettings::baseBrightness, 0.1f, 0.0f, 15.0f, "%.1f");
 					ImGui::SetItemTooltip("Base brightness (range 0 to 15).");
 
-					if (ImGui::DragFloat("Brightness amplitude", &m_waterAnimSettings.brightAmp, 0.1f, 0.0f, 15.0f, "%.1f"))
+					if (ImGui::DragFloat("Brightness amplitude", &WaterAnimSettings::brightAmp, 0.1f, 0.0f, 15.0f, "%.1f"))
 					{
-						m_waterAnimSettings.brightAmp = Clamp(m_waterAnimSettings.brightAmp, 0.0f, 15.0f);
+						WaterAnimSettings::brightAmp = Clamp(WaterAnimSettings::brightAmp, 0.0f, 15.0f);
 					}
 					ImGui::SetItemTooltip("Base lighting brightness (range 0 to 15).");						
-					ImGui::InputInt("Brightness Cycles Time", &m_waterAnimSettings.brightWaveCycle);
+					ImGui::InputInt("Brightness Cycles Time", &WaterAnimSettings::brightWaveCycle);
 					ImGui::SetItemTooltip("Temporal cycles over loop (different from ripple cycles so waves and shimmer don't lock-step).");
 
 					ImGui::TreePop();
@@ -1812,24 +1813,24 @@ void Level::RenderUI(Renderer& renderer)
 			{
 				if (ImGui::TreeNodeEx("BSP Settings", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					if (ImGui::InputInt("Max Quad Per Leaf", &m_bspSettings.maxQuadPerLeaf)) { m_bspSettings.maxQuadPerLeaf = std::max(m_bspSettings.maxQuadPerLeaf, 1); }
+					if (ImGui::InputInt("Max Quad Per Leaf", &BSPTreeSettings::maxQuadPerLeaf)) { BSPTreeSettings::maxQuadPerLeaf = std::max(BSPTreeSettings::maxQuadPerLeaf, 1); }
 					ImGui::SetItemTooltip("Lower values improve rendering performance, but increases file size and slows down vis tree generation.");
-					if (ImGui::InputFloat("Max Leaf Axis Length", &m_bspSettings.maxAxisDistance)) { m_bspSettings.maxAxisDistance = std::max(m_bspSettings.maxAxisDistance, 0.0f); }
+					if (ImGui::InputFloat("Max Leaf Axis Length", &BSPTreeSettings::maxAxisDistance)) { BSPTreeSettings::maxAxisDistance = std::max(BSPTreeSettings::maxAxisDistance, 0.0f); }
 					ImGui::SetItemTooltip("Lower values improve rendering performance, but increases file size and slows down vis tree generation.");
-					ImGui::Checkbox("Separate Material", &m_bspSettings.separateMaterial);
+					ImGui::Checkbox("Separate Material", &BSPTreeSettings::separateMaterial);
 					ImGui::TreePop();
 				}
 				if (ImGui::TreeNodeEx("Vis Tree Settings", ImGuiTreeNodeFlags_DefaultOpen))
 				{
-					if (ImGui::InputFloat("Near Clip Distance", &m_visTreeSettings.nearClipDistance)) { m_visTreeSettings.nearClipDistance = std::max(m_visTreeSettings.nearClipDistance, -1.0f); }
+					if (ImGui::InputFloat("Near Clip Distance", &VisTreeSettings::nearClipDistance)) { VisTreeSettings::nearClipDistance = std::max(VisTreeSettings::nearClipDistance, -1.0f); }
 					ImGui::SetItemTooltip("Minimum drawing distance. Higher values decrease performance and speed up the vis tree generation.");
-					if (ImGui::InputFloat("Far Clip Distance", &m_visTreeSettings.farClipDistance)) { m_visTreeSettings.farClipDistance = std::max(m_visTreeSettings.farClipDistance, 0.0f); }
+					if (ImGui::InputFloat("Far Clip Distance", &VisTreeSettings::farClipDistance)) { VisTreeSettings::farClipDistance = std::max(VisTreeSettings::farClipDistance, 0.0f); }
 					ImGui::SetItemTooltip("Maximum drawing distance. Lower values improve performance and speed up the vis tree generation.");
-					ImGui::Checkbox("Self target Near Clip Distance", &m_visTreeSettings.selfTargetNearClip);
+					ImGui::Checkbox("Self target Near Clip Distance", &VisTreeSettings::selfTargetNearClip);
 					ImGui::SetItemTooltip("Spread visibility depending on the distance to ray emmitor instead of ray target");
-					ImGui::Checkbox("Assume Commutative Rays", &m_visTreeSettings.commutativeRays);
+					ImGui::Checkbox("Assume Commutative Rays", &VisTreeSettings::commutativeRays);
 					ImGui::SetItemTooltip("Speeds up VisTree generation by a factor of 2x to 3x with minimal loss of precision.");
-					ImGui::Checkbox("Center-Only Samples", &m_visTreeSettings.centerOnlySamples);
+					ImGui::Checkbox("Center-Only Samples", &VisTreeSettings::centerOnlySamples);
 					ImGui::SetItemTooltip("Only casts rays from each quad center (skips corner samples). Much faster, but may miss narrow visibility paths.");
 					ImGui::TreePop();
 				}
@@ -2563,29 +2564,29 @@ void Level::RenderUI(Renderer& renderer)
 			static ButtonUI generatePathButton[3] = { ButtonUI(), ButtonUI(), ButtonUI() };
 
 			ImGui::SeparatorText("Settings");
-			ImGui::Checkbox("Use Manual Path", &m_botPathSettings.useManualPath);
+			ImGui::Checkbox("Use Manual Path", &BotPathSettings::useManualPath);
 			ImGui::SameLine();
-			ImGui::BeginDisabled(m_botPathSettings.useManualPath);
+			ImGui::BeginDisabled(BotPathSettings::useManualPath);
 			ImGui::SetNextItemWidth(200.0f);
-			ImGui::DragFloat("Sideway Path Offset", &m_botPathSettings.sidewayOffset, 0.1f, 0.1f, 30.0f, "%.1f");
+			ImGui::DragFloat("Sideway Path Offset", &BotPathSettings::sidewayOffset, 0.1f, 0.1f, 30.0f, "%.1f");
 			ImGui::EndDisabled();
-			ImGui::Checkbox("Normalize Node Distance", &m_botPathSettings.normalizeNodeDist);
-			if (m_botPathSettings.normalizeNodeDist)
+			ImGui::Checkbox("Normalize Node Distance", &BotPathSettings::normalizeNodeDist);
+			if (BotPathSettings::normalizeNodeDist)
 			{
 				ImGui::SameLine();
 				ImGui::SetNextItemWidth(200.0f);
-				ImGui::DragFloat("Node Distance", &m_botPathSettings.nodeDistance, 0.1f, 0.1f, 30.0f, "%.1f");
+				ImGui::DragFloat("Node Distance", &BotPathSettings::nodeDistance, 0.1f, 0.1f, 30.0f, "%.1f");
 			}
 			ImGui::SetNextItemWidth(150.0f);
-			ImGui::DragFloat("Below ground threshold##bot", &m_botPathSettings.negSnapDist, 0.1f, -50.0f, -0.1f, "%.1f");
+			ImGui::DragFloat("Below ground threshold##bot", &BotPathSettings::negSnapDist, 0.1f, -50.0f, -0.1f, "%.1f");
 			ImGui::SameLine();
 			ImGui::SetNextItemWidth(150.0f);
-			ImGui::DragFloat("Above ground threshold##bot", &m_botPathSettings.posSnapDist, 0.1f, 0.1f, 50.0f, "%.1f");
+			ImGui::DragFloat("Above ground threshold##bot", &BotPathSettings::posSnapDist, 0.1f, 0.1f, 50.0f, "%.1f");
 			ImGui::SetNextItemWidth(150.0f);
-			ImGui::DragFloat("Ghost Start Time##bot", &m_botPathSettings.ghostStart, 0.1f, 0.0f, 480.0f, "%.1f");
+			ImGui::DragFloat("Ghost Start Time##bot", &BotPathSettings::ghostStart, 0.1f, 0.0f, 480.0f, "%.1f");
 			ImGui::SameLine();
 			ImGui::SetNextItemWidth(150.0f);
-			ImGui::DragFloat("Ghost End Time##bot", &m_botPathSettings.ghostEnd, 0.1f, 0.0f, 480.0f, "%.1f");
+			ImGui::DragFloat("Ghost End Time##bot", &BotPathSettings::ghostEnd, 0.1f, 0.0f, 480.0f, "%.1f");
 
 
 
@@ -2600,7 +2601,7 @@ void Level::RenderUI(Renderer& renderer)
 				ImGui::InputText("##botpathobj", &s_objNames[i], ImGuiInputTextFlags_ReadOnly);
 				ImGui::EndDisabled();
 				ImGui::SameLine();
-				ImGui::BeginDisabled(!m_botPathSettings.useManualPath);
+				ImGui::BeginDisabled(!BotPathSettings::useManualPath);
 				if (ImGui::Button(("Browse##selectbotpath" + std::to_string(i)).c_str()))
 				{
 					auto selection = pfd::open_file("Select Path (obj or ghost)", GetParentPath().string().c_str(),
@@ -2627,14 +2628,14 @@ void Level::RenderUI(Renderer& renderer)
 				if (generatePathButton[i].Show(("Generate BotPath " + std::to_string(i)).c_str(), generatePathButtonMessage[i], false))
 				{
 					bool success = false;
-					if (m_botPathSettings.useManualPath && !s_objPaths[i].empty())
+					if (BotPathSettings::useManualPath && !s_objPaths[i].empty())
 					{
 						std::vector<Vec3> vec;
 						if (s_objPaths[i].extension() == ".obj")
 							 vec = LoadPath(s_objPaths[i]);
 						else
-							vec = LoadGhostPath(s_objPaths[i], m_botPathSettings.ghostStart, m_botPathSettings.ghostEnd);
-						success = m_botPaths[i].GeneratePath(vec, m_quadblocks, m_botPathSettings, i);
+							vec = LoadGhostPath(s_objPaths[i], BotPathSettings::ghostStart, BotPathSettings::ghostEnd);
+						success = m_botPaths[i].GeneratePath(vec, m_quadblocks, i);
 					}
 					else
 					{
@@ -2646,7 +2647,7 @@ void Level::RenderUI(Renderer& renderer)
 							ckpt_id = m_checkpoints[ckpt_id].GetUp();
 						}
 
-						success = m_botPaths[i].GeneratePath(vec, m_quadblocks, m_botPathSettings, i);
+						success = m_botPaths[i].GeneratePath(vec, m_quadblocks, i);
 
 					}
 
@@ -2658,10 +2659,10 @@ void Level::RenderUI(Renderer& renderer)
 					GenerateBotPathChangeCode();
 				}
 				ImGui::SameLine();
-				float colorBot[3] = { m_botPathSettings.pathColor[i].Red(), m_botPathSettings.pathColor[i].Green(), m_botPathSettings.pathColor[i].Blue()};
+				float colorBot[3] = { BotPathSettings::pathColor[i].Red(), BotPathSettings::pathColor[i].Green(), BotPathSettings::pathColor[i].Blue()};
 				if (ImGui::ColorEdit3("Path Color##botcolor", colorBot))
 				{
-					m_botPathSettings.pathColor[i] = Color(static_cast<float>(colorBot[0]), colorBot[1], colorBot[2]);
+					BotPathSettings::pathColor[i] = Color(static_cast<float>(colorBot[0]), colorBot[1], colorBot[2]);
 					UpdateRenderBotData();
 				}
 				m_botPaths[i].RenderUI(i);

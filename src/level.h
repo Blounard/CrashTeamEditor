@@ -16,6 +16,7 @@
 #include "skybox.h"
 #include "bots.h"
 #include "instance.h"
+#include "gui_render_settings.h"
 
 #include <nlohmann/json.hpp>
 #include <vector>
@@ -56,22 +57,7 @@ struct HostSettings // RAW STRUCT TO EMIT FOR HOT RELOAD SETTINGS
 	int32_t ghost;          // 1 leaves the ghost replay alone, 0 kills its thread
 };
 
-struct HotReloadSettings	// HOT RELOAD PARAMETERS
-{
-	float relicSapphire;	// seconds
-	float relicGold;		// seconds
-	float relicPlatinum;	// seconds
-	float crystalTime;		// seconds
-	bool introCutscene;		// 1 plays the intro cam, 0 skips it
-	bool ghost;				// 1 leaves the ghost replay alone, 0 kills its thread
-	HotReloadSettings() :
-		relicSapphire(60.0f),
-		relicGold(60.0f),
-		relicPlatinum(60.0f),
-		crystalTime(60.0f),
-		introCutscene(false),
-		ghost(false){}
-};
+
 
 class Level
 {
@@ -110,7 +96,6 @@ public:
 	void UpdateRenderCheckpointData();
 	void UpdateRenderBotData();
 	void GenerateRenderLevData();
-	bool GenerateVisTreeOnly(bool simpleVisTree, float distanceNearClip, float distanceFarClip);
 	bool GenerateVisTreeOnly();
 	void GenerateBotPathLeft();
 	bool HasRawTexture() const { return m_hasRawTexture; }
@@ -159,13 +144,6 @@ private:
 	bool m_showLogWindow;
 	bool m_showHotReloadWindow;
 	bool m_loaded;
-	HotReloadSettings m_hotReloadSettings; // TODO : MAKE A SETTINGS FILE, WITH I/O
-	BSPTreeSettings m_bspSettings;
-	VisTreeSettings m_visTreeSettings;
-	BotPathSettings m_botPathSettings;
-	WaterAnimSettings m_waterAnimSettings;
-	InstanceLoadPathSettings m_instPathSettings;
-	MinimapSettings m_minimapSettings;
 
 	std::vector<std::tuple<std::string, std::string>> m_invalidQuadblocks;
 	std::string m_logMessage;

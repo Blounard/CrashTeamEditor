@@ -27,15 +27,6 @@ struct Minimap
 	Texture texture;
 };
 
-struct MinimapSettings
-{
-	int textureHeight = 87;
-	MinimapOrientation orientation = MinimapOrientation::AUTO;
-	std::set<std::string> materials = {};
-	std::string previewMatName = "";
-	bool checkpointQuads = true;
-	bool checkpointPathableQuads = true;
-};
 
 static inline Minimap ConvertMinimap(const PSX::Minimap& map)
 {
