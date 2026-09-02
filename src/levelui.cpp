@@ -6,7 +6,7 @@
 #include "quadblock.h"
 #include "vertex.h"
 #include "utils.h"
-#include "gui_render_settings.h"
+#include "settings.h"
 #include "mesh.h"
 #include "texture.h"
 #include "ui.h"
@@ -1451,7 +1451,7 @@ void Level::RenderUI(Renderer& renderer)
 					{
 						ImGui::Text(matName.c_str());
 						ImGui::SameLine();
-						if (ImGui::Button(("Delete##minimapsettingsmaterial" + matName).c_str()))
+						if (!m_materialToQuadblocks.contains(matName) || ImGui::Button(("Delete##minimapsettingsmaterial" + matName).c_str()))
 							toDel.push_back(matName);
 					}
 					for (const std::string& matName : toDel)

@@ -2,7 +2,7 @@
 
 #include "geo.h"
 #include "quadblock.h"
-#include "gui_render_settings.h"
+#include "settings.h"
 
 
 #include <vector>

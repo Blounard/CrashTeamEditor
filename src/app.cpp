@@ -1,6 +1,6 @@
 #include "app.h"
 #include "ui.h"
-#include "gui_render_settings.h"
+#include "settings.h"
 #include "io.h"
 
 #include "globalimguiglglfw.h"

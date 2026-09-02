@@ -34,7 +34,7 @@
     <ClCompile Include="src\animtexture.cpp" />
     <ClCompile Include="src\instance.cpp" />
     <ClCompile Include="src\shader_templates.cpp" />
-    <ClCompile Include="src\gui_render_settings.cpp" />
+    <ClCompile Include="src\settings.cpp" />
     <ClCompile Include="src\model.cpp" />
     <ClCompile Include="src\text3d.cpp" />
     <ClCompile Include="src\transform.cpp" />
@@ -79,7 +79,7 @@
     <ClInclude Include="src\instance.h" />
     <ClInclude Include="src\script.h" />
     <ClInclude Include="src\shader_templates.h" />
-    <ClInclude Include="src\gui_render_settings.h" />
+    <ClInclude Include="src\settings.h" />
     <ClInclude Include="src\model.h" />
     <ClInclude Include="src\text3d.h" />
     <ClInclude Include="src\transform.h" />

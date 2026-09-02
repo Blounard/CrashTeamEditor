@@ -1,5 +1,5 @@
 #include "bots.h"
-#include "gui_render_settings.h"
+#include "settings.h"
 
 
 BotNode::BotNode(const PSX::NavFrame& frame)

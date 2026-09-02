@@ -129,7 +129,7 @@
     <ClCompile Include="src\mesh.cpp">
       <Filter>Renderer</Filter>
     </ClCompile>
-    <ClCompile Include="src\gui_render_settings.cpp">
+    <ClCompile Include="src\settings.cpp">
       <Filter>Renderer</Filter>
     </ClCompile>
     <ClCompile Include="src\shader_templates.cpp">
@@ -239,7 +239,7 @@
     <ClInclude Include="src\shader_templates.h">
       <Filter>Renderer</Filter>
     </ClInclude>
-    <ClInclude Include="src\gui_render_settings.h">
+    <ClInclude Include="src\settings.h">
       <Filter>Renderer</Filter>
     </ClInclude>
     <ClInclude Include="src\process.h">

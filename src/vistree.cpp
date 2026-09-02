@@ -1,4 +1,4 @@
-#include "gui_render_settings.h"
+#include "settings.h"
 #include "vistree.h"
 #include <omp.h>
 #include <cmath>

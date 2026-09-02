@@ -5,7 +5,7 @@
 #include "utils.h"
 #include "geo.h"
 #include "process.h"
-#include "gui_render_settings.h"
+#include "settings.h"
 #include "renderer.h"
 #include "vistree.h"
 #include "text3d.h"
@@ -2747,7 +2747,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 							}
 							texGroups.push_back(m_rawTextureGroup[rawTexOffset]);
 						}
-						currQuad.SetTextureID(rawOffsetRemap[rawTexOffset], i);
+						currQuad.SetTextureID(rawOffsetRemap[rawTexOffset], i); // TODO rework that, make PSX::TexLayout LayoutKey + QUadUV, and just store Keys as raw, UVs stays in quad, keys are in material
 						continue;
 					}
 

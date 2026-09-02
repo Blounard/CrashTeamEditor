@@ -16,7 +16,7 @@
 #include "skybox.h"
 #include "bots.h"
 #include "instance.h"
-#include "gui_render_settings.h"
+#include "settings.h"
 
 #include <nlohmann/json.hpp>
 #include <vector>

@@ -1,5 +1,5 @@
 #include "path.h"
-#include "gui_render_settings.h"
+#include "settings.h"
 #include <array>
 
 static const std::array<Color, 9> PrimitiveColors = {

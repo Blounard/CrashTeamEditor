@@ -1,7 +1,7 @@
 #include "renderer.h"
 
 #include "time.h"
-#include "gui_render_settings.h"
+#include "settings.h"
 #include "shader_templates.h"
 
 #include "globalimguiglglfw.h"

@@ -1,4 +1,4 @@
-#include "gui_render_settings.h"
+#include "settings.h"
 #include <imgui.h>
 
 float GuiRenderSettings::camFovDeg = 70.0f;
