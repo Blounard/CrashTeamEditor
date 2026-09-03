@@ -405,14 +405,14 @@ void BotPath::RenderUI(int pathIndex)
 
 
 bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, const std::unordered_map<size_t, InstanceModel>& modelInstances, Vec3& queryPoint, std::vector<Quadblock>& quadblocks)
-{// TODO : Make sure it doesn't crash when your instance has an invalid model
+{
 	bool modelChanged = false;
 
 	std::string headerLabel = m_name.empty() ? ("Instance " + std::to_string(index + 1)) : m_name;
 	if (ImGui::CollapsingHeader((headerLabel + "###instHeader").c_str()))
 	{
 		// Model selection dropdown
-		if (ImGui::BeginCombo("Model", modelInstances.at(m_modelKey).GetName().c_str()))
+		if (ImGui::BeginCombo("Model", modelInstances.contains(m_modelKey) ? modelInstances.at(m_modelKey).GetName().c_str() : "Invalid"))
 		{
 			for (const auto& [key, model] : modelInstances)
 			{
