@@ -11,8 +11,6 @@
 #include <set>
 #include <map>
 
-// todo : delete this file
-
 enum class MinimapOrientation : int
 {
 	RIGHT = 0,

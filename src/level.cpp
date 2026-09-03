@@ -2450,42 +2450,24 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	printf("Checkpoint 255's next : %d\n Checkpoint 255's next 's next : %d\n", checkpoint255.linkUp, checkpoint255Next.linkUp);
 
 
-
-
-
-
-	m_tropyGhost.clear();
-	m_oxideGhost.clear();
-	// TODO : read fixed filesize
 	if (header.offExtra > 0)
 	{
 		file.seekg(offLev + std::streampos(header.offExtra));
 		PSX::LevelExtraHeader extraHeader = {};
 		Read(file, extraHeader);
 		// Read N. Tropy Ghost
-		if (extraHeader.count >= PSX::LevelExtra::N_TROPY_GHOST + 1 &&
-			extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST] > 0)
+		if (extraHeader.count >= PSX::LevelExtra::N_TROPY_GHOST + 1 && extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST] > 0)
 		{
 			file.seekg(offLev + std::streampos(extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST]));
-			size_t ghostSize = 0;
-			if (extraHeader.count > PSX::LevelExtra::N_OXIDE_GHOST && extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST] > 0)
-			{
-				ghostSize = extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST] - extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST];
-			}
-			else
-			{
-				ghostSize = header.offLevNavTable - extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST];
-			}
-			m_tropyGhost.resize(ghostSize);
-			file.read(reinterpret_cast<char*>(m_tropyGhost.data()), ghostSize);
+			m_tropyGhost.resize(GHOST_DATA_FILESIZE);
+			file.read(reinterpret_cast<char*>(m_tropyGhost.data()), GHOST_DATA_FILESIZE);
 		}
 		// Read N. Oxide Ghost
 		if (extraHeader.count >= PSX::LevelExtra::N_OXIDE_GHOST + 1 && extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST] > 0)
 		{
 			file.seekg(offLev + std::streampos(extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST]));
-			size_t ghostSize = header.offLevNavTable - extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST];
-			m_oxideGhost.resize(ghostSize);
-			file.read(reinterpret_cast<char*>(m_oxideGhost.data()), ghostSize);
+			m_oxideGhost.resize(GHOST_DATA_FILESIZE);
+			file.read(reinterpret_cast<char*>(m_oxideGhost.data()), GHOST_DATA_FILESIZE);
 		}
 
 		// Read minimap
@@ -3307,9 +3289,6 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	const size_t offSpawnMeta = currOffset;
 	currOffset += spawnMeta.size() * sizeof(int16_t);
 
-
-	// TODO : VERIFY THIS PART AND MERGE CORRECTLY
-	// Note: extraHeader.offsets[MINIMAP] will be updated later after minimap data is serialized
 	PSX::LevelExtraHeader extraHeader = {};
 	extraHeader.count = 0;
 	extraHeader.offsets[PSX::LevelExtra::MINIMAP] = 0;
@@ -3444,7 +3423,6 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	visMem.offBSP[0] = static_cast<uint32_t>(offVisMemBSPP1);
 	visMem.offOcean[0] = static_cast<uint32_t>(offVisMemBSPP1);
 	const size_t offVisMem = currOffset;
-  //printf(nameof(offVisMem) " = %zx\n", offVisMem);
 	currOffset += sizeof(visMem);
 
 	// Minimap data serialization
