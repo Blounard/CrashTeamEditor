@@ -182,8 +182,10 @@ void UI::RenderWorld()
 
 				ImGui::Text("Selected Quadblock: ID %zu", idx);
 				ImGui::Text("Name: %s", qb.GetName().c_str());
-				ImGui::Text("Material: %s", qb.GetMaterial().c_str());
-
+				for (size_t face = 0; face < NUM_FACES_QUADBLOCK; face++)
+				{
+					ImGui::Text("Material: %s", qb.GetMaterial(face).c_str());
+				}
 				uint8_t terrain = qb.GetTerrain();
 				std::string terrainName = "Unknown";
 				for (const auto& pair : TerrainType::LABELS)

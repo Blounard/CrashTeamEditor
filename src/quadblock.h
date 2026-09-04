@@ -111,8 +111,8 @@ typedef std::function<void(const Quadblock&)> UpdateFilterCallback;
 class Quadblock
 {
 public:
-	Quadblock(const std::string& name, Tri& t0, Tri& t1, Tri& t2, Tri& t3, const Vec3& normal, const std::string& material, bool hasUV, UpdateFilterCallback filterCallback);
-	Quadblock(const std::string& name, Quad& q0, Quad& q1, Quad& q2, Quad& q3, const Vec3& normal, const std::string& material, bool hasUV, UpdateFilterCallback filterCallback);
+	Quadblock(const std::string& name, Tri& t0, Tri& t1, Tri& t2, Tri& t3, const Vec3& normal, const std::vector<std::string>& materials, bool hasUV, UpdateFilterCallback filterCallback);
+	Quadblock(const std::string& name, Quad& q0, Quad& q1, Quad& q2, Quad& q3, const Vec3& normal, const std::vector<std::string>& materials, bool hasUV, UpdateFilterCallback filterCallback);
 	Quadblock(const PSX::Quadblock& quadblock, const std::vector<PSX::Vertex>& vertices, UpdateFilterCallback filterCallback);
 	const std::string& GetName() const;
 	Vec3 GetCenter() const;
@@ -136,14 +136,15 @@ public:
 	bool GetCheckpointPathable() const;
 	bool GetVisTreeTransparent() const;
 	int GetDrawOrderHigh() const;
+	uint32_t GetFaceRotateFlip(size_t face) const;
 	int GetWeatherIntensity() const;
 	int GetWeatherVanishRate() const;
 	const QuadUV& GetQuadUV(size_t quad) const;
-	const std::filesystem::path& GetTexPath() const;
+	const std::filesystem::path& GetTexPath(size_t face) const;
 	const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>& GetUVs() const;
 	uint32_t GetRawTexOffset(size_t i) const;
 	size_t GetRenderPrimitiveIndex() const;
-	const std::string& GetMaterial() const;
+	const std::string& GetMaterial(size_t face) const;
 	void SetRenderPrimitiveIndex(size_t triangleIndex);
 	void SetTerrain(uint8_t terrain);
 	void SetFlag(uint16_t flag);
@@ -162,14 +163,14 @@ public:
 	void SetAnimTextureOffset(size_t relOffset, size_t levOffset, size_t quad);
 	bool IsQuadblock() const;
 	void SetTrigger(QuadblockTrigger trigger);
-	void SetTexPath(const std::filesystem::path& path);
+	void SetTexPath(size_t face, const std::filesystem::path& path);
 	void SetAnimated(bool animated);
 	void SetFilter(bool filter);
 	void SetFilterColor(const Color& color);
 	void SetSpeedImpact(int speed);
 	void SetUVs(const QuadUV& uvs);
 	void SetFaceUVs(size_t faceIndex, const QuadUV& uvs);
-	void SetMaterial(const std::string& material);
+	void SetMaterial(size_t face, const std::string& material);
 	void SetOceanVertex(PSX::OceanVertex overt, size_t vertId);
 	PSX::OceanVertex GetOceanVertex(size_t vertId) const ;
 	void SetWeatherIntensity(int intensity);
@@ -212,7 +213,7 @@ private:
 	PSX::OceanVertex m_oVert[NUM_VERTICES_QUADBLOCK]; // INDEXED WITH PSX QUADBLOCK VERTEX ORDER
 	BoundingBox m_bbox;
 	std::string m_name;
-	std::string m_material;
+	std::array<std::string, NUM_FACES_QUADBLOCK + 1> m_materials;
 	int m_checkpointIndex;
 	uint32_t m_faceDrawMode[NUM_FACES_QUADBLOCK];
 	uint32_t m_faceRotateFlip[NUM_FACES_QUADBLOCK];
@@ -231,7 +232,7 @@ private:
 	std::array<QuadUV, NUM_FACES_QUADBLOCK + 1> m_uvs; /* Last id is reserved for low tex */
 	std::array<int, NUM_FACES_QUADBLOCK + 1> m_textureIDs = { -1, -1, -1, -1, -1 }; // -1 means no tex
 	std::array<int, NUM_FACES_QUADBLOCK + 1> m_animTexOffset = { -1, -1, -1, -1, -1 };
-	std::filesystem::path m_texPath;
+	std::array<std::filesystem::path, NUM_FACES_QUADBLOCK + 1> m_texPaths;
 	bool m_hasRawNormalData; //for raw normals
 	uint8_t m_triNormalVecBitshift;
 	int16_t m_triNormalVecDividend[10];

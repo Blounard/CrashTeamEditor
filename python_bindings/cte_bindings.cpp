@@ -360,9 +360,9 @@ void init_crashteameditor(py::module_& m)
 		.def_property("z_depth_bias", &Quadblock::GetDrawOrderHigh, &Quadblock::SetDrawOrderHigh)
 		.def_property("weather_intensity", &Quadblock::GetWeatherIntensity, &Quadblock::SetWeatherIntensity)
 		.def_property("weather_vanish_rate", &Quadblock::GetWeatherVanishRate, &Quadblock::SetWeatherVanishRate)
-		.def_property("tex_path",
+		/*.def_property("tex_path",
 			[](const Quadblock& qb) { return std::filesystem::path(qb.GetTexPath()); },
-			&Quadblock::SetTexPath)
+			&Quadblock::SetTexPath)*/ // TODO so something
 		.def_property_readonly("bounding_box", &Quadblock::GetBoundingBox, py::return_value_policy::copy)
 		.def_property_readonly("uvs", &Quadblock::GetUVs, py::return_value_policy::copy)
 		.def("is_quadblock", &Quadblock::IsQuadblock)

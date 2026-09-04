@@ -403,7 +403,7 @@ bool BSP::SplitLeafMaterial(const std::vector<Quadblock>& quadblocks)
 	std::map<std::string, std::vector<size_t>> materialGroups;
 	for (size_t idx : m_quadblockIndexes)
 	{
-		materialGroups[quadblocks[idx].GetMaterial()].push_back(idx);
+		materialGroups[quadblocks[idx].GetMaterial(0)].push_back(idx);
 	}
 
 	std::vector<size_t> left_quad_indexes;

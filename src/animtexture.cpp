@@ -362,7 +362,7 @@ bool AnimTexture::ReadAnimation(const std::filesystem::path& path)
 	{
 		m_triblock = !quadblock.IsQuadblock();
 		const auto& uvs = quadblock.GetUVs();
-		const std::filesystem::path& texPath = quadblock.GetTexPath();
+		const std::filesystem::path& texPath = quadblock.GetTexPath(0); // TODO : Rework this logic so animTex can have several texture per quadblock. (or have 1 animTex per face instead)
 		if (texPath.empty()) { return false; }
 		if (loadedPaths.contains(texPath)) { m_frames.emplace_back(loadedPaths.at(texPath), uvs); continue; }
 

@@ -286,7 +286,7 @@ void Texture::SetBlendMode(uint16_t mode)
 	m_blendMode = mode;
 }
 
-PSX::TextureLayout Texture::Serialize(const QuadUV& uvs) const
+PSX::TextureLayout Texture::Serialize(const QuadUV& uvs, uint32_t rotateFlip) const
 {
 	PSX::TextureLayout layout = {};
 	if (IsEmpty()) 
@@ -328,24 +328,53 @@ PSX::TextureLayout Texture::Serialize(const QuadUV& uvs) const
 	const float width = static_cast<float>(GetWidth());
 	const float height = static_cast<float>(GetHeight());
 
-	size_t u0 = x + static_cast<size_t>(std::round(uvs[0].x * width));	size_t v0 = y + static_cast<size_t>(std::round(uvs[0].y * height));
-	size_t u1 = x + static_cast<size_t>(std::round(uvs[1].x * width));	size_t v1 = y + static_cast<size_t>(std::round(uvs[1].y * height));
-	size_t u2 = x + static_cast<size_t>(std::round(uvs[2].x * width));	size_t v2 = y + static_cast<size_t>(std::round(uvs[2].y * height));
-	size_t u3 = x + static_cast<size_t>(std::round(uvs[3].x * width));	size_t v3 = y + static_cast<size_t>(std::round(uvs[3].y * height));
-	size_t maxU = std::max(std::max(u0, u1), std::max(u2, u3)); size_t maxV = std::max(std::max(v0, v1), std::max(v2, v3));
-	if (maxU > 0)
+	QuadUV correctedUVs = uvs;
+	auto RotateUV90 = [](QuadUV& uv)
+		{
+			Vec2 tmp = uv[0];
+			uv[0] = uv[2];
+			uv[2] = uv[3];
+			uv[3] = uv[1];
+			uv[1] = tmp;
+		};
+	auto FlipUV = [](QuadUV& uv)
+		{
+			Vec2 tmp0 = uv[0]; uv[0] = uv[1]; uv[1] = tmp0;
+			Vec2 tmp2 = uv[2]; uv[2] = uv[3]; uv[3] = tmp2;
+		};
+	switch (rotateFlip & 0x7)
 	{
-		if (u0 == maxU) u0 -= 1;
-		if (u1 == maxU) u1 -= 1;
-		if (u2 == maxU) u2 -= 1;
-		if (u3 == maxU) u3 -= 1;
+	case 0: break;                                                                    
+	case 1: RotateUV90(correctedUVs); RotateUV90(correctedUVs); RotateUV90(correctedUVs); break; 
+	case 2: RotateUV90(correctedUVs); RotateUV90(correctedUVs); break;                         
+	case 3: RotateUV90(correctedUVs); break;                                                   
+	case 4: RotateUV90(correctedUVs); FlipUV(correctedUVs); break;                             
+	case 5: RotateUV90(correctedUVs); RotateUV90(correctedUVs); FlipUV(correctedUVs); break;    
+	case 6: RotateUV90(correctedUVs); RotateUV90(correctedUVs); RotateUV90(correctedUVs); FlipUV(correctedUVs); break; 
+	case 7: FlipUV(correctedUVs); break;                                                      
+	default: break;
 	}
-	if (maxV > 0)
+
+	size_t u0 = x + static_cast<size_t>(std::round(correctedUVs[0].x * width));	size_t v0 = y + static_cast<size_t>(std::round(correctedUVs[0].y * height));
+	size_t u1 = x + static_cast<size_t>(std::round(correctedUVs[1].x * width));	size_t v1 = y + static_cast<size_t>(std::round(correctedUVs[1].y * height));
+	size_t u2 = x + static_cast<size_t>(std::round(correctedUVs[2].x * width));	size_t v2 = y + static_cast<size_t>(std::round(correctedUVs[2].y * height));
+	size_t u3 = x + static_cast<size_t>(std::round(correctedUVs[3].x * width));	size_t v3 = y + static_cast<size_t>(std::round(correctedUVs[3].y * height));
+	size_t maxU = std::max({u0, u1, u2, u3}); size_t maxV = std::max({v0, v1, v2, v3});
+	size_t minU = std::min({u0, u1, u2, u3}); size_t minV = std::min({v0, v1, v2, v3});
+	
+	if (u0 == maxU) u0 -= 1;
+	if (u1 == maxU) u1 -= 1;
+	if (u2 == maxU) u2 -= 1;
+	if (u3 == maxU) u3 -= 1;
+	if (v0 == maxV) v0 -= 1;
+	if (v1 == maxV) v1 -= 1;
+	if (v2 == maxV) v2 -= 1;
+	if (v3 == maxV) v3 -= 1;
+	
+	if (maxU == minU || maxV == minV) 
 	{
-		if (v0 == maxV) v0 -= 1;
-		if (v1 == maxV) v1 -= 1;
-		if (v2 == maxV) v2 -= 1;
-		if (v3 == maxV) v3 -= 1;
+		u0 = 0; u1 = 0; u2 = 0, u3 = 0;
+		v0 = 0; v1 = 0; v2 = 0; v3 = 0;
 	}
 	 
 	layout.u0 = static_cast<uint8_t>(u0); layout.v0 = static_cast<uint8_t>(v0);

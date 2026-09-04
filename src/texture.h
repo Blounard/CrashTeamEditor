@@ -210,7 +210,7 @@ public:
 	void SetImageCoords(size_t x, size_t y);
 	void SetCLUTCoords(size_t x, size_t y);
 	void SetBlendMode(uint16_t mode);
-	PSX::TextureLayout Serialize(const QuadUV& uvs) const;
+	PSX::TextureLayout Serialize(const QuadUV& uvs, uint32_t rotateFlip = 0) const;
 	bool CompareEquivalency(const Texture& tex);
 	void CopyVRAMAttributes(const Texture& tex);
 	bool operator==(const Texture& tex) const;

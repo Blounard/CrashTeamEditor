@@ -2856,28 +2856,34 @@ bool Quadblock::RenderUI(size_t checkpointCount, bool& resetBsp)
 			m_bbox.RenderUI();
 			ImGui::TreePop();
 		}
-		if (!m_texPath.empty() && ImGui::TreeNode("Texture"))
+		for (size_t face = 0; face < NUM_FACES_QUADBLOCK + 1; face++)
 		{
-			std::string texPath = m_texPath.string();
-			ImGui::Text("Path:"); ImGui::SameLine();
-			ImGui::BeginDisabled();
-			ImGui::InputText("##texpath", &texPath, ImGuiInputTextFlags_ReadOnly);
-			ImGui::EndDisabled();
-			ImGui::Text("UVs:");
-			for (size_t i = 0; i < NUM_FACES_QUADBLOCK + 1; i++)
+			ImGui::PushID(face);
+			if (!m_texPaths[face].empty() && ImGui::TreeNode("Texture"))
 			{
-				std::string title = i == NUM_FACES_QUADBLOCK ? "Low Quad" : "Quad " + std::to_string(i);
-				if (ImGui::TreeNode(title.c_str()))
+				std::string texPath = m_texPaths[face].string();
+				ImGui::Text("Path:"); ImGui::SameLine();
+				ImGui::BeginDisabled();
+				ImGui::InputText("##texpath", &texPath, ImGuiInputTextFlags_ReadOnly);
+				ImGui::EndDisabled();
+				ImGui::Text("UVs:");
+				for (size_t i = 0; i < NUM_FACES_QUADBLOCK + 1; i++)
 				{
-					ImGui::InputFloat2("Top left:", &m_uvs[i][0].x, "%.2f");
-					ImGui::InputFloat2("Top right:", &m_uvs[i][1].x, "%.2f");
-					ImGui::InputFloat2("Bottom left:", &m_uvs[i][2].x, "%.2f");
-					ImGui::InputFloat2("Bottom right:", &m_uvs[i][3].x, "%.2f");
-					ImGui::TreePop();
+					std::string title = i == NUM_FACES_QUADBLOCK ? "Low Quad" : "Quad " + std::to_string(i);
+					if (ImGui::TreeNode(title.c_str()))
+					{
+						ImGui::InputFloat2("Top left:", &m_uvs[i][0].x, "%.2f");
+						ImGui::InputFloat2("Top right:", &m_uvs[i][1].x, "%.2f");
+						ImGui::InputFloat2("Bottom left:", &m_uvs[i][2].x, "%.2f");
+						ImGui::InputFloat2("Bottom right:", &m_uvs[i][3].x, "%.2f");
+						ImGui::TreePop();
+					}
 				}
+				ImGui::TreePop();
 			}
-			ImGui::TreePop();
+			ImGui::PopID();
 		}
+		
 		if (ImGui::TreeNode("Terrain"))
 		{
 			std::string terrainLabel;
@@ -3023,7 +3029,7 @@ void Texture::RenderUI(const std::vector<size_t>& quadblockIndexes, std::vector<
 			const std::filesystem::path& newTexPath = selection.front();
 			UpdateTexture(newTexPath);
 			refreshTextureStores();
-			for (const size_t index : quadblockIndexes) { quadblocks[index].SetTexPath(newTexPath); }
+			for (const size_t index : quadblockIndexes) { quadblocks[index].SetTexPath(0, newTexPath); } // TODO : 0 is incorrect, but we don't have access to the quadFace using this material
 		}
 	}
 	ImGui::Text("Size : %d x %d", GetWidth(), GetHeight());

@@ -709,7 +709,7 @@ bool Level::GenerateCheckpoints()
 				float newDist = oldDist + removedDist;
 
 				auto range = distToNextMap.equal_range(oldDist);
-				for (auto mapIt = range.first; mapIt != range.second; ++mapIt)
+				for (auto& mapIt = range.first; mapIt != range.second; ++mapIt)
 				{
 					if (mapIt->second == upIndex)
 					{
@@ -910,8 +910,17 @@ bool Level::GenerateMinimap()
 			usedQuadIds.push_back(i);
 		else if (MinimapSettings::checkpointPathableQuads && m_quadblocks[i].GetCheckpointPathable() && m_quadblocks[i].GetCheckpointStatus())
 			usedQuadIds.push_back(i);
-		else if (MinimapSettings::materials.contains(m_quadblocks[i].GetMaterial()))
-			usedQuadIds.push_back(i);
+		else
+		{
+			for (size_t f = 0 ; f < NUM_FACES_QUADBLOCK + 1; f++)
+			{
+				if (MinimapSettings::materials.contains(m_quadblocks[i].GetMaterial(f)))
+				{
+					usedQuadIds.push_back(i);
+					break;
+				}		
+			}
+		}	
 	}
 	if (usedQuadIds.empty()) return false;
 
@@ -1613,7 +1622,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	bool hasAnimData = header.offAnimTex > 0;
 	size_t offAnimStart = header.offAnimTex;
 
-	
 	// 1st pass : Parse Quadblock, find TextureGroups, and caclulate UV bounds
 	// Take care of all texture group for static quad and animated quads
 	file.seekg(offLev + std::streampos(meshInfo.offQuadblocks));
@@ -1707,6 +1715,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		}
 		file.seekg(currentPosQuad);
 	}
+
 
 	std::set<uint32_t> parsedModelOffsets;
 	// 2nd pass : Find TextureLayouts from Instances, fill Layout Keys
@@ -2090,7 +2099,13 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		{
 			uint32_t texOffset = f == NUM_FACES_QUADBLOCK ? psxQuad.offLowTexture : psxQuad.offMidTextures[f];
 			if (texOffset == 0)
+			{
+				qb.SetMaterial(f, "default");
+				if (std::find(m_materialToQuadblocks["default"].begin(), m_materialToQuadblocks["default"].end(), i) == m_materialToQuadblocks["default"].end()) // TODO use set instead of vec
+					m_materialToQuadblocks["default"].push_back(i);
 				continue;
+			}
+				
 			uint32_t ptrAnimatedFlag = texOffset & 0x3;
 			uint32_t realOffset = texOffset & ~0x3;
 
@@ -2110,25 +2125,18 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				const PSX::TextureLayout& layout = group.middle;
 				LayoutKey key(layout);
 
-				if (!materialAssigned)
-				{
-					qbMatName = materialCache[key];
-					qb.SetMaterial(qbMatName);
-					qb.SetTexPath(m_materialToTexture[qbMatName].GetPath());
+				qbMatName = materialCache[key];
+				qb.SetMaterial(f, qbMatName);
+				qb.SetTexPath(f, m_materialToTexture[qbMatName].GetPath());
+				if (std::find(m_materialToQuadblocks[qbMatName].begin(), m_materialToQuadblocks[qbMatName].end(), i) == m_materialToQuadblocks[qbMatName].end()) // TODO use set instead of vec
 					m_materialToQuadblocks[qbMatName].push_back(i);
-					materialAssigned = true;
-				}
-
+				
 				RawUV rawUV(layout, psxQuad.drawOrderLow, f);
 				const PixelBounds& bounds = textureToPixelBounds[key];
 				qb.SetFaceUVs(f, MakeUV(bounds, rawUV));
 			}
 		}
-		if (!materialAssigned) 
-		{
-			qb.SetMaterial("default");
-			m_materialToQuadblocks["default"].push_back(i);
-		}
+
 		for (size_t j = 0; j < NUM_VERTICES_QUADBLOCK; j++)
 		{
 			vertToQuad[static_cast<uint32_t>(meshInfo.offVertices + psxQuad.index[j] * sizeof(PSX::Vertex))].push_back(std::make_tuple(i, j));
@@ -2222,12 +2230,16 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				for (size_t quadIdx : quadIndices)
 				{
 					animTexture.AddQuadblockIndex(quadIdx);
-					std::string oldMat = m_quadblocks[quadIdx].GetMaterial();
-					auto& v = m_materialToQuadblocks[oldMat];
-					v.erase(std::remove(v.begin(), v.end(), quadIdx), v.end());
-					m_quadblocks[quadIdx].SetMaterial(animName);
+					for (const auto& [faceIdx, animOffset] : faceMap)   // only the faces that are actually animated
+					{
+						std::string oldMat = m_quadblocks[quadIdx].GetMaterial(faceIdx);
+						auto& v = m_materialToQuadblocks[oldMat];
+						v.erase(std::remove(v.begin(), v.end(), quadIdx), v.end());
+						m_quadblocks[quadIdx].SetMaterial(faceIdx, animName);
+					}
 					m_materialToQuadblocks[animName].push_back(quadIdx);
 				}
+
 				m_animTextures.push_back(animTexture);
 				processedPatterns.insert(faceMap);
 			}
@@ -2272,7 +2284,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		}
 	}
 	
-
 	m_bsp.Clear();
 	//Must reset the BSP global IDs
 	file.seekg(offLev + std::streampos(meshInfo.offBSPNodes));
@@ -2816,26 +2827,24 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	{
 		if (UpdateVRM())
 		{
-			for (auto& [material, texture] : m_materialToTexture)
+			for (Quadblock& quad : m_quadblocks)
 			{
-				if (texture.IsEmpty() || !texture.IsPlaced())
-					continue;
-				std::vector<size_t>& quadIndexes = m_materialToQuadblocks[material];
-				for (size_t index : quadIndexes)
+				if (quad.GetAnimated()) { continue; }
+				for (size_t i = 0; i < NUM_FACES_QUADBLOCK + 1; i++)
 				{
-					Quadblock& currQuad = m_quadblocks[index];
-					if (currQuad.GetAnimated()) { continue; }
-					for (size_t i = 0; i < NUM_FACES_QUADBLOCK + 1; i++)
+					if (m_materialToTexture.contains(quad.GetMaterial(i)))
 					{
+						Texture& texture = m_materialToTexture[quad.GetMaterial(i)];
+						if (texture.IsEmpty() || !texture.IsPlaced())
+							continue;
 						size_t textureID = 0;
-						const QuadUV& uvs = currQuad.GetQuadUV(i);
-						PSX::TextureLayout layout = texture.Serialize(uvs);
+						const QuadUV& uvs = quad.GetQuadUV(i);
+						PSX::TextureLayout layout = texture.Serialize(uvs, quad.GetFaceRotateFlip(i));
 						if (savedLayouts.contains(layout)) { textureID = savedLayouts[layout]; }
 						else
 						{
 							textureID = texGroups.size();
 							savedLayouts[layout] = textureID;
-
 							PSX::TextureGroup texGroup = {};
 							texGroup.far = layout;
 							texGroup.middle = layout;
@@ -2843,11 +2852,9 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 							texGroup.mosaic = layout;
 							texGroups.push_back(texGroup);
 						}
-						currQuad.SetTextureID(textureID, i);
+						quad.SetTextureID(textureID, i);
 					}
 				}
-
-
 			}
 
 			if (!m_animTextures.empty())
@@ -3979,13 +3986,14 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 	std::unordered_map<std::string, std::vector<Tri>> triMap;
 	std::unordered_map<std::string, std::vector<Quad>> quadMap;
 	std::unordered_map<std::string, std::vector<Vec3>> normalMap;
-	std::unordered_map<std::string, std::string> materialMap;
+	std::unordered_map<std::string, std::vector<std::string>> materialMap; // Quadname -> List of material
 	std::unordered_map<std::string, bool> meshMap;
 	std::unordered_set<std::string> materials;
 	std::vector<Point> vertices;
 	std::vector<Vec3> normals;
 	std::vector<Vec2> uvs;
 	std::string currQuadblockName;
+	std::string activeMaterial; // material currently in effect while scanning faces of the current object
 	bool currQuadblockGoodUV = true;
 	size_t quadblockCount = 0;
 	while (std::getline(file, line))
@@ -4008,7 +4016,7 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 		else if (command == "vt")
 		{
 			if (tokens.size() < 3) { continue; }
-			Vec2 uv = {std::stof(tokens[1]), std::stof(tokens[2])};
+			Vec2 uv = { std::stof(tokens[1]), std::stof(tokens[2]) };
 			if (uv.x < 0.0f || uv.x > 1.0f || uv.y < 0.0f || uv.y > 1.0f)
 			{
 				m_invalidQuadblocks.emplace_back(currQuadblockName, "WARNING: UV outside of expect range [0.0f, 1.0f].");
@@ -4035,14 +4043,15 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 			}
 			currQuadblockName = tokens[1];
 			currQuadblockGoodUV = true;
+			activeMaterial.clear();
 			meshMap[currQuadblockName] = false;
 			quadblockCount++;
 		}
 		else if (command == "usemtl")
 		{
 			if (tokens.size() < 2) { continue; }
-			if (currQuadblockName.empty() || materialMap.contains(currQuadblockName)) { continue; } /* TODO: return false, generate error message */
-			materialMap[currQuadblockName] = tokens[1];
+			if (currQuadblockName.empty()) { continue; }
+			activeMaterial = tokens[1];
 		}
 		else if (command == "f")
 		{
@@ -4057,6 +4066,7 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 			}
 
 			bool isQuadblock = tokens.size() == 5;
+			materialMap[currQuadblockName].push_back(activeMaterial);
 
 			std::vector<std::string> token0 = Split(tokens[1], '/');
 			std::vector<std::string> token1 = Split(tokens[2], '/');
@@ -4145,10 +4155,12 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 					averageNormal = averageNormal + normal;
 				}
 				averageNormal = averageNormal / averageNormal.Length();
-				std::string material;
-				if (materialMap.contains(currQuadblockName))
+
+				const std::vector<std::string>& faceMaterials = materialMap[currQuadblockName]; // size 4, one per face
+				for (size_t face = 0; face < faceMaterials.size(); face++)
 				{
-					material = materialMap[currQuadblockName];
+					const std::string& material = faceMaterials[face];
+					if (material.empty()) { continue; }
 					m_materialToQuadblocks[material].push_back(m_quadblocks.size());
 					if (!materials.contains(material))
 					{
@@ -4198,7 +4210,7 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 					}
 					try
 					{
-						m_quadblocks.emplace_back(currQuadblockName, q0, q1, q2, q3, averageNormal, material, currQuadblockGoodUV, [this](const Quadblock& qb) { UpdateFilterRenderData(qb); });
+						m_quadblocks.emplace_back(currQuadblockName, q0, q1, q2, q3, averageNormal, faceMaterials, currQuadblockGoodUV, [this](const Quadblock& qb) { UpdateFilterRenderData(qb); });
 						meshMap[currQuadblockName] = true;
 					}
 					catch (const QuadException& e)
@@ -4225,7 +4237,7 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 					}
 					try
 					{
-						m_quadblocks.emplace_back(currQuadblockName, t0, t1, t2, t3, averageNormal, material, currQuadblockGoodUV, [this](const Quadblock& qb) { UpdateFilterRenderData(qb); });
+						m_quadblocks.emplace_back(currQuadblockName, t0, t1, t2, t3, averageNormal, faceMaterials, currQuadblockGoodUV, [this](const Quadblock& qb) { UpdateFilterRenderData(qb); });
 						meshMap[currQuadblockName] = true;
 					}
 					catch (const QuadException& e)
@@ -4280,14 +4292,17 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 		{
 			const bool semiTransparent = texture.IsSemiTransparent();
 			m_propVisTreeTransparent.SetDefaultValue(material, semiTransparent);
-
-			const std::filesystem::path& texPath = texture.GetPath();
-			const std::vector<size_t>& quadblockIndexes = m_materialToQuadblocks[material];
-			for (const size_t index : quadblockIndexes)
+		}
+		for (Quadblock& quad : m_quadblocks)
+		{
+			bool stp = false;
+			for (size_t face = 0; face < NUM_FACES_QUADBLOCK; face++)
 			{
-				m_quadblocks[index].SetTexPath(texPath);
-				m_quadblocks[index].SetVisTreeTransparent(semiTransparent);
+				Texture& tex = m_materialToTexture[quad.GetMaterial(face)];
+				quad.SetTexPath(face, tex.GetPath());
+				stp = stp || tex.IsSemiTransparent();
 			}
+			quad.SetVisTreeTransparent(stp);
 		}
 	}
 
@@ -4332,6 +4347,7 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 
 bool Level::SaveOBJ(const std::filesystem::path& objFile) 
 {
+	// TODO : Rework that since now quad can have multiple mat
 	std::ofstream file(objFile);
 	if (!file.is_open()) { return false; }
 
@@ -4680,7 +4696,8 @@ bool Level::UpdateVRM()
 	{
 		if (quad.GetFlags() & QuadFlags::INVISIBLE_TRIGGER)
 			continue;
-		usedMaterials.insert(quad.GetMaterial());
+		for (size_t face = 0; face < NUM_FACES_QUADBLOCK + 1; face++)
+			usedMaterials.insert(quad.GetMaterial(face));
 	}
 	for (const Instance& inst : m_instances) // Model textures
 	{
