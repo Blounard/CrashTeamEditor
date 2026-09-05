@@ -359,23 +359,25 @@ PSX::TextureLayout Texture::Serialize(const QuadUV& uvs, uint32_t rotateFlip) co
 	size_t u1 = x + static_cast<size_t>(std::round(correctedUVs[1].x * width));	size_t v1 = y + static_cast<size_t>(std::round(correctedUVs[1].y * height));
 	size_t u2 = x + static_cast<size_t>(std::round(correctedUVs[2].x * width));	size_t v2 = y + static_cast<size_t>(std::round(correctedUVs[2].y * height));
 	size_t u3 = x + static_cast<size_t>(std::round(correctedUVs[3].x * width));	size_t v3 = y + static_cast<size_t>(std::round(correctedUVs[3].y * height));
-	size_t maxU = std::max({u0, u1, u2, u3}); size_t maxV = std::max({v0, v1, v2, v3});
-	size_t minU = std::min({u0, u1, u2, u3}); size_t minV = std::min({v0, v1, v2, v3});
-	
-	if (u0 == maxU) u0 -= 1;
-	if (u1 == maxU) u1 -= 1;
-	if (u2 == maxU) u2 -= 1;
-	if (u3 == maxU) u3 -= 1;
-	if (v0 == maxV) v0 -= 1;
-	if (v1 == maxV) v1 -= 1;
-	if (v2 == maxV) v2 -= 1;
-	if (v3 == maxV) v3 -= 1;
-	
-	if (maxU == minU || maxV == minV) 
+	size_t maxU = std::max({ u0, u1, u2, u3 });
+	size_t maxV = std::max({ v0, v1, v2, v3 });
+	if (maxU > 0)
 	{
-		u0 = 0; u1 = 0; u2 = 0, u3 = 0;
-		v0 = 0; v1 = 0; v2 = 0; v3 = 0;
+		if (u0 == maxU) u0 -= 1;
+		if (u1 == maxU) u1 -= 1;
+		if (u2 == maxU) u2 -= 1;
+		if (u3 == maxU) u3 -= 1;
 	}
+	if (maxV > 0)
+	{
+		if (v0 == maxV) v0 -= 1;
+		if (v1 == maxV) v1 -= 1;
+		if (v2 == maxV) v2 -= 1;
+		if (v3 == maxV) v3 -= 1;
+	}
+	if (maxU == 0 || maxV == 0)
+		printf("maxU : %zu, maxV : %zu, filename : %s\nWidth %d, Height %d, x %zu, y %zu\n\n", maxU, maxV, GetPath().filename().string().c_str()
+		, GetWidth(), GetHeight(), x, y);
 	 
 	layout.u0 = static_cast<uint8_t>(u0); layout.v0 = static_cast<uint8_t>(v0);
 	layout.u1 = static_cast<uint8_t>(u1); layout.v1 = static_cast<uint8_t>(v1);

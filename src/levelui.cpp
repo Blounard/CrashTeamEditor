@@ -716,7 +716,7 @@ bool InstanceModel::RenderUI(std::unordered_map<std::string, Texture>& materialT
 }
 
 template<typename T, MaterialType M>
-bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::vector<size_t>& quadblockIndexes, std::vector<Quadblock>& quadblocks)
+bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::vector<std::pair<size_t, size_t>>& quadFaces, std::vector<Quadblock>& quadblocks)
 {
 	if constexpr (M == MaterialType::TERRAIN)
 	{
@@ -736,7 +736,7 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 		static ButtonUI terrainApplyButton = ButtonUI();
 		if (terrainApplyButton.Show(("Apply##terrain" + material).c_str(), "Terrain type successfully updated.", UnsavedChanges(material)))
 		{
-			Apply(material, quadblockIndexes, quadblocks);
+			Apply(material, quadFaces, quadblocks);
 			return true;
 		}
 	}
@@ -752,14 +752,14 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 			static ButtonUI quadFlagsApplyButton = ButtonUI();
 			if (quadFlagsApplyButton.Show(("Apply##quadflags" + material).c_str(), "Quad flags successfully updated.", UnsavedChanges(material)))
 			{
-				Apply(material, quadblockIndexes, quadblocks);
+				Apply(material, quadFaces, quadblocks);
 				return true;
 			}
 			static ButtonUI killPlaneButton = ButtonUI();
 			if (killPlaneButton.Show("Kill Plane##quadflags", "Modified quad flags to kill plane.", false))
 			{
 				SetPreview(material, QuadFlags::INVISIBLE_TRIGGER | QuadFlags::OUT_OF_BOUNDS | QuadFlags::MASK_GRAB | QuadFlags::WALL | QuadFlags::NO_COLLISION);
-				Apply(material, quadblockIndexes, quadblocks);
+				Apply(material, quadFaces, quadblocks);
 				return true;
 			}
 			ImGui::TreePop();
@@ -773,7 +773,7 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 		static ButtonUI drawFlagsApplyButton = ButtonUI();
 		if (drawFlagsApplyButton.Show(("Apply##drawflags" + material).c_str(), "Draw flags successfully updated.", UnsavedChanges(material)))
 		{
-			Apply(material, quadblockIndexes, quadblocks);
+			Apply(material, quadFaces, quadblocks);
 			return true;
 		}
 	}
@@ -786,7 +786,7 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 		static ButtonUI drawOrderHighButton = ButtonUI();
 		if (drawOrderHighButton.Show(("Apply##draworderHigh" + material).c_str(), "Draw Order High successfully updated.", UnsavedChanges(material)))
 		{
-			Apply(material, quadblockIndexes, quadblocks);
+			Apply(material, quadFaces, quadblocks);
 			return true;
 		}
 	}
@@ -799,7 +799,7 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 		static ButtonUI checkpointApplyButton = ButtonUI();
 		if (checkpointApplyButton.Show(("Apply##checkpoint" + material).c_str(), "Checkpoint status successfully updated.", UnsavedChanges(material)))
 		{
-			Apply(material, quadblockIndexes, quadblocks);
+			Apply(material, quadFaces, quadblocks);
 			return true;
 		}
 	}
@@ -822,7 +822,7 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 		static ButtonUI padApplyButton = ButtonUI();
 		if (padApplyButton.Show(("Apply##pad" + material).c_str(), "Turbo pad status successfully updated.", UnsavedChanges(material)))
 		{
-			Apply(material, quadblockIndexes, quadblocks);
+			Apply(material, quadFaces, quadblocks);
 			return true;
 		}
 	}
@@ -835,7 +835,7 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 		static ButtonUI speedApplyButton = ButtonUI();
 		if (speedApplyButton.Show(("Apply##downforce" + material).c_str(), "Downforce successfully updated.", UnsavedChanges(material)))
 		{
-			Apply(material, quadblockIndexes, quadblocks);
+			Apply(material, quadFaces, quadblocks);
 			return true;
 		}
 	}
@@ -848,7 +848,7 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 		static ButtonUI WeatherIntesityApplyButton = ButtonUI();
 		if (WeatherIntesityApplyButton.Show(("Apply##Weather intensity" + material).c_str(), "Weather intensity successfully updated.", UnsavedChanges(material)))
 		{
-			Apply(material, quadblockIndexes, quadblocks);
+			Apply(material, quadFaces, quadblocks);
 			return true;
 		}
 	}
@@ -861,7 +861,7 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 		static ButtonUI WeathervanishRateApplyButton = ButtonUI();
 		if (WeathervanishRateApplyButton.Show(("Apply##Weather vanish rate" + material).c_str(), "Weather vanish rate successfully updated.", UnsavedChanges(material)))
 		{
-			Apply(material, quadblockIndexes, quadblocks);
+			Apply(material, quadFaces, quadblocks);
 			return true;
 		}
 	}
@@ -874,7 +874,7 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 		static ButtonUI pathableApplyButton = ButtonUI();
 		if (pathableApplyButton.Show(("Apply##pathable" + material).c_str(), "Checkpoint pathable status successfully updated.", UnsavedChanges(material)))
 		{
-			Apply(material, quadblockIndexes, quadblocks);
+			Apply(material, quadFaces, quadblocks);
 			return true;
 		}
 	}
@@ -887,7 +887,7 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 		static ButtonUI visTreeTransparentApplyButton = ButtonUI();
 		if (visTreeTransparentApplyButton.Show(("Apply##transparent" + material).c_str(), "VisTree transparency successfully updated.", UnsavedChanges(material)))
 		{
-			Apply(material, quadblockIndexes, quadblocks);
+			Apply(material, quadFaces, quadblocks);
 			return true;
 		}
 	}
@@ -900,7 +900,7 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 		static ButtonUI waterApplyButton = ButtonUI();
 		if (waterApplyButton.Show(("Apply##water" + material).c_str(), "Water successfully updated.", UnsavedChanges(material)))
 		{
-			Apply(material, quadblockIndexes, quadblocks);
+			Apply(material, quadFaces, quadblocks);
 			return true;
 		}
 		}
@@ -1003,7 +1003,7 @@ void Level::RenderUI(Renderer& renderer)
 	{
 		if (ImGui::MenuItem("Spawn")) { Settings::w_spawn = !Settings::w_spawn; }
 		if (ImGui::MenuItem("Level")) { Settings::w_level = !Settings::w_level; }
-		if (!m_materialToQuadblocks.empty() && ImGui::MenuItem("Material")) { Settings::w_material = !Settings::w_material; }
+		if (ImGui::MenuItem("Material")) { Settings::w_material = !Settings::w_material; }
 		if (ImGui::MenuItem("Anim Tex")) { Settings::w_animtex = !Settings::w_animtex; }
 		if (ImGui::MenuItem("Quadblocks")) { Settings::w_quadblocks = !Settings::w_quadblocks; }
 		if (ImGui::MenuItem("Checkpoints")) { Settings::w_checkpoints = !Settings::w_checkpoints; }
@@ -1434,7 +1434,7 @@ void Level::RenderUI(Renderer& renderer)
 				{
 					if (ImGui::BeginCombo("##minimapmatcombo", previewMatNameMinimap.c_str()))
 					{
-						for (const auto& [material, indexes] : m_materialToQuadblocks)
+						for (const auto& [material, indexes] : m_materialToQuadFaces)
 						{
 							if (ImGui::Selectable(material.c_str()))
 							{
@@ -1451,7 +1451,7 @@ void Level::RenderUI(Renderer& renderer)
 					{
 						ImGui::Text(matName.c_str());
 						ImGui::SameLine();
-						if (!m_materialToQuadblocks.contains(matName) || ImGui::Button(("Delete##minimapsettingsmaterial" + matName).c_str()))
+						if (!m_materialToQuadFaces.contains(matName) || ImGui::Button(("Delete##minimapsettingsmaterial" + matName).c_str()))
 							toDel.push_back(matName);
 					}
 					for (const std::string& matName : toDel)
@@ -1554,53 +1554,53 @@ void Level::RenderUI(Renderer& renderer)
 	{
 		if (ImGui::Begin("Material", &Settings::w_material))
 		{
-			for (const auto& [material, quadblockIndexes] : m_materialToQuadblocks)
+			for (const auto& [material, quadFaces] : m_materialToQuadFaces)
 			{
 				if (ImGui::TreeNode(material.c_str()))
 				{
 					if (ImGui::TreeNode("Quadblocks"))
 					{
 						constexpr size_t QUADS_PER_LINE = 10;
-						for (size_t i = 0; i < quadblockIndexes.size(); i++)
+						for (size_t i = 0; i < quadFaces.size(); i++)
 						{
-							ImGui::Text((m_quadblocks[quadblockIndexes[i]].GetName() + ", ").c_str());
-							if (((i + 1) % QUADS_PER_LINE) == 0 || i == quadblockIndexes.size() - 1) { continue; }
+							ImGui::Text((m_quadblocks[quadFaces[i].first].GetName() + ", ").c_str());
+							if (((i + 1) % QUADS_PER_LINE) == 0 || i == quadFaces.size() - 1) { continue; }
 							ImGui::SameLine();
 						}
 						ImGui::TreePop();
 					}
 
-					m_propTerrain.RenderUI(material, quadblockIndexes, m_quadblocks);
-					m_propQuadFlags.RenderUI(material, quadblockIndexes, m_quadblocks);
+					m_propTerrain.RenderUI(material, quadFaces, m_quadblocks);
+					m_propQuadFlags.RenderUI(material, quadFaces, m_quadblocks);
 					if (ImGui::TreeNode("Draw Flags"))
 					{
-						m_propDoubleSided.RenderUI(material, quadblockIndexes, m_quadblocks);
-						m_propDrawOrderHigh.RenderUI(material, quadblockIndexes, m_quadblocks);
+						m_propDoubleSided.RenderUI(material, quadFaces, m_quadblocks);
+						m_propDrawOrderHigh.RenderUI(material, quadFaces, m_quadblocks);
 						ImGui::TreePop();
 					}
 					
-					m_propCheckpoints.RenderUI(material, quadblockIndexes, m_quadblocks);
-					m_propCheckpointPathable.RenderUI(material, quadblockIndexes, m_quadblocks);
-					m_propWater.RenderUI(material, quadblockIndexes, m_quadblocks);
-					m_propVisTreeTransparent.RenderUI(material, quadblockIndexes, m_quadblocks);
-					if (m_propTurboPads.RenderUI(material, quadblockIndexes, m_quadblocks))
+					m_propCheckpoints.RenderUI(material, quadFaces, m_quadblocks);
+					m_propCheckpointPathable.RenderUI(material, quadFaces, m_quadblocks);
+					m_propWater.RenderUI(material, quadFaces, m_quadblocks);
+					m_propVisTreeTransparent.RenderUI(material, quadFaces, m_quadblocks);
+					if (m_propTurboPads.RenderUI(material, quadFaces, m_quadblocks))
 					{
-						for (size_t index : quadblockIndexes) { ManageTurbopad(m_quadblocks[index]); }
+						for (auto& quadFace : quadFaces) { ManageTurbopad(m_quadblocks[quadFace.first]); }
 						if (m_bsp.IsValid())
 						{
 							m_bsp.Clear();
 							GenerateRenderBspData();
 						}
 					}
-					m_propSpeedImpact.RenderUI(material, quadblockIndexes, m_quadblocks);
-					m_propWeatherIntensity.RenderUI(material, quadblockIndexes, m_quadblocks);
-					m_propWeatherVanishRate.RenderUI(material, quadblockIndexes, m_quadblocks);
+					m_propSpeedImpact.RenderUI(material, quadFaces, m_quadblocks);
+					m_propWeatherIntensity.RenderUI(material, quadFaces, m_quadblocks);
+					m_propWeatherVanishRate.RenderUI(material, quadFaces, m_quadblocks);
 
 					if (m_materialToTexture.contains(material))
 					{
 						if (ImGui::TreeNode("Texture"))
 						{
-							m_materialToTexture[material].RenderUI(quadblockIndexes, m_quadblocks, [&]() { this->UpdateAnimationRenderData(); });
+							m_materialToTexture[material].RenderUI(quadFaces, m_quadblocks, [&]() { this->UpdateAnimationRenderData(); });
 							ImGui::TreePop();
 						}
 					}
@@ -1643,7 +1643,7 @@ void Level::RenderUI(Renderer& renderer)
 			std::vector<AnimTexture> newTextures;
 			for (AnimTexture& tex : m_animTextures)
 			{
-				if (!tex.RenderUI(animTexNames, m_quadblocks, m_materialToQuadblocks, animTexQuerry, newTextures))
+				if (!tex.RenderUI(animTexNames, m_quadblocks, m_materialToQuadFaces, animTexQuerry, newTextures))
 				{
 					remAnimTexIndex.push_back(remIndex);
 				}
@@ -2858,7 +2858,7 @@ bool Quadblock::RenderUI(size_t checkpointCount, bool& resetBsp)
 		}
 		for (size_t face = 0; face < NUM_FACES_QUADBLOCK + 1; face++)
 		{
-			ImGui::PushID(face);
+			ImGui::PushID(static_cast<int>(face));
 			if (!m_texPaths[face].empty() && ImGui::TreeNode("Texture"))
 			{
 				std::string texPath = m_texPaths[face].string();
@@ -3008,7 +3008,7 @@ void Vertex::RenderUI(size_t index, bool& editedPos)
 	}
 }
 
-void Texture::RenderUI(const std::vector<size_t>& quadblockIndexes, std::vector<Quadblock>& quadblocks, std::function<void(void)> refreshTextureStores)
+void Texture::RenderUI(const std::vector<std::pair<size_t, size_t>>& quadblockFaces, std::vector<Quadblock>& quadblocks, std::function<void(void)> refreshTextureStores)
 {
 	std::string texPath = GetPath().string();
 
@@ -3029,7 +3029,7 @@ void Texture::RenderUI(const std::vector<size_t>& quadblockIndexes, std::vector<
 			const std::filesystem::path& newTexPath = selection.front();
 			UpdateTexture(newTexPath);
 			refreshTextureStores();
-			for (const size_t index : quadblockIndexes) { quadblocks[index].SetTexPath(0, newTexPath); } // TODO : 0 is incorrect, but we don't have access to the quadFace using this material
+			for (const auto& quadFace : quadblockFaces) { quadblocks[quadFace.first].SetTexPath(quadFace.second, newTexPath); } 
 		}
 	}
 	ImGui::Text("Size : %d x %d", GetWidth(), GetHeight());
@@ -3053,12 +3053,11 @@ void Texture::RenderUI(const std::vector<size_t>& quadblockIndexes, std::vector<
 
 void Texture::RenderUI()
 {
-	std::vector<size_t> dummyIndexes;
 	std::vector<Quadblock> dummyQuadblocks;
-	RenderUI(dummyIndexes, dummyQuadblocks, []() {});
+	RenderUI({}, dummyQuadblocks, []() {});
 }
 
-bool AnimTexture::RenderUI(std::vector<std::string>& animTexNames, std::vector<Quadblock>& quadblocks, const std::map<std::string, std::vector<size_t>>& materialMap, const std::string& query, std::vector<AnimTexture>& newTextures)
+bool AnimTexture::RenderUI(std::vector<std::string>& animTexNames, std::vector<Quadblock>& quadblocks, const std::map<std::string, std::vector<std::pair<size_t, size_t>>>& materialMap, const std::string& query, std::vector<AnimTexture>& newTextures)
 {
 	bool ret = true;
 	if (ImGui::TreeNode(m_name.c_str()))
@@ -3282,12 +3281,13 @@ bool AnimTexture::RenderUI(std::vector<std::string>& animTexNames, std::vector<Q
 			{
 				std::unordered_map<uint32_t, AnimTexture> newAnims = {};
 				std::array<QuadUV, 5>& animUVs = m_frames[m_startAtFrame].uvs;
-				for (const auto& [material, indexes] : materialMap)
+				for (const auto& [material, quadFaces] : materialMap)
 				{
 					if (m_previewMaterialName == material)
 					{
-						for (const size_t index : indexes)
+						for (const auto& pair : quadFaces)
 						{
+							size_t index = pair.first;
 							if (!m_manualOrientation)
 							{
 								const std::array<QuadUV, 5>& quadUVs = quadblocks[index].GetUVs();
@@ -3345,15 +3345,16 @@ bool AnimTexture::RenderUI(std::vector<std::string>& animTexNames, std::vector<Q
 			if (remMatBtn.Show("Remove##material", "Animation successfully removed from material.", false))
 			{
 				std::vector<std::vector<size_t>::iterator> remList;
-				for (const auto& [material, indexes] : materialMap)
+				for (const auto& [material, quadFaces] : materialMap)
 				{
 					if (m_previewMaterialName == material)
 					{
 						auto it = m_quadblockIndexes.begin();
 						for (; it != m_quadblockIndexes.end(); it++)
 						{
-							for (const size_t index : indexes)
+							for (const auto& pair : quadFaces)
 							{
+								size_t index = pair.first;
 								if (*it == index)
 								{
 									quadblocks[index].SetAnimated(false);

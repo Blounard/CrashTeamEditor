@@ -184,7 +184,7 @@ private:
 	PSX::TextureLayout m_rawWaterLayout;
 	//std::vector<PSX::Vertex> m_rawWaterVertices;
 	//std::vector<PSX::OceanVertex> m_rawWaterColors;
-	std::map<std::string, std::vector<size_t>> m_materialToQuadblocks;
+	std::map<std::string, std::vector<std::pair<size_t, size_t>>> m_materialToQuadFaces; // MaterialName -> List of (QuadId, FaceId)
 	std::unordered_map<std::string, Texture> m_materialToTexture;
 	MaterialProperty<std::string, MaterialType::TERRAIN> m_propTerrain;
 	MaterialProperty<uint16_t, MaterialType::QUAD_FLAGS> m_propQuadFlags;

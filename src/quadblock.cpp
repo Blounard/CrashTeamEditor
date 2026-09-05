@@ -1048,6 +1048,7 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 void Quadblock::SetDefaultValues()
 {
 	ComputeBoundingBox();
+	ResetUVs();
 	m_checkpointIndex = -1;
 	m_flags = QuadFlags::DEFAULT;
 	m_terrain = TerrainType::LABELS.at(TerrainType::DEFAULT);

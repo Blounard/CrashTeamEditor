@@ -73,7 +73,7 @@ void Level::Clear(bool clearErrors)
 	m_quadblocks.clear();
 	m_checkpoints.clear();
 	m_bsp.Clear();
-	m_materialToQuadblocks.clear();
+	m_materialToQuadFaces.clear();
 	m_materialToTexture.clear();
 	m_checkpointPaths.clear();
 	m_tropyGhost.clear();
@@ -161,15 +161,20 @@ const std::filesystem::path& Level::GetParentPath() const
 std::vector<std::string> Level::GetMaterialNames() const
 {
 	std::vector<std::string> names;
-	names.reserve(m_materialToQuadblocks.size());
-	for (const auto& [key, value] : m_materialToQuadblocks) { names.push_back(key); }
+	names.reserve(m_materialToTexture.size());
+	for (const auto& [key, value] : m_materialToTexture) { names.push_back(key); }
 	return names;
 }
 
 std::vector<size_t> Level::GetMaterialQuadblockIndexes(const std::string& material) const
 {
-	if (!m_materialToQuadblocks.contains(material)) { return std::vector<size_t>(); }
-	return m_materialToQuadblocks.at(material);
+	if (!m_materialToQuadFaces.contains(material)) { return std::vector<size_t>(); }
+	std::vector<size_t> res;
+	for (auto& quadFace : m_materialToQuadFaces.at(material))
+	{
+		res.push_back(quadFace.first);
+	}
+	return res;
 }
 
 std::tuple<std::vector<Quadblock*>, Vec3> Level::GetRendererSelectedData()
@@ -1123,27 +1128,27 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 			std::vector<std::string> materials = json["materials"];
 			for (const std::string& material : materials)
 			{
-				if (m_materialToQuadblocks.contains(material))
+				if (m_materialToQuadFaces.contains(material))
 				{
 					if (json.contains(material + "_terrain"))
 					{
 						m_propTerrain.SetPreview(material, json[material + "_terrain"]);
-						m_propTerrain.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+						m_propTerrain.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 					}
 					if (json.contains(material + "_quadflags"))
 					{
 						m_propQuadFlags.SetPreview(material, json[material + "_quadflags"]);
-						m_propQuadFlags.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+						m_propQuadFlags.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 					}
 					if (json.contains(material + "_drawflags"))
 					{
 						m_propDoubleSided.SetPreview(material, json[material + "_drawflags"]);
-						m_propDoubleSided.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+						m_propDoubleSided.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 					}
 					if (json.contains(material + "_checkpoint"))
 					{
 						m_propCheckpoints.SetPreview(material, json[material + "_checkpoint"]);
-						m_propCheckpoints.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+						m_propCheckpoints.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 					}
 					if (json.contains(material + "_trigger"))
 					{
@@ -1154,37 +1159,37 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 					if (json.contains(material + "_speedImpact"))
 					{
 						m_propSpeedImpact.SetPreview(material, json[material + "_speedImpact"]);
-						m_propSpeedImpact.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+						m_propSpeedImpact.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 					}
 					if (json.contains(material + "_weatherIntensity"))
 					{
 						m_propWeatherIntensity.SetPreview(material, json[material + "_weatherIntensity"]);
-						m_propWeatherIntensity.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+						m_propWeatherIntensity.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 					}
 					if (json.contains(material + "_weatherVanishRate"))
 					{
 						m_propWeatherVanishRate.SetPreview(material, json[material + "_weatherVanishRate"]);
-						m_propWeatherVanishRate.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+						m_propWeatherVanishRate.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 					}
 					if (json.contains(material + "_checkpointPathable"))
 					{
 						m_propCheckpointPathable.SetPreview(material, json[material + "_checkpointPathable"]);
-						m_propCheckpointPathable.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+						m_propCheckpointPathable.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 					}
 					if (json.contains(material + "_visTreeTransparent"))
 					{
 						m_propVisTreeTransparent.SetPreview(material, json[material + "_visTreeTransparent"]);
-						m_propVisTreeTransparent.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+						m_propVisTreeTransparent.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 					}
 					if (json.contains(material + "_drawOrderHigh"))
 					{
 						m_propDrawOrderHigh.SetPreview(material, json[material + "_drawOrderHigh"]);
-						m_propDrawOrderHigh.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+						m_propDrawOrderHigh.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 					}
 					if (json.contains(material + "_water"))
 					{
 						m_propWater.SetPreview(material, json[material + "_water"]);
-						m_propWater.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+						m_propWater.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 					}
 				}
 			}
@@ -1284,12 +1289,12 @@ bool Level::SavePreset(const std::filesystem::path& path)
 	}
 	SaveJSON(dirPath / "path.json", pathJson);
 
-	if (!m_materialToQuadblocks.empty())
+	if (!m_materialToQuadFaces.empty())
 	{
 		nlohmann::json materialJson = {};
 		materialJson["header"] = PresetHeader::MATERIAL;
-		std::vector<std::string> materials; materials.reserve(m_materialToQuadblocks.size());
-		for (const auto& [key, value] : m_materialToQuadblocks)
+		std::vector<std::string> materials; materials.reserve(m_materialToQuadFaces.size());
+		for (const auto& [key, value] : m_materialToQuadFaces)
 		{
 			materials.push_back(key);
 			materialJson[key + "_terrain"] = m_propTerrain.GetBackup(key);
@@ -2101,8 +2106,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 			if (texOffset == 0)
 			{
 				qb.SetMaterial(f, "default");
-				if (std::find(m_materialToQuadblocks["default"].begin(), m_materialToQuadblocks["default"].end(), i) == m_materialToQuadblocks["default"].end()) // TODO use set instead of vec
-					m_materialToQuadblocks["default"].push_back(i);
+				m_materialToQuadFaces["default"].push_back(std::make_pair(i, f));
 				continue;
 			}
 				
@@ -2128,8 +2132,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				qbMatName = materialCache[key];
 				qb.SetMaterial(f, qbMatName);
 				qb.SetTexPath(f, m_materialToTexture[qbMatName].GetPath());
-				if (std::find(m_materialToQuadblocks[qbMatName].begin(), m_materialToQuadblocks[qbMatName].end(), i) == m_materialToQuadblocks[qbMatName].end()) // TODO use set instead of vec
-					m_materialToQuadblocks[qbMatName].push_back(i);
+				m_materialToQuadFaces[qbMatName].push_back(std::make_pair(i, f));
 				
 				RawUV rawUV(layout, psxQuad.drawOrderLow, f);
 				const PixelBounds& bounds = textureToPixelBounds[key];
@@ -2179,8 +2182,8 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 			if (!validAnimation) continue;
 
 
-			std::array<std::vector<PSX::TextureLayout>, 4> faceFrameLayouts;
-			std::array<std::vector<std::string>, 4> faceFrameMaterials;
+			std::array<std::vector<PSX::TextureLayout>, NUM_FACES_QUADBLOCK + 1> faceFrameLayouts;
+			std::array<std::vector<std::string>, NUM_FACES_QUADBLOCK + 1> faceFrameMaterials;
 
 			bool allMaterialsFound = true;
 
@@ -2193,13 +2196,13 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 						allMaterialsFound = false;
 						break;
 					}
-					faceFrameMaterials[faceIdx].push_back(textureGroupToMaterial[textureGroupOffset]);
+					faceFrameMaterials.at(faceIdx).push_back(textureGroupToMaterial[textureGroupOffset]);
 					std::streampos savedPos = file.tellg();
 					file.seekg(offLev + std::streampos(textureGroupOffset));
 					PSX::TextureGroup group = {};
 					Read(file, group);
 					file.seekg(savedPos);
-					faceFrameLayouts[faceIdx].push_back(group.middle);
+					faceFrameLayouts.at(faceIdx).push_back(group.middle);
 				}
 				if (!allMaterialsFound) break;
 			}
@@ -2233,11 +2236,12 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 					for (const auto& [faceIdx, animOffset] : faceMap)   // only the faces that are actually animated
 					{
 						std::string oldMat = m_quadblocks[quadIdx].GetMaterial(faceIdx);
-						auto& v = m_materialToQuadblocks[oldMat];
-						v.erase(std::remove(v.begin(), v.end(), quadIdx), v.end());
+						auto& v = m_materialToQuadFaces[oldMat];
+						v.erase(std::remove(v.begin(), v.end(), std::make_pair(quadIdx, faceIdx)), v.end());
 						m_quadblocks[quadIdx].SetMaterial(faceIdx, animName);
+						m_materialToQuadFaces[animName].push_back(std::make_pair(quadIdx, faceIdx));
 					}
-					m_materialToQuadblocks[animName].push_back(quadIdx);
+					
 				}
 
 				m_animTextures.push_back(animTexture);
@@ -4161,7 +4165,7 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 				{
 					const std::string& material = faceMaterials[face];
 					if (material.empty()) { continue; }
-					m_materialToQuadblocks[material].push_back(m_quadblocks.size());
+					m_materialToQuadFaces[material].push_back(std::make_pair(m_quadblocks.size(), face));
 					if (!materials.contains(material))
 					{
 						materials.insert(material);
@@ -4519,14 +4523,14 @@ bool Level::SaveOBJ(const std::filesystem::path& objFile)
 
 		// Find this quadblock's material
 		std::string material;
-		for (const auto& [mat, indexes] : m_materialToQuadblocks)
-		{
-			for (size_t idx : indexes)
-			{
-				if (idx == qi) { material = mat; break; }
-			}
-			if (!material.empty()) { break; }
-		}
+		//for (const auto& [mat, indexes] : m_materialToQuadFaces)
+		//{
+		//	for (auto idx : indexes)
+		//	{
+		//		if (idx.first == qi) { material = mat; break; }
+		//	}
+		//	if (!material.empty()) { break; }
+		//}
 
 		if (!material.empty())
 		{

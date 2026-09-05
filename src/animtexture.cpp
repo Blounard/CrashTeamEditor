@@ -28,8 +28,8 @@ AnimTexture::AnimTexture(const std::filesystem::path& path, const std::vector<st
 }
 
 
-AnimTexture::AnimTexture(const std::string& animName, const std::filesystem::path& tempDir, const std::array<std::vector<PSX::TextureLayout>, 4>& faceFrameLayouts,
-	const std::array<std::vector<std::string>, 4>& faceFrameMaterials, const std::vector<size_t>& quadIndices, const std::vector<Quadblock>& quadblocks,
+AnimTexture::AnimTexture(const std::string& animName, const std::filesystem::path& tempDir, const std::array<std::vector<PSX::TextureLayout>, NUM_FACES_QUADBLOCK + 1>& faceFrameLayouts,
+	const std::array<std::vector<std::string>, NUM_FACES_QUADBLOCK + 1>& faceFrameMaterials, const std::vector<size_t>& quadIndices, const std::vector<Quadblock>& quadblocks,
 	const std::unordered_map<LayoutKey, PixelBounds>& textureToPixelBounds, const std::unordered_map<std::string, Texture>& materialToTexture, const PSX::AnimTex& firstAnimData,
 	const std::vector<AnimTexture>& animTextures) 
 {
@@ -69,40 +69,26 @@ AnimTexture::AnimTexture(const std::string& animName, const std::filesystem::pat
 		// Write 16 UVs (4 per face)
 		for (size_t faceIdx = 0; faceIdx < 4; faceIdx++)
 		{
-			if (frameIdx >= faceFrameLayouts[faceIdx].size()) continue;
-
-			const PSX::TextureLayout& layout = faceFrameLayouts[faceIdx][frameIdx];
-
-			// Get the pixel bounds for this texture
-			LayoutKey key(layout);
-			bool crop = true;
-			float u0 = 0, u1 = 0, u2 = 0, u3 = 0 , v0 = 0, v1 = 0, v2 = 0, v3 = 0;
-			if (crop)
+			float u0, v0, u1, v1, u2, v2, u3, v3;
+			if (frameIdx < faceFrameLayouts[faceIdx].size())
 			{
+				const PSX::TextureLayout& layout = faceFrameLayouts[faceIdx][frameIdx];
+				LayoutKey key(layout);
 				const PixelBounds& bounds = textureToPixelBounds.at(key);
 				const RawUV rawUV(layout);
 				QuadUV uvs = MakeUV(bounds, rawUV);
-				u0 = uvs[0].x;
-				v0 = uvs[0].y;
-				u1 = uvs[1].x;
-				v1 = uvs[1].y;
-				u2 = uvs[2].x;
-				v2 = uvs[2].y;
-				u3 = uvs[3].x;
-				v3 = uvs[3].y;
+				u0 = uvs[0].x; v0 = uvs[0].y;
+				u1 = uvs[1].x; v1 = uvs[1].y;
+				u2 = uvs[2].x; v2 = uvs[2].y;
+				u3 = uvs[3].x; v3 = uvs[3].y;
 			}
 			else
 			{
-				float pW = (float)(64 * ((layout.texPage.texpageColors == 0) ? 4 : (layout.texPage.texpageColors == 1 ? 2 : 1)));
-				float pH = 256.0f;
-				u0 = layout.u0 / pW;
-				v0 = layout.v0 / pH;
-				u1 = layout.u1 / pW;
-				v1 = layout.v1 / pH;
-				u2 = layout.u2 / pW;
-				v2 = layout.v2 / pH;
-				u3 = layout.u3 / pW;
-				v3 = layout.v3 / pH;
+				const QuadUV& staticUV = refQuad.GetQuadUV(faceIdx);
+				u0 = staticUV[0].x; v0 = staticUV[0].y;
+				u1 = staticUV[1].x; v1 = staticUV[1].y;
+				u2 = staticUV[2].x; v2 = staticUV[2].y;
+				u3 = staticUV[3].x; v3 = staticUV[3].y;
 			}
 
 			objFile << "vt " << u0 << " " << (1.0f - v0) << "\n";

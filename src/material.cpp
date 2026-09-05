@@ -103,11 +103,12 @@ T& MaterialProperty<T, M>::GetBackup(const std::string& material)
 }
 
 template<typename T, MaterialType M>
-void MaterialProperty<T, M>::Apply(const std::string& material, const std::vector<size_t>& quadblockIndexes, std::vector<Quadblock>& quadblocks)
+void MaterialProperty<T, M>::Apply(const std::string& material, const std::vector<std::pair<size_t, size_t>>& quadFaces, std::vector<Quadblock>& quadblocks)
 {
 	T preview = m_preview[material];
-	for (const size_t index : quadblockIndexes)
+	for (const auto& quadFace : quadFaces)
 	{
+		const size_t index = quadFace.first;
 		Quadblock& quadblock = quadblocks[index];
 		if (!quadblock.GetHide())
 		{

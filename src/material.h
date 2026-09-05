@@ -33,8 +33,8 @@ public:
 	void Clear() override;
 	T& GetPreview(const std::string& material);
 	T& GetBackup(const std::string& material);
-	void Apply(const std::string& material, const std::vector<size_t>& quadblockIndexes, std::vector<Quadblock>& quadblocks);
-	bool RenderUI(const std::string& material, const std::vector<size_t>& quadblockIndexes, std::vector<Quadblock>& quadblocks);
+	void Apply(const std::string& material, const std::vector<std::pair<size_t, size_t>>& quadFaces, std::vector<Quadblock>& quadblocks);
+	bool RenderUI(const std::string& material, const std::vector<std::pair<size_t, size_t>>& quadFaces, std::vector<Quadblock>& quadblocks);
 
 private:
 	std::unordered_map<std::string, T> m_backup;
