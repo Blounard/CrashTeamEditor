@@ -10,8 +10,8 @@
 
 struct AnimTextureFrame
 {
-	size_t textureIndex;
-	std::array<QuadUV, 5> uvs;
+	std::array<size_t, NUM_FACES_QUADBLOCK + 1> textureIndexes;
+	std::array<QuadUV, NUM_FACES_QUADBLOCK + 1> uvs;
 };
 
 class AnimTexture
@@ -19,9 +19,12 @@ class AnimTexture
 public:
 	AnimTexture() {};
 	AnimTexture(const std::filesystem::path& path, const std::vector<std::string>& usedNames);
-	AnimTexture(const std::string& animName, const std::filesystem::path& tempDir, const std::array<std::vector<PSX::TextureLayout>, NUM_FACES_QUADBLOCK + 1>& faceFrameLayouts,
-		const std::array<std::vector<std::string>, NUM_FACES_QUADBLOCK + 1>& faceFrameMaterials, const std::vector<size_t>& quadIndices, const std::vector<Quadblock>& quadblocks,
-		const std::unordered_map<LayoutKey, PixelBounds>& textureToPixelBounds, const std::unordered_map<std::string, Texture>& materialToTexture, const PSX::AnimTex& firstAnimData,
+	AnimTexture(const std::string& animName, const std::filesystem::path& tempDir,
+		const std::array<std::vector<PSX::TextureLayout>, NUM_FACES_QUADBLOCK>& faceFrameLayouts,
+		const std::array<std::vector<std::string>, NUM_FACES_QUADBLOCK>& faceFrameMaterials,
+		const std::unordered_map<LayoutKey, PixelBounds>& textureToPixelBounds,
+		const std::unordered_map<std::string, Texture>& materialToTexture,
+		const PSX::AnimTex& firstAnimData,
 		const std::vector<AnimTexture>& animTextures);
 	bool IsEmpty() const;
 	bool IsTriblock() const;

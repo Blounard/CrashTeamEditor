@@ -412,6 +412,7 @@ Quadblock::Quadblock(const PSX::Quadblock& quadblock, const std::vector<PSX::Ver
 		m_p[reverseIndexMapping[i]] = Vertex(vertex);
 	}
 	SetDefaultValues();
+	ResetUVs();
 	m_hasRawNormalData = true;
 	m_hasRawTexture = true;
 	m_triNormalVecBitshift = quadblock.triNormalVecBitshift;
@@ -814,7 +815,7 @@ const BoundingBox& Quadblock::GetBoundingBox() const
 	return m_bbox;
 }
 
-std::vector<Primitive> Quadblock::ToGeometry(bool filterTriangles, const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>* overrideUvs, const std::filesystem::path* overrideTexturePath) const
+std::vector<Primitive> Quadblock::ToGeometry(bool filterTriangles, const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>* overrideUvs, const std::array<std::filesystem::path, NUM_FACES_QUADBLOCK>* overrideTexturePaths) const
 {
 	if (GetHide()) { return std::vector<Primitive>(); } /* Turbo Pads */
 
@@ -846,20 +847,20 @@ std::vector<Primitive> Quadblock::ToGeometry(bool filterTriangles, const std::ar
 	if (isQuadblock)
 	{
 		primitives.reserve(NUM_FACES_QUADBLOCK);
-		for (int quadIndex = 0; quadIndex < NUM_FACES_QUADBLOCK; quadIndex++)
+		for (int faceId = 0; faceId < NUM_FACES_QUADBLOCK; faceId++)
 		{
-			const std::filesystem::path& texPath = overrideTexturePath ? *overrideTexturePath : m_texPaths[quadIndex];
+			const std::filesystem::path& texPath = overrideTexturePaths ? (*overrideTexturePaths)[faceId] : m_texPaths[faceId];
 			const std::string textureString = filterTriangles ? std::string() : texPath.string();
 			Quad quad;
 			quad.texture = textureString;
 			for (int i = 0; i < NUM_VERTICES_QUAD; i++)
 			{
-				const int vertIndex = uvVertInd[quadIndex][i];
+				const int vertIndex = uvVertInd[faceId][i];
 				const Vertex& vert = m_p[vertIndex];
 				quad.p[i].pos = vert.m_pos;
 				quad.p[i].normal = vert.m_normal;
 				quad.p[i].color = filterTriangles ? filterColor : vert.GetColor(true);
-				quad.p[i].uv = filterTriangles ? Vec2() : GetUVForVertex(quadIndex, vertIndex);
+				quad.p[i].uv = filterTriangles ? Vec2() : GetUVForVertex(faceId, vertIndex);
 			}
 			primitives.push_back(quad);
 		}
@@ -878,9 +879,9 @@ std::vector<Primitive> Quadblock::ToGeometry(bool filterTriangles, const std::ar
 		constexpr int triblockQuadIndex[triCount] = {0, 1, 2, 0};
 		for (int triIndex = 0; triIndex < triCount; triIndex++)
 		{
-			const int quadIndex = triblockQuadIndex[triIndex];
+			const int faceId = triblockQuadIndex[triIndex];
 			const int* triVerts = triblockVertArrangements[triIndex];
-			const std::filesystem::path& texPath = overrideTexturePath ? *overrideTexturePath : m_texPaths[quadIndex];
+			const std::filesystem::path& texPath = overrideTexturePaths ? (*overrideTexturePaths)[faceId] : m_texPaths[faceId];
 			const std::string textureString = filterTriangles ? std::string() : texPath.string();
 			Tri tri;
 			tri.texture = textureString;
@@ -891,7 +892,7 @@ std::vector<Primitive> Quadblock::ToGeometry(bool filterTriangles, const std::ar
 				tri.p[i].pos = vert.m_pos;
 				tri.p[i].normal = vert.m_normal;
 				tri.p[i].color = filterTriangles ? filterColor : vert.GetColor(true);
-				tri.p[i].uv = filterTriangles ? Vec2() : GetUVForVertex(quadIndex, vertIndex);
+				tri.p[i].uv = filterTriangles ? Vec2() : GetUVForVertex(faceId, vertIndex);
 			}
 			primitives.push_back(tri);
 		}
@@ -1048,7 +1049,6 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 void Quadblock::SetDefaultValues()
 {
 	ComputeBoundingBox();
-	ResetUVs();
 	m_checkpointIndex = -1;
 	m_flags = QuadFlags::DEFAULT;
 	m_terrain = TerrainType::LABELS.at(TerrainType::DEFAULT);

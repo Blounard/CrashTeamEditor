@@ -28,23 +28,26 @@ AnimTexture::AnimTexture(const std::filesystem::path& path, const std::vector<st
 }
 
 
-AnimTexture::AnimTexture(const std::string& animName, const std::filesystem::path& tempDir, const std::array<std::vector<PSX::TextureLayout>, NUM_FACES_QUADBLOCK + 1>& faceFrameLayouts,
-	const std::array<std::vector<std::string>, NUM_FACES_QUADBLOCK + 1>& faceFrameMaterials, const std::vector<size_t>& quadIndices, const std::vector<Quadblock>& quadblocks,
-	const std::unordered_map<LayoutKey, PixelBounds>& textureToPixelBounds, const std::unordered_map<std::string, Texture>& materialToTexture, const PSX::AnimTex& firstAnimData,
-	const std::vector<AnimTexture>& animTextures) 
+AnimTexture::AnimTexture(const std::string& animName, const std::filesystem::path& tempDir,
+	const std::array<std::vector<PSX::TextureLayout>, NUM_FACES_QUADBLOCK>& faceFrameLayouts,
+	const std::array<std::vector<std::string>, NUM_FACES_QUADBLOCK>& faceFrameMaterials,
+	const std::unordered_map<LayoutKey, PixelBounds>& textureToPixelBounds,
+	const std::unordered_map<std::string, Texture>& materialToTexture,
+	const PSX::AnimTex& firstAnimData,
+	const std::vector<AnimTexture>& animTextures)
 {
 	std::filesystem::path animDir = tempDir / animName;
 	std::filesystem::path tempObjPath = animDir / "frames.obj";
 	std::ofstream objFile(tempObjPath);
 	size_t frameCount = firstAnimData.frameCount;
 
-	size_t refQuadIdx = quadIndices[0];
-	const Quadblock& refQuad = quadblocks[refQuadIdx];
-	bool isTriblock = false;//!refQuad.IsQuadblock();
+	// Caller guarantees all 4 faces are animated with matching frame counts before
+	// this constructor ever runs, so every face has data for every frameIdx below -
+	// no per-face skip/fallback needed here anymore.
+	bool isTriblock = false; // TODO: always loaded as quadblock for now, see original note
 
 	objFile << "mtllib frames.mtl\n";
 
-	// For each frame, create a quadblock with UVs for all 4 faces
 	for (size_t frameIdx = 0; frameIdx < frameCount; frameIdx++)
 	{
 		std::string objName = "Frame_" + std::to_string(frameIdx + 1);
@@ -67,47 +70,28 @@ AnimTexture::AnimTexture(const std::string& animName, const std::filesystem::pat
 		objFile << "vn 0.0 1.0 0.0\n";
 
 		// Write 16 UVs (4 per face)
-		for (size_t faceIdx = 0; faceIdx < 4; faceIdx++)
+		for (size_t faceIdx = 0; faceIdx < NUM_FACES_QUADBLOCK; faceIdx++)
 		{
-			float u0, v0, u1, v1, u2, v2, u3, v3;
-			if (frameIdx < faceFrameLayouts[faceIdx].size())
-			{
-				const PSX::TextureLayout& layout = faceFrameLayouts[faceIdx][frameIdx];
-				LayoutKey key(layout);
-				const PixelBounds& bounds = textureToPixelBounds.at(key);
-				const RawUV rawUV(layout);
-				QuadUV uvs = MakeUV(bounds, rawUV);
-				u0 = uvs[0].x; v0 = uvs[0].y;
-				u1 = uvs[1].x; v1 = uvs[1].y;
-				u2 = uvs[2].x; v2 = uvs[2].y;
-				u3 = uvs[3].x; v3 = uvs[3].y;
-			}
-			else
-			{
-				const QuadUV& staticUV = refQuad.GetQuadUV(faceIdx);
-				u0 = staticUV[0].x; v0 = staticUV[0].y;
-				u1 = staticUV[1].x; v1 = staticUV[1].y;
-				u2 = staticUV[2].x; v2 = staticUV[2].y;
-				u3 = staticUV[3].x; v3 = staticUV[3].y;
-			}
+			const PSX::TextureLayout& layout = faceFrameLayouts[faceIdx][frameIdx];
+			LayoutKey key(layout);
+			const PixelBounds& bounds = textureToPixelBounds.at(key);
+			const RawUV rawUV(layout); // no rotate/flip here: anim texture pixel bounds were
+			// never decoded with rotation applied in pass 1 either
+			QuadUV uvs = MakeUV(bounds, rawUV);
 
-			objFile << "vt " << u0 << " " << (1.0f - v0) << "\n";
-			objFile << "vt " << u1 << " " << (1.0f - v1) << "\n";
-			objFile << "vt " << u2 << " " << (1.0f - v2) << "\n";
-			objFile << "vt " << u3 << " " << (1.0f - v3) << "\n";
+			objFile << "vt " << uvs[0].x << " " << (1.0f - uvs[0].y) << "\n";
+			objFile << "vt " << uvs[1].x << " " << (1.0f - uvs[1].y) << "\n";
+			objFile << "vt " << uvs[2].x << " " << (1.0f - uvs[2].y) << "\n";
+			objFile << "vt " << uvs[3].x << " " << (1.0f - uvs[3].y) << "\n";
 		}
 
 		objFile << "o " << objName << "\n";
-		if (!faceFrameMaterials[0].empty() && frameIdx < faceFrameMaterials[0].size())
-		{
-			objFile << "usemtl " << faceFrameMaterials[0][frameIdx] << "\n";
-		}
 
 		int vOffset = static_cast<int>(frameIdx * 9) + 1;
 		int vtOffset = static_cast<int>(frameIdx * 16) + 1;
 		int vnOffset = static_cast<int>(frameIdx * 3) + 1;
 
-		if (isTriblock) // should be removed, always load as quadblock ?
+		if (isTriblock)
 		{
 			objFile << "f " << (vOffset + 0) << "/" << (vtOffset + 0) << "/" << (vnOffset + 0) << " "
 				<< (vOffset + 1) << "/" << (vtOffset + 1) << "/" << (vnOffset + 0) << " "
@@ -124,29 +108,33 @@ AnimTexture::AnimTexture(const std::string& animName, const std::filesystem::pat
 		}
 		else
 		{
+			// usemtl now written per-face, right before that face's own f line, since
+			// faces can carry independent per-frame materials (unlike the old
+			// once-per-object usemtl, which only ever worked for 1-tex/quadblock content).
+
 			// Face 0: Top-Left Quadrant
-			// Corners: TL(v+0), T_MID(v+7), CENTER(v+8), L_MID(v+5)
+			objFile << "usemtl " << faceFrameMaterials[0][frameIdx] << "\n";
 			objFile << "f " << (vOffset + 0) << "/" << (vtOffset + 0) << "/" << (vnOffset + 0) << " "
 				<< (vOffset + 7) << "/" << (vtOffset + 1) << "/" << (vnOffset + 0) << " "
 				<< (vOffset + 8) << "/" << (vtOffset + 3) << "/" << (vnOffset + 0) << " "
 				<< (vOffset + 5) << "/" << (vtOffset + 2) << "/" << (vnOffset + 0) << "\n";
 
 			// Face 1: Top-Right Quadrant
-			// Corners: T_MID(v+7), TR(v+1), R_MID(v+4), CENTER(v+8)
+			objFile << "usemtl " << faceFrameMaterials[1][frameIdx] << "\n";
 			objFile << "f " << (vOffset + 7) << "/" << (vtOffset + 4) << "/" << (vnOffset + 1) << " "
 				<< (vOffset + 1) << "/" << (vtOffset + 5) << "/" << (vnOffset + 1) << " "
 				<< (vOffset + 4) << "/" << (vtOffset + 7) << "/" << (vnOffset + 1) << " "
 				<< (vOffset + 8) << "/" << (vtOffset + 6) << "/" << (vnOffset + 1) << "\n";
 
 			// Face 2: Bottom-Left Quadrant
-			// Corners: L_MID(v+5), CENTER(v+8), B_MID(v+6), BL(v+2)
+			objFile << "usemtl " << faceFrameMaterials[2][frameIdx] << "\n";
 			objFile << "f " << (vOffset + 5) << "/" << (vtOffset + 8) << "/" << (vnOffset + 2) << " "
 				<< (vOffset + 8) << "/" << (vtOffset + 9) << "/" << (vnOffset + 2) << " "
 				<< (vOffset + 6) << "/" << (vtOffset + 11) << "/" << (vnOffset + 2) << " "
 				<< (vOffset + 2) << "/" << (vtOffset + 10) << "/" << (vnOffset + 2) << "\n";
 
 			// Face 3: Bottom-Right Quadrant
-			// Corners: CENTER(v+8), R_MID(v+4), BR(v+3), B_MID(v+6)
+			objFile << "usemtl " << faceFrameMaterials[3][frameIdx] << "\n";
 			objFile << "f " << (vOffset + 8) << "/" << (vtOffset + 12) << "/" << (vnOffset + 2) << " "
 				<< (vOffset + 4) << "/" << (vtOffset + 13) << "/" << (vnOffset + 2) << " "
 				<< (vOffset + 3) << "/" << (vtOffset + 15) << "/" << (vnOffset + 2) << " "
@@ -321,7 +309,7 @@ bool AnimTexture::IsEquivalent(const AnimTexture& animTex) const
 	if (m_textures.size() != animTex.m_textures.size()) { return false; }
 	for (size_t i = 0; i < m_frames.size(); i++)
 	{
-		if (m_frames[i].textureIndex != animTex.m_frames[i].textureIndex) { return false; }
+		if (m_frames[i].textureIndexes != animTex.m_frames[i].textureIndexes) { return false; }
 		if (m_frames[i].uvs != animTex.m_frames[i].uvs) { return false; }
 	}
 	for (size_t i = 0; i < m_textures.size(); i++)
@@ -346,16 +334,25 @@ bool AnimTexture::ReadAnimation(const std::filesystem::path& path)
 	const std::vector<Quadblock>& quadblocks = dummy.GetQuadblocks();
 	for (const Quadblock& quadblock : quadblocks)
 	{
-		m_triblock = !quadblock.IsQuadblock();
-		const auto& uvs = quadblock.GetUVs();
-		const std::filesystem::path& texPath = quadblock.GetTexPath(0); // TODO : Rework this logic so animTex can have several texture per quadblock. (or have 1 animTex per face instead)
-		if (texPath.empty()) { return false; }
-		if (loadedPaths.contains(texPath)) { m_frames.emplace_back(loadedPaths.at(texPath), uvs); continue; }
-
-		size_t index = m_textures.size();
-		loadedPaths.insert({texPath, index});
-		m_frames.emplace_back(index, uvs);
-		m_textures.emplace_back(texPath);
+		AnimTextureFrame frame = {};
+		frame.uvs = quadblock.GetUVs();
+		for (size_t face = 0; face < NUM_FACES_QUADBLOCK + 1; face++)
+		{
+			const std::filesystem::path& texPath = quadblock.GetTexPath(face);
+			if (texPath.empty())
+			{
+				if (face == NUM_FACES_QUADBLOCK) { frame.textureIndexes[face] = frame.textureIndexes[0]; continue; }
+				return false;
+			}
+			if (!loadedPaths.contains(texPath))
+			{
+				size_t index = m_textures.size();
+				loadedPaths.insert({ texPath, index });
+				m_textures.emplace_back(texPath);
+			}
+			frame.textureIndexes[face] = loadedPaths.at(texPath);
+		}
+		m_frames.push_back(frame);
 	}
 	SetDefaultParams();
 	return true;

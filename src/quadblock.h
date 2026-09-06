@@ -177,7 +177,7 @@ public:
 	void SetWeatherVanishRate(int vanishRate);
 	void Translate(float ratio, const Vec3& direction);
 	const BoundingBox& GetBoundingBox() const;
-	std::vector<Primitive> ToGeometry(bool filterTriangles = false, const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>* overrideUvs = nullptr, const std::filesystem::path* overrideTexturePath = nullptr) const;
+	std::vector<Primitive> ToGeometry(bool filterTriangles = false, const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>* overrideUvs = nullptr, const std::array<std::filesystem::path, NUM_FACES_QUADBLOCK>* overrideTexturePaths = nullptr) const;
 	std::vector<Vertex> GetVertices() const;
 	const Vertex* const GetUnswizzledVertices() const;
 	float DistanceClosestVertex(Vec3& out, const Vec3& v) const;

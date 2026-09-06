@@ -2856,33 +2856,33 @@ bool Quadblock::RenderUI(size_t checkpointCount, bool& resetBsp)
 			m_bbox.RenderUI();
 			ImGui::TreePop();
 		}
-		for (size_t face = 0; face < NUM_FACES_QUADBLOCK + 1; face++)
+		if (ImGui::TreeNode("Texture"))
 		{
-			ImGui::PushID(static_cast<int>(face));
-			if (!m_texPaths[face].empty() && ImGui::TreeNode("Texture"))
+			ImGui::Text("Animated ? : %s", m_animated ? "Yes" : "No");
+			for (size_t face = 0; face < NUM_FACES_QUADBLOCK + 1; face++)
 			{
-				std::string texPath = m_texPaths[face].string();
-				ImGui::Text("Path:"); ImGui::SameLine();
-				ImGui::BeginDisabled();
-				ImGui::InputText("##texpath", &texPath, ImGuiInputTextFlags_ReadOnly);
-				ImGui::EndDisabled();
-				ImGui::Text("UVs:");
-				for (size_t i = 0; i < NUM_FACES_QUADBLOCK + 1; i++)
+				ImGui::PushID(static_cast<int>(face));
+				std::string title = face == NUM_FACES_QUADBLOCK ? "Low Quad" : "Quad " + std::to_string(face);
+				if (ImGui::TreeNode(title.c_str()))
 				{
-					std::string title = i == NUM_FACES_QUADBLOCK ? "Low Quad" : "Quad " + std::to_string(i);
-					if (ImGui::TreeNode(title.c_str()))
-					{
-						ImGui::InputFloat2("Top left:", &m_uvs[i][0].x, "%.2f");
-						ImGui::InputFloat2("Top right:", &m_uvs[i][1].x, "%.2f");
-						ImGui::InputFloat2("Bottom left:", &m_uvs[i][2].x, "%.2f");
-						ImGui::InputFloat2("Bottom right:", &m_uvs[i][3].x, "%.2f");
-						ImGui::TreePop();
-					}
-				}
-				ImGui::TreePop();
+					ImGui::Text("Material : %s", GetMaterial(face).c_str());
+					std::string texPath = m_texPaths[face].string();
+					ImGui::Text("Path:"); ImGui::SameLine();
+					ImGui::BeginDisabled();
+					ImGui::InputText("##texpath", &texPath, ImGuiInputTextFlags_ReadOnly);
+					ImGui::EndDisabled();
+					ImGui::Text("UVs:");
+					ImGui::InputFloat2("Top left:", &m_uvs[face][0].x, "%.2f");
+					ImGui::InputFloat2("Top right:", &m_uvs[face][1].x, "%.2f");
+					ImGui::InputFloat2("Bottom left:", &m_uvs[face][2].x, "%.2f");
+					ImGui::InputFloat2("Bottom right:", &m_uvs[face][3].x, "%.2f");
+					ImGui::TreePop();
+				}				
+				ImGui::PopID();
 			}
-			ImGui::PopID();
+			ImGui::TreePop();
 		}
+	
 		
 		if (ImGui::TreeNode("Terrain"))
 		{

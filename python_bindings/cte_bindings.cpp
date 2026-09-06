@@ -368,7 +368,7 @@ void init_crashteameditor(py::module_& m)
 		.def("is_quadblock", &Quadblock::IsQuadblock)
 		.def("to_geometry", [](const Quadblock& qb, bool filterTriangles, py::object overrideUvsObj, py::object overrideTextureObj) {
 			const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>* uvsPtr = nullptr;
-			const std::filesystem::path* texPtr = nullptr;
+			std::array<std::filesystem::path, NUM_FACES_QUADBLOCK>* texPtrs = nullptr;
 			std::array<QuadUV, NUM_FACES_QUADBLOCK + 1> uvs = {};
 			std::filesystem::path texPath;
 			if (!overrideUvsObj.is_none())
@@ -379,9 +379,12 @@ void init_crashteameditor(py::module_& m)
 			if (!overrideTextureObj.is_none())
 			{
 				texPath = overrideTextureObj.cast<std::filesystem::path>();
-				texPtr = &texPath;
+				for (size_t f = 0; f < NUM_FACES_QUADBLOCK; f++)
+				{
+					(*texPtrs)[f] = texPath;
+				}
 			}
-			return qb.ToGeometry(filterTriangles, uvsPtr, texPtr);
+			return qb.ToGeometry(filterTriangles, uvsPtr, texPtrs);
 		}, py::arg("filter_triangles") = false, py::arg("override_uvs") = py::none(), py::arg("override_texture_path") = py::none())
 		.def("set_double_sided", &Quadblock::SetDrawDoubleSided)
 		.def("set_speed_impact", &Quadblock::SetSpeedImpact)
