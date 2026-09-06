@@ -114,6 +114,8 @@ void Level::Clear(bool clearErrors)
 	}
 	m_envMapTex.ClearTexture();
 	m_rawWaterLayout = {};
+	m_materialCache.clear();
+	m_textureToPixelBounds.clear();
 }
 
 
@@ -1559,8 +1561,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	std::filesystem::create_directories(tempDir);
 	int texCounter = 0;
 	std::vector<uint32_t> quadblocksVisibleSetOff; // List of VisibleSetOffset for quadblock. Needed for vistree loading, parsed with quadblocks.
-	std::unordered_map<LayoutKey, PixelBounds> textureToPixelBounds; // Map Layout key -> Pixels bounds of the texture.
-	std::unordered_map<LayoutKey, std::string> materialCache; // Layout Key -> matName
 	std::map<size_t, std::map<size_t, uint32_t>> quadblockFaceToAnimOffset; // Map: quadblock index -> face index -> AnimTex offset
 	std::unordered_map<uint32_t, std::string> textureGroupToMaterial; // Map : texture group offset -> material name
 	m_rawAnimTex.clear(); // Map : Absolute Offset -> PSX::AnimTex
@@ -1674,15 +1674,15 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 						const PSX::TextureLayout& layout = group.middle;
 						LayoutKey key(layout);
 
-						if (!materialCache.contains(key))
+						if (!m_materialCache.contains(key))
 						{
 							std::string newMatName = "tex_" + std::to_string(texCounter++);
-							materialCache[key] = newMatName;
+							m_materialCache[key] = newMatName;
 						}
-						textureGroupToMaterial[frameTexOffset] = materialCache[key];
+						textureGroupToMaterial[frameTexOffset] = m_materialCache[key];
 
 						RawUV rawUV(layout);
-						textureToPixelBounds[key].Update(rawUV);
+						m_textureToPixelBounds[key].Update(rawUV);
 
 					}
 					m_rawAnimTexFrames[realOffset] = frameTextureGroupOffset;
@@ -1706,15 +1706,15 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				const PSX::TextureLayout& layout = group.middle;
 				LayoutKey key(layout);
 
-				if (!materialCache.contains(key))
+				if (!m_materialCache.contains(key))
 				{
 					std::string newMatName = "tex_" + std::to_string(texCounter++);
-					materialCache[key] = newMatName;
+					m_materialCache[key] = newMatName;
 				}
-				textureGroupToMaterial[texOffset] = materialCache[key];
+				textureGroupToMaterial[texOffset] = m_materialCache[key];
 
 				RawUV rawUV(layout, psxQuad.drawOrderLow, f);
-				textureToPixelBounds[key].Update(rawUV);
+				m_textureToPixelBounds[key].Update(rawUV);
 			}
 
 		}
@@ -1781,13 +1781,13 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 								Read(file, layout);
 								//
 								LayoutKey key(layout);
-								if (!materialCache.contains(key))
+								if (!m_materialCache.contains(key))
 								{
 									std::string newMatName = "tex_model_" + std::to_string(texCounter++);
-									materialCache[key] = newMatName;
+									m_materialCache[key] = newMatName;
 								}
 								RawUV rawUV(layout);
-								textureToPixelBounds[key].Update(rawUV);
+								m_textureToPixelBounds[key].Update(rawUV);
 							}
 						}
 					}
@@ -1799,9 +1799,9 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 
 
 	// 3rd pass : Create PNGs and Materials
-	for (const auto& [key, bounds] : textureToPixelBounds)
+	for (const auto& [key, bounds] : m_textureToPixelBounds)
 	{
-		std::string newMatName = materialCache[key];
+		std::string newMatName = m_materialCache[key];
 		Texture newTexture(key, bounds, vram, newMatName, tempDir, true);
 		m_materialToTexture[newMatName] = newTexture;
 	}
@@ -1986,10 +1986,10 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 									PSX::TextureLayout layout{};
 									Read(file, layout);
 									LayoutKey key(layout);
-									PixelBounds& bounds = textureToPixelBounds[key];
+									PixelBounds& bounds = m_textureToPixelBounds[key];
 									RawUV rawUV(layout);
 									uvs = MakeUV(bounds, rawUV);
-									texName = materialCache[key];
+									texName = m_materialCache[key];
 								}
 
 								tri.p[0].pos = temp[3].pos; tri.p[1].pos = temp[2].pos; tri.p[2].pos = temp[1].pos;
@@ -2129,13 +2129,13 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				const PSX::TextureLayout& layout = group.middle;
 				LayoutKey key(layout);
 
-				qbMatName = materialCache[key];
+				qbMatName = m_materialCache[key];
 				qb.SetMaterial(f, qbMatName);
 				qb.SetTexPath(f, m_materialToTexture[qbMatName].GetPath());
 				m_materialToQuadFaces[qbMatName].push_back(std::make_pair(i, f));
 				
 				RawUV rawUV(layout, psxQuad.drawOrderLow, f);
-				const PixelBounds& bounds = textureToPixelBounds[key];
+				const PixelBounds& bounds = m_textureToPixelBounds[key];
 				qb.SetFaceUVs(f, MakeUV(bounds, rawUV));
 			}
 		}
@@ -2223,7 +2223,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 			std::filesystem::path animDir = tempDir / animName;
 			std::filesystem::create_directories(animDir);
 
-			AnimTexture animTexture(animName, tempDir, faceFrameLayouts, faceFrameMaterials, quadIndices, m_quadblocks, textureToPixelBounds, m_materialToTexture, firstAnimData, m_animTextures);
+			AnimTexture animTexture(animName, tempDir, faceFrameLayouts, faceFrameMaterials, quadIndices, m_quadblocks, m_textureToPixelBounds, m_materialToTexture, firstAnimData, m_animTextures);
 
 			if (!animTexture.IsEmpty())
 			{
@@ -2714,6 +2714,16 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	std::unordered_map<PSX::TextureLayout, size_t> savedLayouts;
 	std::vector<PSX::TextureLayout> modelLayouts;
 	std::unordered_map<PSX::TextureLayout, size_t> modelLayoutsIndexes;
+	std::unordered_map<std::string, LayoutKey> matToKey; // for useRawTex : material -> Layout Key
+	for (const auto& [key, matName] : m_materialCache)
+	{
+		if (matToKey.contains(matName))
+		{
+			printf("WARNING : Material Cache have several Key with the same matName\n");
+			continue;
+		}
+		matToKey[matName] = key;
+	}
 
 	if (useRawTextures)
 	{
@@ -2800,17 +2810,39 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 				}
 				continue;
 			}
-			for (size_t i = 0; i < NUM_FACES_QUADBLOCK + 1; i++)
+			else // Not animated
 			{
-				uint32_t rawTexOffset = currQuad.GetRawTexOffset(i);
-				if (!rawOffsetRemap.contains(rawTexOffset))
+				for (size_t i = 0; i < NUM_FACES_QUADBLOCK + 1; i++)
 				{
-					rawOffsetRemap[rawTexOffset] = texGroups.size();
-					if (!m_rawTextureGroup.contains(rawTexOffset)) { printf("MISSING TEXTURE FOR %s FACE %zu\n", currQuad.GetName().c_str(), i); }
-					texGroups.push_back(m_rawTextureGroup[rawTexOffset]);
+					if (matToKey.contains(currQuad.GetMaterial(i)))
+					{
+						size_t textureID = 0;
+						LayoutKey& key = matToKey[currQuad.GetMaterial(i)];
+						PixelBounds& bounds = m_textureToPixelBounds[key];
+						PSX::TextureLayout layout = key.Serialize(currQuad.GetQuadUV(i), currQuad.GetFaceRotateFlip(i), bounds);
+						if (savedLayouts.contains(layout)) { textureID = savedLayouts[layout]; }
+						else
+						{
+							textureID = texGroups.size();
+							savedLayouts[layout] = textureID;
+							PSX::TextureGroup texGroup = {};
+							texGroup.far = layout;
+							texGroup.middle = layout;
+							texGroup.near = layout;
+							texGroup.mosaic = layout;
+							texGroups.push_back(texGroup);
+						}
+						currQuad.SetTextureID(textureID, i);
+					}
+					else
+					{
+						currQuad.SetTextureID(0, i);
+						printf("MISSING TEXTURE FOR %s FACE %zu\n", currQuad.GetName().c_str(), i);
+					}
+						
 				}
-				currQuad.SetTextureID(rawOffsetRemap[rawTexOffset], i);
 			}
+			
 		}
 
 		//texGroups.push_back(defaultTexGroup);

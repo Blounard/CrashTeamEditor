@@ -115,6 +115,7 @@ struct LayoutKey // 2 PSX::TextureLayout have the same LayoutKey if they use the
 		, blendMode(layout.texPage.blendMode)
 	{
 	}
+	PSX::TextureLayout Serialize(QuadUV uvs, uint32_t rotateFlip, PixelBounds bounds) const;
 
 	bool operator==(const LayoutKey& other) const
 	{
@@ -261,3 +262,4 @@ inline QuadUV MakeUV(const PixelBounds& bounds, const RawUV rawUV)
 	};
 	return uvs;
 }
+

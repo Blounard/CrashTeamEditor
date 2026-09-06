@@ -742,3 +742,75 @@ std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures)
 	DumpVRAMDebugImage(vramUsed);
 	return vrm;
 }
+
+
+PSX::TextureLayout LayoutKey::Serialize(QuadUV uvs, uint32_t rotateFlip, PixelBounds bounds) const
+{
+	PSX::TextureLayout layout = {};
+
+	layout.texPage.blendMode = blendMode;
+	layout.texPage.texpageColors = bpp;
+	layout.texPage.x = pageX;
+	layout.texPage.y = pageY;
+	layout.clut.x = clutX;
+	layout.clut.y = clutY;
+
+	auto RotateUV90 = [](QuadUV& uv)
+		{
+			Vec2 tmp = uv[0];
+			uv[0] = uv[2];
+			uv[2] = uv[3];
+			uv[3] = uv[1];
+			uv[1] = tmp;
+		};
+	auto FlipUV = [](QuadUV& uv)
+		{
+			Vec2 tmp0 = uv[0]; uv[0] = uv[1]; uv[1] = tmp0;
+			Vec2 tmp2 = uv[2]; uv[2] = uv[3]; uv[3] = tmp2;
+		};
+	switch (rotateFlip & 0x7)
+	{
+	case 0: break;
+	case 1: RotateUV90(uvs); RotateUV90(uvs); RotateUV90(uvs); break;
+	case 2: RotateUV90(uvs); RotateUV90(uvs); break;
+	case 3: RotateUV90(uvs); break;
+	case 4: RotateUV90(uvs); FlipUV(uvs); break;
+	case 5: RotateUV90(uvs); RotateUV90(uvs); FlipUV(uvs); break;
+	case 6: RotateUV90(uvs); RotateUV90(uvs); RotateUV90(uvs); FlipUV(uvs); break;
+	case 7: FlipUV(uvs); break;
+	default: break;
+	}
+
+	const size_t x = bounds.minU;
+	const size_t y = bounds.minV;
+	const float width = 1.0f + static_cast<float>(bounds.maxU - bounds.minU);
+	const float height = 1.0f + static_cast<float>(bounds.maxV - bounds.minV);
+
+	size_t u0 = x + static_cast<size_t>(std::round(uvs[0].x * width));	size_t v0 = y + static_cast<size_t>(std::round(uvs[0].y * height));
+	size_t u1 = x + static_cast<size_t>(std::round(uvs[1].x * width));	size_t v1 = y + static_cast<size_t>(std::round(uvs[1].y * height));
+	size_t u2 = x + static_cast<size_t>(std::round(uvs[2].x * width));	size_t v2 = y + static_cast<size_t>(std::round(uvs[2].y * height));
+	size_t u3 = x + static_cast<size_t>(std::round(uvs[3].x * width));	size_t v3 = y + static_cast<size_t>(std::round(uvs[3].y * height));
+
+	size_t maxU = std::max(std::max(u0, u1), std::max(u2, u3));
+	size_t maxV = std::max(std::max(v0, v1), std::max(v2, v3));
+	if (maxU > 0)
+	{
+		if (u0 == maxU) u0 -= 1;
+		if (u1 == maxU) u1 -= 1;
+		if (u2 == maxU) u2 -= 1;
+		if (u3 == maxU) u3 -= 1;
+	}
+	if (maxV > 0)
+	{
+		if (v0 == maxV) v0 -= 1;
+		if (v1 == maxV) v1 -= 1;
+		if (v2 == maxV) v2 -= 1;
+		if (v3 == maxV) v3 -= 1;
+	}
+
+	layout.u0 = static_cast<uint8_t>(u0); layout.v0 = static_cast<uint8_t>(v0);
+	layout.u1 = static_cast<uint8_t>(u1); layout.v1 = static_cast<uint8_t>(v1);
+	layout.u2 = static_cast<uint8_t>(u2); layout.v2 = static_cast<uint8_t>(v2);
+	layout.u3 = static_cast<uint8_t>(u3); layout.v3 = static_cast<uint8_t>(v3);
+	return layout;
+}
