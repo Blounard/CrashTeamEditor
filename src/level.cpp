@@ -2202,6 +2202,8 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				if (face == 0) { frameCount = count; }
 				else if (count != frameCount) { validAnimation = false; break; }
 			}
+			if (frameCount == 0)
+				validAnimation = false;
 
 			if (!validAnimation)
 			{
