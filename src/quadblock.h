@@ -112,10 +112,10 @@ class Quadblock
 {
 public:
 	Quadblock(const std::string& name,
-		const std::array<Point, NUM_VERTICES_QUADBLOCK>& points,
-		const std::array<std::array<size_t, 4>, NUM_FACES_QUADBLOCK>& faceIndices,
-		const std::array<std::string, NUM_FACES_QUADBLOCK>& materials,
-		const std::array<QuadUV, NUM_FACES_QUADBLOCK>& faceUVs,
+		const std::vector<Point>& points,
+		const std::vector<std::vector<size_t>>& faceIndices,
+		const std::vector<std::vector<Vec2>>& faceUVs,
+		const std::vector<std::string>& faceMaterials,
 		bool hasUV, UpdateFilterCallback filterCallback);
 	Quadblock(const PSX::Quadblock& quadblock, const std::vector<PSX::Vertex>& vertices, UpdateFilterCallback filterCallback);
 	const std::string& GetName() const;

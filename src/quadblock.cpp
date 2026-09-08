@@ -24,95 +24,124 @@ Vec3 ComputeNewellNormal(const std::vector<Vec3>& poly)
 }
 
 Quadblock::Quadblock(const std::string& name,
-	const std::array<Point, NUM_VERTICES_QUADBLOCK>& points,
-	const std::array<std::array<size_t, 4>, NUM_FACES_QUADBLOCK>& facesIndices,
-	const std::array<std::string, NUM_FACES_QUADBLOCK>& materials,
-	const std::array<QuadUV, NUM_FACES_QUADBLOCK>& faceUVs,
+	const std::vector<Point>& points,
+	const std::vector<std::vector<size_t>>& faceIndices,
+	const std::vector<std::vector<Vec2>>& faceUVs,
+	const std::vector<std::string>& faceMaterials,
 	bool hasUV, UpdateFilterCallback filterCallback)
 {
 	constexpr size_t INVALID = std::numeric_limits<size_t>::max();
+	constexpr size_t EXPECTED_FACE_COUNT = NUM_FACES_QUADBLOCK;
 
-	std::array<size_t, NUM_VERTICES_QUADBLOCK> refCount = {}; // Count how many time each vert are referenced
-	for (const auto& faceIndices : facesIndices)
+	if (faceIndices.size() < EXPECTED_FACE_COUNT)
 	{
-		for (size_t vertId : faceIndices)
+		throw QuadException("Expected at least " + std::to_string(EXPECTED_FACE_COUNT) + " faces to build a quadblock, found " + std::to_string(faceIndices.size()) + ".");
+	}
+	if (faceIndices.size() > EXPECTED_FACE_COUNT)
+	{
+		// Not explicitly specified by design; >4 faces has no defined grid model yet, so
+		// treated as an error for now rather than silently ignoring the extras.
+		throw QuadException("Expected exactly " + std::to_string(EXPECTED_FACE_COUNT) + " faces, found " + std::to_string(faceIndices.size()) + ".");
+	}
+	if (faceUVs.size() != faceIndices.size() || faceMaterials.size() != faceIndices.size())
+	{
+		throw QuadException("Internal error: face data arrays have mismatched sizes.");
+	}
+
+	// Step 1: reference-count every point referenced by any face.
+	std::vector<size_t> refCount(points.size(), 0);
+	for (const auto& face : faceIndices)
+	{
+		for (size_t idx : face)
 		{
-			if (vertId >= NUM_VERTICES_QUADBLOCK) { throw QuadException("Face references a vertex index out of range."); }
-			refCount[vertId]++;
+			if (idx >= points.size()) { throw QuadException("Face references a vertex index out of range."); }
+			refCount[idx]++;
 		}
 	}
 
-	size_t cornerCount = 0, edgeCount = 0;
 	size_t centerIdx = INVALID;
-	for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++)
+	size_t centerCount = 0;
+	for (size_t i = 0; i < points.size(); i++)
 	{
-		switch (refCount[i])
+		if (refCount[i] == faceIndices.size())
 		{
-		case 1: cornerCount++; break;
-		case 2: edgeCount++; break;
-		case 4:
-			if (centerIdx != INVALID) { throw QuadException("More than one candidate center vertex found."); }
 			centerIdx = i;
-			break;
-		default:
-			throw QuadException("Vertex " + std::to_string(i) + " referenced by an unexpected number of faces (" + std::to_string(refCount[i]) + ").");
+			centerCount++;
 		}
 	}
-	if (cornerCount != 4 || edgeCount != 4 || centerIdx == INVALID)
+
+	if (centerCount == 0)
 	{
-		throw QuadException(
-			"Corners found: " + std::to_string(cornerCount) + "/4\n" +
-			"Edges found: " + std::to_string(edgeCount) + "/4\n" +
-			"Center found: " + std::string(centerIdx != INVALID ? "yes" : "no") + "\n");
+		// No vertex shared by all 4 faces: this object doesn't have quadblock topology at all
+		// (a triblock, under the old 9-vertex encoding). Real triblock support is being
+		// reworked separately; for now, build a trivial placeholder rather than failing the
+		// whole object, so the rest of the level still loads. Revisit once triblocks are
+		// properly redesigned.
+		printf("NOTE: Object '%s' has no vertex shared by all faces (looks like a triblock); building a placeholder quadblock for it.\n", name.c_str());
+		const size_t placeholderIdx = faceIndices[0][0];
+		for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++) { m_p[i] = Vertex(points[placeholderIdx]); }
+		ResetUVs();
+		m_name = name;
+		for (size_t i = 0; i < NUM_FACES_QUADBLOCK; i++) { m_materials[i] = faceMaterials[i]; }
+		m_materials[NUM_FACES_QUADBLOCK] = faceMaterials[0];
+		m_triblock = true;
+		m_filterCallback = filterCallback;
+		SetDefaultValues();
+		return;
+	}
+	if (centerCount > 1)
+	{
+		throw QuadException("More than one candidate center vertex found (" + std::to_string(centerCount) + ").");
 	}
 
-	// Step 2: for each face, find its own corner and its 2 edges. A valid quadrant face
-	// touches exactly 1 corner + 2 edges + 1 center.
-	std::array<size_t, NUM_FACES_QUADBLOCK> faceCorner = {};
-	std::array<std::array<size_t, 2>, NUM_FACES_QUADBLOCK> faceEdges = {};
-	for (size_t f = 0; f < NUM_FACES_QUADBLOCK; f++)
+	// Step 2: classify each face's own vertices relative to the center. cornersInFace == 0
+	// is allowed (a triangle face missing its corner) - synthesized in Step 5.
+	std::vector<size_t> faceCorner(faceIndices.size(), INVALID);
+	std::vector<std::array<size_t, 2>> faceEdges(faceIndices.size());
+	for (size_t f = 0; f < faceIndices.size(); f++)
 	{
 		size_t cornersInFace = 0, edgesInFace = 0, centersInFace = 0;
-		for (size_t idx : facesIndices[f])
+		for (size_t idx : faceIndices[f])
 		{
 			if (idx == centerIdx) { centersInFace++; }
 			else if (refCount[idx] == 1) { faceCorner[f] = idx; cornersInFace++; }
-			else { faceEdges[f][edgesInFace++] = idx; }
+			else if (refCount[idx] == 2) { faceEdges[f][edgesInFace++] = idx; }
+			else
+			{
+				throw QuadException("Face " + std::to_string(f) + " references vertex " + std::to_string(idx) +
+					" which is shared by an unexpected number of faces (" + std::to_string(refCount[idx]) + ").");
+			}
 		}
-		if (cornersInFace != 1 || edgesInFace != 2 || centersInFace != 1)
+		if (centersInFace != 1 || edgesInFace != 2 || cornersInFace > 1)
 		{
-			throw QuadException("Face " + std::to_string(f) + " does not have the expected corner/edge/center composition for a quadblock grid.");
+			throw QuadException("Face " + std::to_string(f) + " does not have the composition of a quadblock quadrant (found " +
+				std::to_string(cornersInFace) + " corner(s), " + std::to_string(edgesInFace) + " edge(s), " +
+				std::to_string(centersInFace) + " center(s)).");
 		}
 	}
 
-	// Step 3 (topology + order only, no geometry): resolve which of faces 1..3 shares
-	// face0's CCW-following edge vs its CCW-preceding edge, directly from face0's own
-	// declared vertex order. This requires that every face's vertices are listed in
-	// consistent CCW winding (as seen from its real outward direction) - if that's not
-	// true, correctness can't be recovered from topology alone regardless of method.
-	size_t face0CornerSlot = INVALID;
-	for (size_t s = 0; s < 4; s++)
+	// Step 3: resolve winding using face 0's own declared vertex order around the CENTER
+	// (not the corner, which might be missing). The center's two immediate neighbours in a
+	// face's own cyclic vertex list are always that face's 2 edge vertices, whether the face
+	// has 4 vertices (quad) or 3 (corner-missing triangle) - so this anchor works either way.
+	const std::vector<size_t>& face0 = faceIndices[0];
+	size_t centerSlot = INVALID;
+	for (size_t s = 0; s < face0.size(); s++)
 	{
-		if (facesIndices[0][s] == faceCorner[0]) { face0CornerSlot = s; break; }
+		if (face0[s] == centerIdx) { centerSlot = s; break; }
 	}
-	if (face0CornerSlot == INVALID) { throw QuadException("Internal error: face 0's own corner not found in its vertex list."); }
-	if (facesIndices[0][(face0CornerSlot + 2) % 4] != centerIdx)
-	{
-		throw QuadException("Face 0's vertex loop does not place the center opposite its corner; malformed quad face.");
-	}
-	const size_t ccwNextIdx = facesIndices[0][(face0CornerSlot + 1) % 4];
-	const size_t ccwPrevIdx = facesIndices[0][(face0CornerSlot + 3) % 4];
+	if (centerSlot == INVALID) { throw QuadException("Internal error: face 0's center vertex not found in its own vertex list."); }
+	const size_t L = face0.size();
+	const size_t ccwNextIdx = face0[(centerSlot + 1) % L];
+	const size_t ccwPrevIdx = face0[(centerSlot + L - 1) % L];
 
 	std::array<size_t, NUM_FACES_QUADBLOCK> faceForRole = { 0, INVALID, INVALID, INVALID };
-	for (size_t f = 1; f < NUM_FACES_QUADBLOCK; f++)
+	for (size_t f = 1; f < faceIndices.size(); f++)
 	{
 		bool sharesNext = (faceEdges[f][0] == ccwNextIdx || faceEdges[f][1] == ccwNextIdx);
 		bool sharesPrev = (faceEdges[f][0] == ccwPrevIdx || faceEdges[f][1] == ccwPrevIdx);
-		// Fixed convention: face0's CCW-following neighbor becomes role 1 (grid pos 2);
-		// CCW-preceding becomes role 2 (grid pos 6). See verification note below - swap
-		// these two branches if quadblocks come out mirrored.
-		if (sharesNext && !sharesPrev) { faceForRole[2] = f; }
-		else if (sharesPrev && !sharesNext) { faceForRole[1] = f; }
+		if (sharesNext && !sharesPrev) { faceForRole[1] = f; }
+		else if (sharesPrev && !sharesNext) { faceForRole[2] = f; }
 		else if (!sharesNext && !sharesPrev) { faceForRole[3] = f; }
 		else { throw QuadException("Face " + std::to_string(f) + " shares both of face 0's edges; malformed grid topology."); }
 	}
@@ -121,6 +150,9 @@ Quadblock::Quadblock(const std::string& name,
 		throw QuadException("Could not uniquely resolve the 4 faces into a 2x2 grid; malformed topology.");
 	}
 
+	// Step 4: place center + the 4 edges (always present - only corners can be missing).
+	std::array<size_t, NUM_VERTICES_QUADBLOCK> gridPointIdx = {};
+	gridPointIdx[4] = centerIdx;
 	auto FindSharedEdge = [&](size_t faceA, size_t faceB) -> size_t
 		{
 			for (size_t a : faceEdges[faceA])
@@ -132,46 +164,29 @@ Quadblock::Quadblock(const std::string& name,
 			}
 			throw QuadException("Faces expected to be adjacent share no edge; malformed topology.");
 		};
-	auto BuildGrid = [&](const std::array<size_t, NUM_FACES_QUADBLOCK>& roles) -> std::array<size_t, NUM_VERTICES_QUADBLOCK>
-		{
-			std::array<size_t, NUM_VERTICES_QUADBLOCK> grid = {};
-			grid[0] = faceCorner[roles[0]];
-			grid[2] = faceCorner[roles[1]];
-			grid[6] = faceCorner[roles[2]];
-			grid[8] = faceCorner[roles[3]];
-			grid[4] = centerIdx;
-			grid[1] = FindSharedEdge(roles[0], roles[1]);
-			grid[3] = FindSharedEdge(roles[0], roles[2]);
-			grid[5] = FindSharedEdge(roles[1], roles[3]);
-			grid[7] = FindSharedEdge(roles[2], roles[3]);
-			return grid;
-		};
+	gridPointIdx[1] = FindSharedEdge(faceForRole[0], faceForRole[1]);
+	gridPointIdx[3] = FindSharedEdge(faceForRole[0], faceForRole[2]);
+	gridPointIdx[5] = FindSharedEdge(faceForRole[1], faceForRole[3]);
+	gridPointIdx[7] = FindSharedEdge(faceForRole[2], faceForRole[3]);
 
-	std::array<size_t, NUM_VERTICES_QUADBLOCK> gridPointIdx = BuildGrid(faceForRole);
+	// Step 5: place the 4 corners, synthesizing any missing one from a fixed neighbour
+	// (ring order 0->1, 2->5, 8->7, 6->3 - deterministic regardless of rotation or file order).
+	auto ResolveCorner = [&](size_t role, size_t substituteGridPos) -> size_t
+		{
+			size_t f = faceForRole[role];
+			if (faceCorner[f] != INVALID) { return faceCorner[f]; }
+			return gridPointIdx[substituteGridPos];
+		};
+	gridPointIdx[0] = ResolveCorner(0, 1);
+	gridPointIdx[2] = ResolveCorner(1, 5);
+	gridPointIdx[6] = ResolveCorner(2, 3);
+	gridPointIdx[8] = ResolveCorner(3, 7);
+
 	for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++) { m_p[i] = Vertex(points[gridPointIdx[i]]); }
 
-	// TEMPORARY: cross-check against the geometry-based method until convention is confirmed.
-	// Delete this block once verified.
-	{
-		Vec3 referenceNormal = Vec3();
-		for (const auto& face : facesIndices)
-		{
-			std::vector<Vec3> facePos;
-			for (size_t idx : face) { facePos.push_back(points[idx].pos); }
-			referenceNormal = referenceNormal + ComputeNewellNormal(facePos);
-		}
-		referenceNormal = referenceNormal / referenceNormal.Length();
-
-		Vec3 quadNormal = ComputeNormalVector(0, 2, 6);
-		quadNormal = quadNormal / quadNormal.Length();
-		if ((referenceNormal - quadNormal).Length() > (referenceNormal - (quadNormal * -1)).Length())
-		{
-			printf("WARNING: order-based chirality resolution disagrees with geometry for quadblock '%s' - swap the sharesNext/sharesPrev branches.\n", name.c_str());
-		}
-	}
-
-	// Step 6: assign UVs (canonical per-quadrant corner order) and materials, using the
-	// final faceForRole to know which originally-declared face supplies each grid quadrant.
+	// Step 6: UVs. A synthesized corner's grid index equals its substitute edge's grid index,
+	// so this lookup naturally finds that edge's own real, authored UV for it automatically -
+	// no special-casing needed for the missing-corner case.
 	constexpr size_t uvVertInd[NUM_FACES_QUADBLOCK][4] =
 	{
 		{0, 1, 3, 4},
@@ -189,17 +204,15 @@ Quadblock::Quadblock(const std::string& name,
 			{
 				const size_t wantedGlobalIdx = gridPointIdx[uvVertInd[role][j]];
 				size_t srcSlot = INVALID;
-				for (size_t k = 0; k < 4; k++)
+				for (size_t k = 0; k < faceIndices[origFace].size(); k++)
 				{
-					if (facesIndices[origFace][k] == wantedGlobalIdx) { srcSlot = k; break; }
+					if (faceIndices[origFace][k] == wantedGlobalIdx) { srcSlot = k; break; }
 				}
 				if (srcSlot == INVALID) { throw QuadException("Internal error mapping UVs for face " + std::to_string(origFace) + "."); }
 				m_uvs[role][j] = faceUVs[origFace][srcSlot];
 			}
 		}
 
-		// Low-LOD (5th) face has no authored geometry of its own; estimate its UV from the
-		// bounding box of the 4 real faces - same heuristic used before this refactor.
 		float uMin = std::numeric_limits<float>::max(); float vMin = std::numeric_limits<float>::max();
 		float uMax = -std::numeric_limits<float>::max(); float vMax = -std::numeric_limits<float>::max();
 		for (size_t i = 0; i < 4; i++)
@@ -235,11 +248,8 @@ Quadblock::Quadblock(const std::string& name,
 	else { ResetUVs(); }
 
 	m_name = name;
-	for (size_t role = 0; role < NUM_FACES_QUADBLOCK; role++)
-	{
-		m_materials[role] = materials[faceForRole[role]];
-	}
-	m_materials[NUM_FACES_QUADBLOCK] = m_materials[0]; // low-LOD fallback; matches the previous "materials[0]" convention
+	for (size_t role = 0; role < NUM_FACES_QUADBLOCK; role++) { m_materials[role] = faceMaterials[faceForRole[role]]; }
+	m_materials[NUM_FACES_QUADBLOCK] = m_materials[0];
 	m_triblock = false;
 	m_filterCallback = filterCallback;
 	SetDefaultValues();
