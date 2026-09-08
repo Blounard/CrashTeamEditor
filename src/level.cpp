@@ -4153,16 +4153,6 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 			int i0 = std::stoi(token0[0]) - 1;
 			int i1 = std::stoi(token1[0]) - 1;
 			int i2 = std::stoi(token2[0]) - 1;
-			int ni0 = std::stoi(token0[2]) - 1;
-			int ni1 = std::stoi(token1[2]) - 1;
-			int ni2 = std::stoi(token2[2]) - 1;
-			normalMap[currQuadblockName].push_back(normals[ni0]);
-			normalMap[currQuadblockName].push_back(normals[ni1]);
-			normalMap[currQuadblockName].push_back(normals[ni2]);
-
-			vertices[i0].normal = normals[ni0];
-			vertices[i1].normal = normals[ni1];
-			vertices[i2].normal = normals[ni2];
 
 			if (currQuadblockGoodUV)
 			{
@@ -4195,14 +4185,20 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 			{
 				std::vector<std::string> token3 = Split(tokens[4], '/');
 				int i3 = std::stoi(token3[0]) - 1;
-				int ni3 = std::stoi(token3[2]) - 1;
-				normalMap[currQuadblockName].push_back(normals[ni3]);
-				vertices[i3].normal = normals[ni3];
 				if (currQuadblockGoodUV)
 				{
 					int uv3 = std::stoi(token3[1]) - 1;
 					vertices[i3].uv = uvs[uv3];
 				}
+
+				Vec3 faceNormal = (vertices[i1].pos - vertices[i0].pos).Cross(vertices[i2].pos - vertices[i0].pos);
+				//faceNormal += (vertices[i3].pos - vertices[i2].pos).Cross(vertices[i0].pos - vertices[i2].pos);
+				faceNormal.Normalize();
+				vertices[i0].normal = faceNormal;
+				vertices[i1].normal = faceNormal;
+				vertices[i2].normal = faceNormal;
+				vertices[i3].normal = faceNormal;
+				normalMap[currQuadblockName].push_back(faceNormal);
 
 				if (!quadMap.contains(currQuadblockName)) { quadMap[currQuadblockName] = std::vector<Quad>(); }
 				quadMap[currQuadblockName].emplace_back(vertices[i0], vertices[i1], vertices[i2], vertices[i3]);
@@ -4210,6 +4206,13 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 			}
 			else
 			{
+				Vec3 faceNormal = (vertices[i1].pos - vertices[i0].pos).Cross(vertices[i2].pos - vertices[i0].pos);
+				faceNormal.Normalize();
+				vertices[i0].normal = faceNormal;
+				vertices[i1].normal = faceNormal;
+				vertices[i2].normal = faceNormal;
+				normalMap[currQuadblockName].push_back(faceNormal); // maybe need more normals ?
+
 				if (!triMap.contains(currQuadblockName)) { triMap[currQuadblockName] = std::vector<Tri>(); }
 				triMap[currQuadblockName].emplace_back(vertices[i0], vertices[i1], vertices[i2]);
 				blockFetched = triMap[currQuadblockName].size() == 4;
@@ -4587,14 +4590,14 @@ bool Level::SaveOBJ(const std::filesystem::path& objFile)
 
 		// Find this quadblock's material
 		std::string material;
-		//for (const auto& [mat, indexes] : m_materialToQuadFaces)
-		//{
-		//	for (auto idx : indexes)
-		//	{
-		//		if (idx.first == qi) { material = mat; break; }
-		//	}
-		//	if (!material.empty()) { break; }
-		//}
+		for (const auto& [mat, quadFaces] : m_materialToQuadFaces)
+		{
+			for (auto quadface : quadFaces)
+			{
+				if (quadface.first == qi) { material = mat; break; }
+			}
+			if (!material.empty()) { break; }
+		}
 
 		if (!material.empty())
 		{
