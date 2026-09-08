@@ -19,9 +19,9 @@ static constexpr size_t RENDER_INDEX_NONE = std::numeric_limits<size_t>::max();
 
 struct QuadFlags
 {
-	static constexpr uint16_t INVISIBLE = 1 << 0;
+	static constexpr uint16_t REFLECTION_2 = 1 << 0;
 	static constexpr uint16_t MOON_GRAVITY = 1 << 1;
-	static constexpr uint16_t REFLECTION = 1 << 2;
+	static constexpr uint16_t REFLECTION_1 = 1 << 2;
 	static constexpr uint16_t KICKERS = 1 << 3;
 	static constexpr uint16_t OUT_OF_BOUNDS = 1 << 4;
 	static constexpr uint16_t NEVER_USED = 1 << 5;
@@ -30,18 +30,18 @@ struct QuadFlags
 	static constexpr uint16_t KICKERS_TWO = 1 << 8;
 	static constexpr uint16_t MASK_GRAB = 1 << 9;
 	static constexpr uint16_t TIGER_TEMPLE_DOOR = 1 << 10;
-	static constexpr uint16_t COLLISION_TRIGGER = 1 << 11;
+	static constexpr uint16_t CAMERA_SEARCH = 1 << 11;
 	static constexpr uint16_t GROUND = 1 << 12;
 	static constexpr uint16_t WALL = 1 << 13;
 	static constexpr uint16_t NO_COLLISION = 1 << 14;
 	static constexpr uint16_t INVISIBLE_TRIGGER = 1 << 15;
-	static constexpr uint16_t DEFAULT = GROUND | COLLISION_TRIGGER;
+	static constexpr uint16_t DEFAULT = GROUND | CAMERA_SEARCH;
 	static inline const std::unordered_map<std::string, uint16_t> LABELS = {
-		{"Invisible", INVISIBLE}, {"Moon Gravity", MOON_GRAVITY}, {"Reflection", REFLECTION},
+		{"Reflection 2", REFLECTION_2}, {"Moon Gravity", MOON_GRAVITY}, {"Reflection 1", REFLECTION_1},
 		{"Kickers (?)", KICKERS}, {"Out of Bounds", OUT_OF_BOUNDS}, {"Never Used (?)", NEVER_USED},
 		{"Trigger Script", TRIGGER_SCRIPT }, {"Reverb", REVERB}, {"Kickers Two (?)", KICKERS_TWO},
-		{"Mask Grab", MASK_GRAB }, {"Tiger Temple Door", TIGER_TEMPLE_DOOR}, {"Collision Trigger", COLLISION_TRIGGER},
-		{"Ground", GROUND}, {"Wall", WALL}, {"No Colision", NO_COLLISION}, {"Invisible Trigger", INVISIBLE_TRIGGER}
+		{"Mask Grab", MASK_GRAB }, {"Tiger Temple Door", TIGER_TEMPLE_DOOR}, {"Camera Search", CAMERA_SEARCH},
+		{"Ground", GROUND}, {"Wall", WALL}, {"No Collision", NO_COLLISION}, {"Invisible Trigger", INVISIBLE_TRIGGER}
 	};
 };
 
