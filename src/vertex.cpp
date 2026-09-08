@@ -6,7 +6,6 @@
 Vertex::Vertex()
 {
 	m_pos = Vec3();
-	m_normal = Vec3();
 	m_flags = VertexFlags::NONE;
 	m_colorHigh = Color(static_cast<unsigned char>(255u), 255u, 255u);
 	m_colorLow = Color(static_cast<unsigned char>(255u), 255u, 255u);
@@ -15,7 +14,6 @@ Vertex::Vertex()
 Vertex::Vertex(const Point& point)
 {
 	m_pos = point.pos;
-	m_normal = point.normal;
 	m_flags = VertexFlags::NONE;
 	m_colorHigh = point.color;
 	m_colorLow = point.color;
@@ -27,7 +25,6 @@ Vertex::Vertex(const PSX::Vertex& vertex)
 	m_flags = vertex.flags;
 	m_colorHigh = ConvertColor(vertex.colorHi);
 	m_colorLow = ConvertColor(vertex.colorLo);
-	m_normal = {0.0f, 1.0f, 0.0f};
 }
 
 std::vector<uint8_t> Vertex::Serialize() const
@@ -63,12 +60,12 @@ std::vector<Primitive> Vertex::ToGeometry(bool highColor) const
 	std::vector<Primitive> triangles;
 	triangles.reserve(trisPerOctopoint);
 
+	Vec3 dummyNormal = { 0.0f, 1.0f, 0.0f };
 	auto AppendTri = [&](const Vec3& dir)
 		{
-			v.m_normal = Vec3((1.f / sqrtThree) * dir.x, (1.f / sqrtThree) * dir.y, (1.f / sqrtThree) * dir.z);
-			v.m_pos.x += (radius * dir.x); Point p0(v.m_pos, v.m_normal, v.GetColor(highColor)); v.m_pos.x -= (radius * dir.x);
-			v.m_pos.y += (radius * dir.y); Point p1(v.m_pos, v.m_normal, v.GetColor(highColor)); v.m_pos.y -= (radius * dir.y);
-			v.m_pos.z += (radius * dir.z); Point p2(v.m_pos, v.m_normal, v.GetColor(highColor)); v.m_pos.z -= (radius * dir.z);
+			v.m_pos.x += (radius * dir.x); Point p0(v.m_pos, dummyNormal, v.GetColor(highColor)); v.m_pos.x -= (radius * dir.x);
+			v.m_pos.y += (radius * dir.y); Point p1(v.m_pos, dummyNormal, v.GetColor(highColor)); v.m_pos.y -= (radius * dir.y);
+			v.m_pos.z += (radius * dir.z); Point p2(v.m_pos, dummyNormal, v.GetColor(highColor)); v.m_pos.z -= (radius * dir.z);
 			triangles.push_back(Tri(p0, p1, p2));
 		};
 

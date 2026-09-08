@@ -4502,7 +4502,7 @@ bool Level::SaveOBJ(const std::filesystem::path& objFile)
 					face.push_back({
 						GetOrAddVertex(qi, slot, vert.m_pos, vert.GetColor(true)),
 						GetOrAddUV(faceUVs[QUAD_UV_REMAP[v]]),
-						GetOrAddNormal(vert.m_normal)
+						GetOrAddNormal(Vec3(0.0f, 1.0f, 0.0f))
 						});
 				}
 				fd.faces.push_back(face);
@@ -4538,7 +4538,7 @@ bool Level::SaveOBJ(const std::filesystem::path& objFile)
 					face.push_back({
 						GetOrAddVertex(qi, slot, vert.m_pos, vert.GetColor(true)),
 						GetOrAddUV(faceUVs[TRI_UV_REMAP[f][v]]),
-						GetOrAddNormal(vert.m_normal)
+						GetOrAddNormal(Vec3(0.0f, 1.0f, 0.0f))
 						});
 				}
 				fd.faces.push_back(face);

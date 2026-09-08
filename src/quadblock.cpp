@@ -420,7 +420,7 @@ Quadblock::Quadblock(const PSX::Quadblock& quadblock, const std::vector<PSX::Ver
 	m_bbox.max = ConvertPSXVec3(quadblock.bbox.max, FP_ONE_GEO);
 	m_bbox.min = ConvertPSXVec3(quadblock.bbox.min, FP_ONE_GEO);
 
-	m_name = "Quadblock " + std::to_string(quadblock.id);
+	m_name = "Quadblock." + std::to_string(quadblock.id);
 	m_flags = quadblock.flags;
 	m_doubleSided = (quadblock.drawOrderLow & (1 << 31)) != 0;
 	for (size_t i = 0; i < NUM_FACES_QUADBLOCK; i++)
@@ -858,7 +858,7 @@ std::vector<Primitive> Quadblock::ToGeometry(bool filterTriangles, const std::ar
 				const int vertIndex = uvVertInd[faceId][i];
 				const Vertex& vert = m_p[vertIndex];
 				quad.p[i].pos = vert.m_pos;
-				quad.p[i].normal = vert.m_normal;
+				quad.p[i].normal = Vec3(0.0f, 1.0f, 0.0f);
 				quad.p[i].color = filterTriangles ? filterColor : vert.GetColor(true);
 				quad.p[i].uv = filterTriangles ? Vec2() : GetUVForVertex(faceId, vertIndex);
 			}
@@ -890,7 +890,7 @@ std::vector<Primitive> Quadblock::ToGeometry(bool filterTriangles, const std::ar
 				const int vertIndex = triVerts[i];
 				const Vertex& vert = m_p[vertIndex];
 				tri.p[i].pos = vert.m_pos;
-				tri.p[i].normal = vert.m_normal;
+				tri.p[i].normal = Vec3(0.0f, 1.0f, 0.0f);
 				tri.p[i].color = filterTriangles ? filterColor : vert.GetColor(true);
 				tri.p[i].uv = filterTriangles ? Vec2() : GetUVForVertex(faceId, vertIndex);
 			}
