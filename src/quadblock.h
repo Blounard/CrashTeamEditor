@@ -111,8 +111,12 @@ typedef std::function<void(const Quadblock&)> UpdateFilterCallback;
 class Quadblock
 {
 public:
-	Quadblock(const std::string& name, Tri& t0, Tri& t1, Tri& t2, Tri& t3, const Vec3& normal, const std::vector<std::string>& materials, bool hasUV, UpdateFilterCallback filterCallback);
-	Quadblock(const std::string& name, Quad& q0, Quad& q1, Quad& q2, Quad& q3, const Vec3& normal, const std::vector<std::string>& materials, bool hasUV, UpdateFilterCallback filterCallback);
+	Quadblock(const std::string& name,
+		const std::array<Point, NUM_VERTICES_QUADBLOCK>& points,
+		const std::array<std::array<size_t, 4>, NUM_FACES_QUADBLOCK>& faceIndices,
+		const std::array<std::string, NUM_FACES_QUADBLOCK>& materials,
+		const std::array<QuadUV, NUM_FACES_QUADBLOCK>& faceUVs,
+		bool hasUV, UpdateFilterCallback filterCallback);
 	Quadblock(const PSX::Quadblock& quadblock, const std::vector<PSX::Vertex>& vertices, UpdateFilterCallback filterCallback);
 	const std::string& GetName() const;
 	Vec3 GetCenter() const;

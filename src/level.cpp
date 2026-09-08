@@ -4051,19 +4051,27 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 	m_hasRawTexture = false;
 
 	bool ret = true;
-	std::unordered_map<std::string, std::vector<Tri>> triMap;
-	std::unordered_map<std::string, std::vector<Quad>> quadMap;
-	std::unordered_map<std::string, std::vector<Vec3>> normalMap;
-	std::unordered_map<std::string, std::vector<std::string>> materialMap; // Quadname -> List of material
-	std::unordered_map<std::string, bool> meshMap;
-	std::unordered_set<std::string> materials;
 	std::vector<Point> vertices;
-	std::vector<Vec3> normals;
 	std::vector<Vec2> uvs;
+	std::unordered_map<std::string, bool> meshMap;
+	std::unordered_set<std::string> triblockNames; // objects silently skipped (not yet supported)
+	std::unordered_set<std::string> materials;
 	std::string currQuadblockName;
-	std::string activeMaterial; // material currently in effect while scanning faces of the current object
+	std::string activeMaterial;
 	bool currQuadblockGoodUV = true;
 	size_t quadblockCount = 0;
+
+	// Per-object accumulation state, reset on each "o" line.
+	std::array<std::array<size_t, 4>, NUM_FACES_QUADBLOCK> currObjFaceIndices = {};
+	std::array<std::string, NUM_FACES_QUADBLOCK> currObjFaceMaterials;
+	std::array<QuadUV, NUM_FACES_QUADBLOCK> currObjFaceUVs;
+	std::vector<size_t> currObjLocalToGlobal; // local vertex index -> global `vertices` index
+	std::unordered_map<size_t, size_t> currObjGlobalToLocal;
+	size_t currObjFacesRead = 0;
+	bool currObjIsTriblock = false;
+
+	const size_t EXPECTED_INFORMATION_PER_TOKEN = 3; /* pos, opt uvs, normal (normal value itself is no longer read) */
+
 	while (std::getline(file, line))
 	{
 		std::vector<std::string> tokens = Split(line);
@@ -4075,11 +4083,6 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 			vertices.emplace_back(std::stof(tokens[1]), std::stof(tokens[2]), std::stof(tokens[3]));
 			if (tokens.size() < 7) { continue; }
 			vertices.back().color = Color(std::stof(tokens[4]), std::stof(tokens[5]), std::stof(tokens[6]));
-		}
-		else if (command == "vn")
-		{
-			if (tokens.size() < 4) { continue; }
-			normals.emplace_back(std::stof(tokens[1]), std::stof(tokens[2]), std::stof(tokens[3]));
 		}
 		else if (command == "vt")
 		{
@@ -4114,6 +4117,14 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 			activeMaterial.clear();
 			meshMap[currQuadblockName] = false;
 			quadblockCount++;
+
+			currObjFaceIndices = {};
+			for (auto& m : currObjFaceMaterials) { m.clear(); }
+			for (auto& uv : currObjFaceUVs) { uv = QuadUV(); }
+			currObjLocalToGlobal.clear();
+			currObjGlobalToLocal.clear();
+			currObjFacesRead = 0;
+			currObjIsTriblock = false;
 		}
 		else if (command == "usemtl")
 		{
@@ -4132,183 +4143,141 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 				m_invalidQuadblocks.emplace_back(currQuadblockName, "Triblock and Quadblock merged in the same mesh.");
 				continue;
 			}
+			if (currObjFacesRead >= NUM_FACES_QUADBLOCK) { continue; } // malformed: more than 4 face lines for this object
 
-			bool isQuadblock = tokens.size() == 5;
-			materialMap[currQuadblockName].push_back(activeMaterial);
-
-			std::vector<std::string> token0 = Split(tokens[1], '/');
-			std::vector<std::string> token1 = Split(tokens[2], '/');
-			std::vector<std::string> token2 = Split(tokens[3], '/');
-
-			const size_t EXPECTED_INFORMATION_PER_TOKEN = 3; /* pos, opt uvs, normals */
-			if (token0.size() < EXPECTED_INFORMATION_PER_TOKEN ||
-				token1.size() < EXPECTED_INFORMATION_PER_TOKEN ||
-				token2.size() < EXPECTED_INFORMATION_PER_TOKEN)
+			if (tokens.size() != 5)
 			{
-				ret = false;
-				m_invalidQuadblocks.emplace_back(currQuadblockName, "Missing vertex normals.");
+				// Not a quad face (e.g. a 3-vertex triblock face). Triblocks aren't supported by
+				// this loader yet - flag the whole object to be silently skipped once complete.
+				currObjIsTriblock = true;
+				currObjFacesRead++;
+				if (currObjFacesRead == NUM_FACES_QUADBLOCK) { triblockNames.insert(currQuadblockName); }
 				continue;
 			}
 
-			int i0 = std::stoi(token0[0]) - 1;
-			int i1 = std::stoi(token1[0]) - 1;
-			int i2 = std::stoi(token2[0]) - 1;
+			const size_t faceIdx = currObjFacesRead;
+			currObjFaceMaterials[faceIdx] = activeMaterial;
 
-			if (currQuadblockGoodUV)
+			QuadUV faceUV;
+			bool faceGoodUV = true;
+			for (size_t v = 0; v < 4; v++)
 			{
-				int uv0 = 0;
-				int uv1 = 0;
-				int uv2 = 0;
+				std::vector<std::string> tok = Split(tokens[v + 1], '/');
+				if (tok.size() < EXPECTED_INFORMATION_PER_TOKEN)
+				{
+					ret = false;
+					m_invalidQuadblocks.emplace_back(currQuadblockName, "Missing vertex normals.");
+					currObjIsTriblock = true; // can't safely build this object; treat like a skip
+					continue;
+				}
+
+				int posIdx = std::stoi(tok[0]) - 1;
+				if (posIdx < 0 || static_cast<size_t>(posIdx) >= vertices.size())
+				{
+					ret = false;
+					m_invalidQuadblocks.emplace_back(currQuadblockName, "Vertex index out of range.");
+					currObjIsTriblock = true;
+					continue;
+				}
+				const size_t globalIdx = static_cast<size_t>(posIdx);
+
+				size_t localIdx;
+				auto it = currObjGlobalToLocal.find(globalIdx);
+				if (it == currObjGlobalToLocal.end())
+				{
+					localIdx = currObjLocalToGlobal.size();
+					currObjGlobalToLocal[globalIdx] = localIdx;
+					currObjLocalToGlobal.push_back(globalIdx);
+				}
+				else { localIdx = it->second; }
+				currObjFaceIndices[faceIdx][v] = localIdx;
+
+				Vec2 uv = Vec2();
 				try
 				{
-					uv0 = std::stoi(token0[1]) - 1;
-					uv1 = std::stoi(token1[1]) - 1;
-					uv2 = std::stoi(token2[1]) - 1;
+					int uvIdx = std::stoi(tok[1]) - 1;
+					if (uvIdx < 0 || static_cast<size_t>(uvIdx) >= uvs.size()) { throw std::out_of_range("uv index out of range"); }
+					uv = uvs[static_cast<size_t>(uvIdx)];
 				}
-				catch (...) { currQuadblockGoodUV = false; }
-
-				if (currQuadblockGoodUV)
-				{
-					vertices[i0].uv = uvs[uv0];
-					vertices[i1].uv = uvs[uv1];
-					vertices[i2].uv = uvs[uv2];
-				}
+				catch (...) { faceGoodUV = false; }
+				faceUV[v] = uv;
 			}
 
-			if (!currQuadblockGoodUV)
+			if (!faceGoodUV)
 			{
+				currQuadblockGoodUV = false;
 				m_invalidQuadblocks.emplace_back(currQuadblockName, "Missing UVs.");
 			}
+			currObjFaceUVs[faceIdx] = faceUV;
 
-			bool blockFetched = false;
-			if (isQuadblock)
+			currObjFacesRead++;
+			if (currObjFacesRead == NUM_FACES_QUADBLOCK)
 			{
-				std::vector<std::string> token3 = Split(tokens[4], '/');
-				int i3 = std::stoi(token3[0]) - 1;
-				if (currQuadblockGoodUV)
+				if (currObjIsTriblock)
 				{
-					int uv3 = std::stoi(token3[1]) - 1;
-					vertices[i3].uv = uvs[uv3];
+					triblockNames.insert(currQuadblockName);
 				}
-
-				Vec3 faceNormal = (vertices[i1].pos - vertices[i0].pos).Cross(vertices[i2].pos - vertices[i0].pos);
-				//faceNormal += (vertices[i3].pos - vertices[i2].pos).Cross(vertices[i0].pos - vertices[i2].pos);
-				faceNormal.Normalize();
-				vertices[i0].normal = faceNormal;
-				vertices[i1].normal = faceNormal;
-				vertices[i2].normal = faceNormal;
-				vertices[i3].normal = faceNormal;
-				normalMap[currQuadblockName].push_back(faceNormal);
-
-				if (!quadMap.contains(currQuadblockName)) { quadMap[currQuadblockName] = std::vector<Quad>(); }
-				quadMap[currQuadblockName].emplace_back(vertices[i0], vertices[i1], vertices[i2], vertices[i3]);
-				blockFetched = quadMap[currQuadblockName].size() == 4;
-			}
-			else
-			{
-				Vec3 faceNormal = (vertices[i1].pos - vertices[i0].pos).Cross(vertices[i2].pos - vertices[i0].pos);
-				faceNormal.Normalize();
-				vertices[i0].normal = faceNormal;
-				vertices[i1].normal = faceNormal;
-				vertices[i2].normal = faceNormal;
-				normalMap[currQuadblockName].push_back(faceNormal); // maybe need more normals ?
-
-				if (!triMap.contains(currQuadblockName)) { triMap[currQuadblockName] = std::vector<Tri>(); }
-				triMap[currQuadblockName].emplace_back(vertices[i0], vertices[i1], vertices[i2]);
-				blockFetched = triMap[currQuadblockName].size() == 4;
-			}
-
-			if (blockFetched)
-			{
-				Vec3 averageNormal = Vec3();
-				for (const Vec3& normal : normalMap[currQuadblockName])
+				else if (currObjLocalToGlobal.size() != NUM_VERTICES_QUADBLOCK)
 				{
-					averageNormal = averageNormal + normal;
-				}
-				averageNormal = averageNormal / averageNormal.Length();
-
-				const std::vector<std::string>& faceMaterials = materialMap[currQuadblockName]; // size 4, one per face
-				for (size_t face = 0; face < faceMaterials.size(); face++)
-				{
-					const std::string& material = faceMaterials[face];
-					if (material.empty()) { continue; }
-					m_materialToQuadFaces[material].push_back(std::make_pair(m_quadblocks.size(), face));
-					if (!materials.contains(material))
-					{
-						materials.insert(material);
-						m_materialToTexture[material] = Texture();
-						m_propTerrain.SetDefaultValue(material, TerrainType::DEFAULT);
-						m_propQuadFlags.SetDefaultValue(material, QuadFlags::DEFAULT);
-						m_propDoubleSided.SetDefaultValue(material, false);
-						m_propCheckpoints.SetDefaultValue(material, false);
-						m_propTurboPads.SetDefaultValue(material, QuadblockTrigger::NONE);
-						m_propWeatherIntensity.SetDefaultValue(material, 0);
-						m_propWeatherVanishRate.SetDefaultValue(material, 0);
-						m_propCheckpointPathable.SetDefaultValue(material, true);
-						m_propVisTreeTransparent.SetDefaultValue(material, false);
-						m_propDrawOrderHigh.SetDefaultValue(material, static_cast<int>(0));
-						m_propWater.SetDefaultValue(material, false);
-						m_propTerrain.RegisterMaterial(this);
-						m_propQuadFlags.RegisterMaterial(this);
-						m_propDoubleSided.RegisterMaterial(this);
-						m_propCheckpoints.RegisterMaterial(this);
-						m_propTurboPads.RegisterMaterial(this);
-						m_propSpeedImpact.RegisterMaterial(this);
-						m_propWeatherIntensity.RegisterMaterial(this);
-						m_propWeatherVanishRate.RegisterMaterial(this);
-						m_propCheckpointPathable.RegisterMaterial(this);
-						m_propVisTreeTransparent.RegisterMaterial(this);
-						m_propDrawOrderHigh.RegisterMaterial(this);
-						m_propWater.RegisterMaterial(this);
-					}
-				}
-				bool sameUVs = true;
-				if (isQuadblock)
-				{
-					Quad& q0 = quadMap[currQuadblockName][0];
-					Quad& q1 = quadMap[currQuadblockName][1];
-					Quad& q2 = quadMap[currQuadblockName][2];
-					Quad& q3 = quadMap[currQuadblockName][3];
-					const Vec2& targetUV = q0.p[0].uv;
-					for (size_t i = 0; i < 4; i++)
-					{
-						const Quad& q = quadMap[currQuadblockName][i];
-						for (size_t j = 0; j < 4; j++)
-						{
-							if (q.p[j].uv != targetUV) { sameUVs = false; break; }
-						}
-						if (!sameUVs) { break; }
-					}
-					try
-					{
-						m_quadblocks.emplace_back(currQuadblockName, q0, q1, q2, q3, averageNormal, faceMaterials, currQuadblockGoodUV, [this](const Quadblock& qb) { UpdateFilterRenderData(qb); });
-						meshMap[currQuadblockName] = true;
-					}
-					catch (const QuadException& e)
-					{
-						ret = false;
-						m_invalidQuadblocks.emplace_back(currQuadblockName, e.what());
-					}
+					ret = false;
+					m_invalidQuadblocks.emplace_back(currQuadblockName,
+						"Expected " + std::to_string(NUM_VERTICES_QUADBLOCK) + " vertices, found " + std::to_string(currObjLocalToGlobal.size()) + ".");
 				}
 				else
 				{
-					Tri& t0 = triMap[currQuadblockName][0];
-					Tri& t1 = triMap[currQuadblockName][1];
-					Tri& t2 = triMap[currQuadblockName][2];
-					Tri& t3 = triMap[currQuadblockName][3];
-					const Vec2& targetUV = t0.p[0].uv;
-					for (size_t i = 0; i < 4; i++)
+					std::array<Point, NUM_VERTICES_QUADBLOCK> points;
+					for (size_t k = 0; k < NUM_VERTICES_QUADBLOCK; k++) { points[k] = vertices[currObjLocalToGlobal[k]]; }
+
+					for (size_t face = 0; face < NUM_FACES_QUADBLOCK; face++)
 					{
-						const Tri& t = triMap[currQuadblockName][i];
-						for (size_t j = 0; j < 3; j++)
+						const std::string& material = currObjFaceMaterials[face];
+						if (material.empty()) { continue; }
+						m_materialToQuadFaces[material].push_back(std::make_pair(m_quadblocks.size(), face));
+						if (!materials.contains(material))
 						{
-							if (t.p[j].uv != targetUV) { sameUVs = false; break; }
+							materials.insert(material);
+							m_materialToTexture[material] = Texture();
+							m_propTerrain.SetDefaultValue(material, TerrainType::DEFAULT);
+							m_propQuadFlags.SetDefaultValue(material, QuadFlags::DEFAULT);
+							m_propDoubleSided.SetDefaultValue(material, false);
+							m_propCheckpoints.SetDefaultValue(material, false);
+							m_propTurboPads.SetDefaultValue(material, QuadblockTrigger::NONE);
+							m_propWeatherIntensity.SetDefaultValue(material, 0);
+							m_propWeatherVanishRate.SetDefaultValue(material, 0);
+							m_propCheckpointPathable.SetDefaultValue(material, true);
+							m_propVisTreeTransparent.SetDefaultValue(material, false);
+							m_propDrawOrderHigh.SetDefaultValue(material, static_cast<int>(0));
+							m_propWater.SetDefaultValue(material, false);
+							m_propTerrain.RegisterMaterial(this);
+							m_propQuadFlags.RegisterMaterial(this);
+							m_propDoubleSided.RegisterMaterial(this);
+							m_propCheckpoints.RegisterMaterial(this);
+							m_propTurboPads.RegisterMaterial(this);
+							m_propSpeedImpact.RegisterMaterial(this);
+							m_propWeatherIntensity.RegisterMaterial(this);
+							m_propWeatherVanishRate.RegisterMaterial(this);
+							m_propCheckpointPathable.RegisterMaterial(this);
+							m_propVisTreeTransparent.RegisterMaterial(this);
+							m_propDrawOrderHigh.RegisterMaterial(this);
+							m_propWater.RegisterMaterial(this);
 						}
-						if (!sameUVs) { break; }
 					}
+
+					bool sameUVs = true;
+					const Vec2& targetUV = currObjFaceUVs[0][0];
+					for (size_t f = 0; f < NUM_FACES_QUADBLOCK && sameUVs; f++)
+					{
+						for (size_t c = 0; c < 4; c++)
+						{
+							if (currObjFaceUVs[f][c] != targetUV) { sameUVs = false; break; }
+						}
+					}
+					if (sameUVs) { m_invalidQuadblocks.emplace_back(currQuadblockName, "Degenerated UV data."); }
+
 					try
 					{
-						m_quadblocks.emplace_back(currQuadblockName, t0, t1, t2, t3, averageNormal, faceMaterials, currQuadblockGoodUV, [this](const Quadblock& qb) { UpdateFilterRenderData(qb); });
+						m_quadblocks.emplace_back(currQuadblockName, points, currObjFaceIndices, currObjFaceMaterials, currObjFaceUVs, currQuadblockGoodUV,
+							[this](const Quadblock& qb) { UpdateFilterRenderData(qb); });
 						meshMap[currQuadblockName] = true;
 					}
 					catch (const QuadException& e)
@@ -4316,10 +4285,6 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 						ret = false;
 						m_invalidQuadblocks.emplace_back(currQuadblockName, e.what());
 					}
-				}
-				if (sameUVs)
-				{
-					m_invalidQuadblocks.emplace_back(currQuadblockName, "Degenerated UV data.");
 				}
 			}
 		}
@@ -4377,16 +4342,17 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 		}
 	}
 
-	if (quadblockCount != m_quadblocks.size())
+	const size_t expectedQuadblocks = quadblockCount - triblockNames.size();
+	if (expectedQuadblocks != m_quadblocks.size())
 	{
 		m_showLogWindow = true;
-		m_logMessage = "Error: number of meshes does not equal number of quadblocks.\n\nNumber of meshes found: " + std::to_string(quadblockCount) + "\nNumber of quadblocks: " + std::to_string(m_quadblocks.size());;
+		m_logMessage = "Error: number of meshes does not equal number of quadblocks.\n\nNumber of meshes found: " + std::to_string(expectedQuadblocks) + "\nNumber of quadblocks: " + std::to_string(m_quadblocks.size());
 		m_logMessage += "\n\nThe following meshes are not a quadblock:\n\n";
 		constexpr size_t QUADS_PER_LINE = 10;
 		size_t invalidQuadblocks = 0;
 		for (auto& [name, status] : meshMap)
 		{
-			if (status) { continue; }
+			if (status || triblockNames.contains(name)) { continue; }
 			m_logMessage += name + ", ";
 			if (((invalidQuadblocks + 1) % QUADS_PER_LINE) == 0) { m_logMessage += "\n"; }
 			invalidQuadblocks++;
