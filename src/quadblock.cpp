@@ -3,29 +3,13 @@
 #include "settings.h"
 
 #include <unordered_map>
+#include <map>
 #include <unordered_set>
 #include <cstring>
 
-Vec3 ComputeNewellNormal(const std::vector<Vec3>& poly)
-{
-	Vec3 n = Vec3();
-	const size_t count = poly.size();
-	for (size_t i = 0; i < count; i++)
-	{
-		const Vec3& curr = poly[i];
-		const Vec3& next = poly[(i + 1) % count];
-		n.x += (curr.y - next.y) * (curr.z + next.z);
-		n.y += (curr.z - next.z) * (curr.x + next.x);
-		n.z += (curr.x - next.x) * (curr.y + next.y);
-	}
-	const float len = n.Length();
-	if (len > 0.0f) { n = n / len; }
-	return n;
-}
-
 Quadblock::Quadblock(const std::string& name,
 	const std::vector<Point>& points,
-	const std::vector<std::vector<size_t>>& faceIndices,
+	const std::vector<std::vector<size_t>>& facesIndexes,
 	const std::vector<std::vector<Vec2>>& faceUVs,
 	const std::vector<std::string>& faceMaterials,
 	bool hasUV, UpdateFilterCallback filterCallback)
@@ -33,52 +17,48 @@ Quadblock::Quadblock(const std::string& name,
 	constexpr size_t INVALID = std::numeric_limits<size_t>::max();
 	constexpr size_t EXPECTED_FACE_COUNT = NUM_FACES_QUADBLOCK;
 
-	if (faceIndices.size() < EXPECTED_FACE_COUNT)
+	if (facesIndexes.size() != EXPECTED_FACE_COUNT)
 	{
-		throw QuadException("Expected at least " + std::to_string(EXPECTED_FACE_COUNT) + " faces to build a quadblock, found " + std::to_string(faceIndices.size()) + ".");
+		throw QuadException("Expected exactly " + std::to_string(EXPECTED_FACE_COUNT) + " faces, found " + std::to_string(facesIndexes.size()) + ".");
 	}
-	if (faceIndices.size() > EXPECTED_FACE_COUNT)
+	if (faceUVs.size() != facesIndexes.size() || faceMaterials.size() != facesIndexes.size())
 	{
-		// Not explicitly specified by design; >4 faces has no defined grid model yet, so
-		// treated as an error for now rather than silently ignoring the extras.
-		throw QuadException("Expected exactly " + std::to_string(EXPECTED_FACE_COUNT) + " faces, found " + std::to_string(faceIndices.size()) + ".");
-	}
-	if (faceUVs.size() != faceIndices.size() || faceMaterials.size() != faceIndices.size())
-	{
-		throw QuadException("Internal error: face data arrays have mismatched sizes.");
+		throw QuadException("OBJ error: face data arrays have mismatched sizes.");
 	}
 
-	// Step 1: reference-count every point referenced by any face.
+	std::map<std::tuple<size_t, size_t>, size_t> objFaceVertIdMap; // (objFaceId, objGlobalVertId) -> objFaceVertId
+
 	std::vector<size_t> refCount(points.size(), 0);
-	for (const auto& face : faceIndices)
+	for (size_t objFaceId = 0; objFaceId < facesIndexes.size(); objFaceId++)
 	{
-		for (size_t idx : face)
+		const auto& face = facesIndexes[objFaceId];
+		for (size_t objFaceVertId = 0; objFaceVertId < face.size(); objFaceVertId++)
 		{
-			if (idx >= points.size()) { throw QuadException("Face references a vertex index out of range."); }
-			refCount[idx]++;
+			size_t objGlobalVertId = face[objFaceVertId];
+			if (objGlobalVertId >= points.size()) { throw QuadException("Face references a vertex index out of range."); }
+			refCount[objGlobalVertId]++;
+			objFaceVertIdMap[std::make_tuple(objFaceId, objGlobalVertId)] = objFaceVertId;
 		}
 	}
 
 	size_t centerIdx = INVALID;
-	size_t centerCount = 0;
+	bool triblock_check = true;
 	for (size_t i = 0; i < points.size(); i++)
 	{
-		if (refCount[i] == faceIndices.size())
+		if (refCount[i] == facesIndexes.size()) // Note "Centers" don't make sense with 2 faces or less.
 		{
-			centerIdx = i;
-			centerCount++;
+			triblock_check = false; // Triblock have 0 centers. Only valid (legacy) shape with 0 center.
+			if (centerIdx == INVALID)
+				centerIdx = i;
+			else
+				centerIdx = INVALID;
 		}
 	}
 
-	if (centerCount == 0)
+	if (triblock_check)
 	{
-		// No vertex shared by all 4 faces: this object doesn't have quadblock topology at all
-		// (a triblock, under the old 9-vertex encoding). Real triblock support is being
-		// reworked separately; for now, build a trivial placeholder rather than failing the
-		// whole object, so the rest of the level still loads. Revisit once triblocks are
-		// properly redesigned.
-		printf("NOTE: Object '%s' has no vertex shared by all faces (looks like a triblock); building a placeholder quadblock for it.\n", name.c_str());
-		const size_t placeholderIdx = faceIndices[0][0];
+		//printf("NOTE: Object '%s' has no vertex shared by all faces (looks like a triblock); building a placeholder quadblock for it.\n", name.c_str());
+		const size_t placeholderIdx = facesIndexes[0][0];
 		for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++) { m_p[i] = Vertex(points[placeholderIdx]); }
 		ResetUVs();
 		m_name = name;
@@ -89,100 +69,128 @@ Quadblock::Quadblock(const std::string& name,
 		SetDefaultValues();
 		return;
 	}
-	if (centerCount > 1)
+	if (centerIdx == INVALID)
 	{
-		throw QuadException("More than one candidate center vertex found (" + std::to_string(centerCount) + ").");
+		throw QuadException("More than one candidate center vertex found");
 	}
 
-	// Step 2: classify each face's own vertices relative to the center. cornersInFace == 0
-	// is allowed (a triangle face missing its corner) - synthesized in Step 5.
-	std::vector<size_t> faceCorner(faceIndices.size(), INVALID);
-	std::vector<std::array<size_t, 2>> faceEdges(faceIndices.size());
-	for (size_t f = 0; f < faceIndices.size(); f++)
-	{
-		size_t cornersInFace = 0, edgesInFace = 0, centersInFace = 0;
-		for (size_t idx : faceIndices[f])
+	/*
+	p0 -- p1 -- p2
+	|  q0 |  q1 |
+	p3 -- p4 -- p5
+	|  q2 |  q3 |
+	p6 -- p7 -- p8
+	*/
+	std::vector<size_t> faceOBJtoQuad(facesIndexes.size(), INVALID); // OBJ face index -> Quadblock face index
+	std::vector<size_t> vertOBJtoQuad(points.size(), INVALID); // OBJ vert index -> Quadblock vert index
+	std::array<size_t, NUM_FACES_QUADBLOCK> faceQuadtoOBJ{}; faceQuadtoOBJ.fill(INVALID); // Quadblock face index -> OBJ face index
+	std::array<size_t, NUM_VERTICES_QUADBLOCK> vertQuadtoOBJ{}; vertQuadtoOBJ.fill(INVALID); // Quadblock vert index -> OBJ vert index
+
+	faceOBJtoQuad[0] = 0; // We always assign face 0 the first face in the .obj
+	faceQuadtoOBJ[0] = 0;
+	vertQuadtoOBJ[4] = centerIdx;
+
+	auto FindRelativePoint = [&](size_t objFaceId, size_t objGlobalVertId, int offset) -> size_t
 		{
-			if (idx == centerIdx) { centersInFace++; }
-			else if (refCount[idx] == 1) { faceCorner[f] = idx; cornersInFace++; }
-			else if (refCount[idx] == 2) { faceEdges[f][edgesInFace++] = idx; }
-			else
-			{
-				throw QuadException("Face " + std::to_string(f) + " references vertex " + std::to_string(idx) +
-					" which is shared by an unexpected number of faces (" + std::to_string(refCount[idx]) + ").");
-			}
-		}
-		if (centersInFace != 1 || edgesInFace != 2 || cornersInFace > 1)
-		{
-			throw QuadException("Face " + std::to_string(f) + " does not have the composition of a quadblock quadrant (found " +
-				std::to_string(cornersInFace) + " corner(s), " + std::to_string(edgesInFace) + " edge(s), " +
-				std::to_string(centersInFace) + " center(s)).");
-		}
-	}
-
-	// Step 3: resolve winding using face 0's own declared vertex order around the CENTER
-	// (not the corner, which might be missing). The center's two immediate neighbours in a
-	// face's own cyclic vertex list are always that face's 2 edge vertices, whether the face
-	// has 4 vertices (quad) or 3 (corner-missing triangle) - so this anchor works either way.
-	const std::vector<size_t>& face0 = faceIndices[0];
-	size_t centerSlot = INVALID;
-	for (size_t s = 0; s < face0.size(); s++)
-	{
-		if (face0[s] == centerIdx) { centerSlot = s; break; }
-	}
-	if (centerSlot == INVALID) { throw QuadException("Internal error: face 0's center vertex not found in its own vertex list."); }
-	const size_t L = face0.size();
-	const size_t ccwNextIdx = face0[(centerSlot + 1) % L];
-	const size_t ccwPrevIdx = face0[(centerSlot + L - 1) % L];
-
-	std::array<size_t, NUM_FACES_QUADBLOCK> faceForRole = { 0, INVALID, INVALID, INVALID };
-	for (size_t f = 1; f < faceIndices.size(); f++)
-	{
-		bool sharesNext = (faceEdges[f][0] == ccwNextIdx || faceEdges[f][1] == ccwNextIdx);
-		bool sharesPrev = (faceEdges[f][0] == ccwPrevIdx || faceEdges[f][1] == ccwPrevIdx);
-		if (sharesNext && !sharesPrev) { faceForRole[1] = f; }
-		else if (sharesPrev && !sharesNext) { faceForRole[2] = f; }
-		else if (!sharesNext && !sharesPrev) { faceForRole[3] = f; }
-		else { throw QuadException("Face " + std::to_string(f) + " shares both of face 0's edges; malformed grid topology."); }
-	}
-	if (faceForRole[1] == INVALID || faceForRole[2] == INVALID || faceForRole[3] == INVALID)
-	{
-		throw QuadException("Could not uniquely resolve the 4 faces into a 2x2 grid; malformed topology.");
-	}
-
-	// Step 4: place center + the 4 edges (always present - only corners can be missing).
-	std::array<size_t, NUM_VERTICES_QUADBLOCK> gridPointIdx = {};
-	gridPointIdx[4] = centerIdx;
-	auto FindSharedEdge = [&](size_t faceA, size_t faceB) -> size_t
-		{
-			for (size_t a : faceEdges[faceA])
-			{
-				for (size_t b : faceEdges[faceB])
-				{
-					if (a == b) { return a; }
-				}
-			}
-			throw QuadException("Faces expected to be adjacent share no edge; malformed topology.");
+			// facesIndexes[i] ; vert ID (quad ID, not face) ; Offset (like +1 for next in face) -> vert ID (quad ID not face)
+			if (!objFaceVertIdMap.contains(std::make_tuple(objFaceId, objGlobalVertId)))
+				return INVALID;
+			size_t objFaceVertId = objFaceVertIdMap[std::make_tuple(objFaceId, objGlobalVertId)];				
+			int facesSize = static_cast<int>(facesIndexes[objFaceId].size());
+			return facesIndexes[objFaceId][(((static_cast<int>(objFaceVertId) - offset) % facesSize) + facesSize) % facesSize];
 		};
-	gridPointIdx[1] = FindSharedEdge(faceForRole[0], faceForRole[1]);
-	gridPointIdx[3] = FindSharedEdge(faceForRole[0], faceForRole[2]);
-	gridPointIdx[5] = FindSharedEdge(faceForRole[1], faceForRole[3]);
-	gridPointIdx[7] = FindSharedEdge(faceForRole[2], faceForRole[3]);
 
-	// Step 5: place the 4 corners, synthesizing any missing one from a fixed neighbour
-	// (ring order 0->1, 2->5, 8->7, 6->3 - deterministic regardless of rotation or file order).
-	auto ResolveCorner = [&](size_t role, size_t substituteGridPos) -> size_t
+
+	//Resolve Face 0's vertices
+	if (facesIndexes[0].size() == 4) // Face 0 is a quad
+	{
+		vertQuadtoOBJ[1] = FindRelativePoint(0, centerIdx, -1); // p1 is the one that comes before p4 in q0 CCW order
+		vertQuadtoOBJ[3] = FindRelativePoint(0, centerIdx, +1); // p3 is the one that comes after p4 in q0 CCW order
+		vertQuadtoOBJ[0] = FindRelativePoint(0, centerIdx, +2); // p0 is the last one in q0
+	}
+	else if (facesIndexes[0].size() == 3) // Face 0 is a tri
+	{
+		size_t next = FindRelativePoint(0, centerIdx, +1);
+		size_t prev = FindRelativePoint(0, centerIdx, -1);
+		bool nextUnique = refCount[next] == 1;
+		bool prevUnique = refCount[prev] == 1;
+
+		if (!nextUnique)
 		{
-			size_t f = faceForRole[role];
-			if (faceCorner[f] != INVALID) { return faceCorner[f]; }
-			return gridPointIdx[substituteGridPos];
-		};
-	gridPointIdx[0] = ResolveCorner(0, 1);
-	gridPointIdx[2] = ResolveCorner(1, 5);
-	gridPointIdx[6] = ResolveCorner(2, 3);
-	gridPointIdx[8] = ResolveCorner(3, 7);
+			vertQuadtoOBJ[3] = next;
+		}
+		else
+		{
+			vertQuadtoOBJ[0] = next;
+		}
+		if (!prevUnique)
+		{
+			vertQuadtoOBJ[1] = prev;
+		}
+		else
+		{
+			vertQuadtoOBJ[0] = prev;
+		}
+		if (!prevUnique && !nextUnique)
+		{
+			vertQuadtoOBJ[0] = next;
+		}
+	}
 
-	for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++) { m_p[i] = Vertex(points[gridPointIdx[i]]); }
+	// Identify Face 1 : It's the face that has p4 - p1 as an edge.
+	for (size_t faceId = 1; faceId < facesIndexes.size(); faceId++)
+	{
+		if (FindRelativePoint(faceId, vertQuadtoOBJ[4], +1) == vertQuadtoOBJ[1])
+		{
+			faceOBJtoQuad[faceId] = 1; 
+			faceQuadtoOBJ[1] = faceId;
+			break;
+		}
+	}
+	if (faceQuadtoOBJ[1] == INVALID)
+		throw QuadException("Quadblock Face 1 couldn't be identified");
+
+	// Resolve Face 1 vertices : p1 and p4 already verified.
+	vertQuadtoOBJ[5] = FindRelativePoint(faceQuadtoOBJ[1], centerIdx, -1); // p5 is the one that comes before p4 in q1 CCW order
+	vertQuadtoOBJ[2] = FindRelativePoint(faceQuadtoOBJ[1], centerIdx, +2); // p2 is the last one in q1
+
+	// Identify Face 2 : It's the face with p3 - p4 as an edge
+	for (size_t faceId = 1; faceId < facesIndexes.size(); faceId++)
+	{
+		if (FindRelativePoint(faceId, vertQuadtoOBJ[4], -1) == vertQuadtoOBJ[3])
+		{
+			faceOBJtoQuad[faceId] = 2; 
+			faceQuadtoOBJ[2] = faceId;
+			break;
+		}
+	}
+	if (faceQuadtoOBJ[2] == INVALID)
+		throw QuadException("Quadblock Face 2 couldn't be identified");
+
+	// Resolve Face 2 vertices : p3 and p4 already verified.
+	vertQuadtoOBJ[7] = FindRelativePoint(faceQuadtoOBJ[2], centerIdx, +1); // p7 is the one that comes after p4 in q2 CCW order
+	vertQuadtoOBJ[6] = FindRelativePoint(faceQuadtoOBJ[2], centerIdx, +2); // p6 is the last one in q1
+
+	// Identify Face 3 : It's the last face non identified
+	for (size_t faceId = 1; faceId < facesIndexes.size(); faceId++)
+	{
+		if (faceOBJtoQuad[faceId] == INVALID)
+		{
+			faceOBJtoQuad[faceId] = 3;
+			faceQuadtoOBJ[3] = faceId;
+			break;
+		}
+	}
+	// Resolve Face 3 vertices : only p8 left
+	vertQuadtoOBJ[8] = FindRelativePoint(faceQuadtoOBJ[3], centerIdx, +2); // p6 is the last one in q1
+
+	for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++) 
+	{ 
+		if (vertQuadtoOBJ[i] == INVALID)
+			throw QuadException("Quadblock Vert" + std::to_string(i) + "couldn't be identified");
+		m_p[i] = Vertex(points[vertQuadtoOBJ[i]]);
+		vertOBJtoQuad[vertQuadtoOBJ[i]] = i;
+	}
 
 	// Step 6: UVs. A synthesized corner's grid index equals its substitute edge's grid index,
 	// so this lookup naturally finds that edge's own real, authored UV for it automatically -
@@ -197,19 +205,15 @@ Quadblock::Quadblock(const std::string& name,
 
 	if (hasUV)
 	{
-		for (size_t role = 0; role < NUM_FACES_QUADBLOCK; role++)
+		for (size_t quadFaceId = 0; quadFaceId < NUM_FACES_QUADBLOCK; quadFaceId++)
 		{
-			const size_t origFace = faceForRole[role];
-			for (size_t j = 0; j < 4; j++)
+			const size_t objFaceId = faceQuadtoOBJ[quadFaceId];
+			for (size_t faceVertId = 0; faceVertId < 4; faceVertId++)
 			{
-				const size_t wantedGlobalIdx = gridPointIdx[uvVertInd[role][j]];
-				size_t srcSlot = INVALID;
-				for (size_t k = 0; k < faceIndices[origFace].size(); k++)
-				{
-					if (faceIndices[origFace][k] == wantedGlobalIdx) { srcSlot = k; break; }
-				}
-				if (srcSlot == INVALID) { throw QuadException("Internal error mapping UVs for face " + std::to_string(origFace) + "."); }
-				m_uvs[role][j] = faceUVs[origFace][srcSlot];
+				size_t quadVertId = uvVertInd[quadFaceId][faceVertId];
+				size_t objGlobalVertId = vertQuadtoOBJ[quadVertId];
+				size_t objVertFaceId = objFaceVertIdMap[std::make_tuple(objFaceId, objGlobalVertId)];
+				m_uvs[quadFaceId][faceVertId] = faceUVs[objFaceId][objVertFaceId];
 			}
 		}
 
@@ -248,7 +252,7 @@ Quadblock::Quadblock(const std::string& name,
 	else { ResetUVs(); }
 
 	m_name = name;
-	for (size_t role = 0; role < NUM_FACES_QUADBLOCK; role++) { m_materials[role] = faceMaterials[faceForRole[role]]; }
+	for (size_t quadFaceId = 0; quadFaceId < NUM_FACES_QUADBLOCK; quadFaceId++) { m_materials[quadFaceId] = faceMaterials[faceQuadtoOBJ[quadFaceId]]; }
 	m_materials[NUM_FACES_QUADBLOCK] = m_materials[0];
 	m_triblock = false;
 	m_filterCallback = filterCallback;
