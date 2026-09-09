@@ -86,11 +86,40 @@ Quadblock::Quadblock(const std::string& name,
 	std::array<size_t, NUM_FACES_QUADBLOCK> faceQuadtoOBJ{}; faceQuadtoOBJ.fill(INVALID); // Quadblock face index -> OBJ face index
 	std::array<size_t, NUM_VERTICES_QUADBLOCK> vertQuadtoOBJ{}; vertQuadtoOBJ.fill(INVALID); // Quadblock vert index -> OBJ vert index
 
-	faceOBJtoQuad[0] = 0; // We always assign face 0 the first face in the .obj
-	faceQuadtoOBJ[0] = 0;
-	vertQuadtoOBJ[4] = centerIdx;
+	constexpr size_t quadFaceVertOrder[NUM_FACES_QUADBLOCK][4] = 
+	{
+		{4, 3, 0, 1},
+		{4, 1, 2, 5},
+		{4, 7, 6, 3},
+		{4, 5, 8, 7}
+	};
 
-	auto FindRelativePoint = [&](size_t objFaceId, size_t objGlobalVertId, int offset) -> size_t
+	constexpr size_t quadFaceOrder[NUM_FACES_QUADBLOCK] = { 0, 1 , 3 , 2 };
+
+
+	auto FindRelativeFaceQuad = [&](size_t faceId, int offset) -> size_t // other quadface than faceId that share the edge with center and center+offset 
+		{
+			size_t facePos = INVALID;
+			for (size_t i = 0; i < NUM_FACES_QUADBLOCK; i++)
+			{
+				if (quadFaceOrder[i] == faceId) 
+					facePos = i;
+			}
+			return quadFaceOrder[(((static_cast<int>(facePos) - offset) % NUM_FACES_QUADBLOCK) + NUM_FACES_QUADBLOCK) % NUM_FACES_QUADBLOCK];
+		};
+
+	auto FindRelativePointQuad = [&](size_t faceId, size_t vertId, int offset) -> size_t
+		{
+			size_t vertFacePosition = INVALID;
+			for (size_t i = 0; i < 4; i++)
+			{
+				if (quadFaceVertOrder[faceId][i] == vertId)
+					vertFacePosition = i;
+			}
+			return quadFaceVertOrder[faceId][(((static_cast<int>(vertFacePosition) + offset) % 4) + 4) % 4];
+		};
+
+	auto FindRelativePointOBJ = [&](size_t objFaceId, size_t objGlobalVertId, int offset) -> size_t
 		{
 			// facesIndexes[i] ; vert ID (quad ID, not face) ; Offset (like +1 for next in face) -> vert ID (quad ID not face)
 			if (!objFaceVertIdMap.contains(std::make_tuple(objFaceId, objGlobalVertId)))
@@ -101,93 +130,66 @@ Quadblock::Quadblock(const std::string& name,
 		};
 
 
-	//Resolve Face 0's vertices
-	if (facesIndexes[0].size() == 4) // Face 0 is a quad
+	const size_t centerQuadVertId = 4;
+	faceOBJtoQuad[0] = 0; // We always assign face 0 the first face in the .obj
+	faceQuadtoOBJ[0] = 0;
+	vertQuadtoOBJ[centerQuadVertId] = centerIdx;
+	std::vector<size_t> quadFaceIdToVisit = { 0 };
+	while (!quadFaceIdToVisit.empty())
 	{
-		vertQuadtoOBJ[1] = FindRelativePoint(0, centerIdx, -1); // p1 is the one that comes before p4 in q0 CCW order
-		vertQuadtoOBJ[3] = FindRelativePoint(0, centerIdx, +1); // p3 is the one that comes after p4 in q0 CCW order
-		vertQuadtoOBJ[0] = FindRelativePoint(0, centerIdx, +2); // p0 is the last one in q0
-	}
-	else if (facesIndexes[0].size() == 3) // Face 0 is a tri
-	{
-		size_t next = FindRelativePoint(0, centerIdx, +1);
-		size_t prev = FindRelativePoint(0, centerIdx, -1);
-		bool nextUnique = refCount[next] == 1;
-		bool prevUnique = refCount[prev] == 1;
+		size_t quadFaceId = quadFaceIdToVisit.back();
+		quadFaceIdToVisit.pop_back();
+		size_t objFaceId = faceQuadtoOBJ[quadFaceId];
+		if (objFaceId == INVALID)
+			throw QuadException("Can't resolve the quadFace " + std::to_string(quadFaceId));
 
-		if (!nextUnique)
+		for (int offset : {-1, 1, 2})
 		{
-			vertQuadtoOBJ[3] = next;
-		}
-		else
-		{
-			vertQuadtoOBJ[0] = next;
-		}
-		if (!prevUnique)
-		{
-			vertQuadtoOBJ[1] = prev;
-		}
-		else
-		{
-			vertQuadtoOBJ[0] = prev;
-		}
-		if (!prevUnique && !nextUnique)
-		{
-			vertQuadtoOBJ[0] = next;
-		}
-	}
-
-	// Identify Face 1 : It's the face that has p4 - p1 as an edge.
-	for (size_t faceId = 1; faceId < facesIndexes.size(); faceId++)
-	{
-		if (FindRelativePoint(faceId, vertQuadtoOBJ[4], +1) == vertQuadtoOBJ[1])
-		{
-			faceOBJtoQuad[faceId] = 1; 
-			faceQuadtoOBJ[1] = faceId;
-			break;
+			if (offset == 2 && facesIndexes[objFaceId].size() == 3) continue; // No offset 2 for triface, since it's equivalent to -1
+			size_t relQuadVertId = FindRelativePointQuad(quadFaceId, centerQuadVertId, offset);
+			size_t relOBJVertId = FindRelativePointOBJ(objFaceId, vertQuadtoOBJ[centerQuadVertId], offset);
+			if (refCount[relOBJVertId] == 2) // Share an edge with another face
+			{
+				vertQuadtoOBJ[relQuadVertId] = relOBJVertId;
+				size_t relQuadFaceId = FindRelativeFaceQuad(quadFaceId, offset);
+				for (size_t otherObjFaceId = 0; otherObjFaceId < facesIndexes.size(); otherObjFaceId++)
+				{
+					if (FindRelativePointOBJ(otherObjFaceId, vertQuadtoOBJ[centerQuadVertId], -offset) == vertQuadtoOBJ[relQuadVertId])
+					{
+						if (faceOBJtoQuad[otherObjFaceId] == INVALID)
+						{
+							faceOBJtoQuad[otherObjFaceId] = relQuadFaceId;
+							faceQuadtoOBJ[relQuadFaceId] = otherObjFaceId;
+							quadFaceIdToVisit.push_back(relQuadFaceId);
+							break;
+						}
+					}
+				}
+			}
+			else // Unique vert
+			{
+				size_t oppQuadVertId = FindRelativePointQuad(quadFaceId, centerQuadVertId, 2);
+				vertQuadtoOBJ[oppQuadVertId] = relOBJVertId;
+			}			
 		}
 	}
-	if (faceQuadtoOBJ[1] == INVALID)
-		throw QuadException("Quadblock Face 1 couldn't be identified");
-
-	// Resolve Face 1 vertices : p1 and p4 already verified.
-	vertQuadtoOBJ[5] = FindRelativePoint(faceQuadtoOBJ[1], centerIdx, -1); // p5 is the one that comes before p4 in q1 CCW order
-	vertQuadtoOBJ[2] = FindRelativePoint(faceQuadtoOBJ[1], centerIdx, +2); // p2 is the last one in q1
-
-	// Identify Face 2 : It's the face with p3 - p4 as an edge
-	for (size_t faceId = 1; faceId < facesIndexes.size(); faceId++)
+	std::array<size_t, NUM_FACES_QUADBLOCK> uniqueQuadVert = { 0, 2, 6, 8 };
+	std::array<size_t, NUM_FACES_QUADBLOCK> sharedQuadVert = { 1, 5, 3, 7 };
+	for (size_t i = 0; i < NUM_FACES_QUADBLOCK; i++)
 	{
-		if (FindRelativePoint(faceId, vertQuadtoOBJ[4], -1) == vertQuadtoOBJ[3])
-		{
-			faceOBJtoQuad[faceId] = 2; 
-			faceQuadtoOBJ[2] = faceId;
-			break;
-		}
+		if (vertQuadtoOBJ[sharedQuadVert[i]] == INVALID)
+			vertQuadtoOBJ[sharedQuadVert[i]] = vertQuadtoOBJ[centerQuadVertId];
 	}
-	if (faceQuadtoOBJ[2] == INVALID)
-		throw QuadException("Quadblock Face 2 couldn't be identified");
-
-	// Resolve Face 2 vertices : p3 and p4 already verified.
-	vertQuadtoOBJ[7] = FindRelativePoint(faceQuadtoOBJ[2], centerIdx, +1); // p7 is the one that comes after p4 in q2 CCW order
-	vertQuadtoOBJ[6] = FindRelativePoint(faceQuadtoOBJ[2], centerIdx, +2); // p6 is the last one in q1
-
-	// Identify Face 3 : It's the last face non identified
-	for (size_t faceId = 1; faceId < facesIndexes.size(); faceId++)
+	for (size_t i = 0; i < NUM_FACES_QUADBLOCK; i++)
 	{
-		if (faceOBJtoQuad[faceId] == INVALID)
-		{
-			faceOBJtoQuad[faceId] = 3;
-			faceQuadtoOBJ[3] = faceId;
-			break;
-		}
+		if (vertQuadtoOBJ[uniqueQuadVert[i]] == INVALID)
+			vertQuadtoOBJ[uniqueQuadVert[i]] = vertQuadtoOBJ[sharedQuadVert[i]];
 	}
-	// Resolve Face 3 vertices : only p8 left
-	vertQuadtoOBJ[8] = FindRelativePoint(faceQuadtoOBJ[3], centerIdx, +2); // p6 is the last one in q1
-
 	for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++) 
 	{ 
 		if (vertQuadtoOBJ[i] == INVALID)
-			throw QuadException("Quadblock Vert" + std::to_string(i) + "couldn't be identified");
+			throw QuadException("Quadblock Vert " + std::to_string(i) + " couldn't be identified");	
+			
 		m_p[i] = Vertex(points[vertQuadtoOBJ[i]]);
 		vertOBJtoQuad[vertQuadtoOBJ[i]] = i;
 	}
