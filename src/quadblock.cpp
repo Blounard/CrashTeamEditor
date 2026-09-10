@@ -15,12 +15,6 @@ Quadblock::Quadblock(const std::string& name,
 	bool hasUV, UpdateFilterCallback filterCallback)
 {
 	constexpr size_t INVALID = std::numeric_limits<size_t>::max();
-	constexpr size_t EXPECTED_FACE_COUNT = NUM_FACES_QUADBLOCK;
-
-	if (facesIndexes.size() != EXPECTED_FACE_COUNT)
-	{
-		throw QuadException("Expected exactly " + std::to_string(EXPECTED_FACE_COUNT) + " faces, found " + std::to_string(facesIndexes.size()) + ".");
-	}
 	if (faceUVs.size() != facesIndexes.size() || faceMaterials.size() != facesIndexes.size())
 	{
 		throw QuadException("OBJ error: face data arrays have mismatched sizes.");
@@ -148,7 +142,7 @@ Quadblock::Quadblock(const std::string& name,
 			if (offset == 2 && facesIndexes[objFaceId].size() == 3) continue; // No offset 2 for triface, since it's equivalent to -1
 			size_t relQuadVertId = FindRelativePointQuad(quadFaceId, centerQuadVertId, offset);
 			size_t relOBJVertId = FindRelativePointOBJ(objFaceId, vertQuadtoOBJ[centerQuadVertId], offset);
-			if (refCount[relOBJVertId] == 2) // Share an edge with another face
+			if (refCount[relOBJVertId] == 2 || facesIndexes[objFaceId].size() == 4) 
 			{
 				vertQuadtoOBJ[relQuadVertId] = relOBJVertId;
 				size_t relQuadFaceId = FindRelativeFaceQuad(quadFaceId, offset);
@@ -175,6 +169,11 @@ Quadblock::Quadblock(const std::string& name,
 	}
 	std::array<size_t, NUM_FACES_QUADBLOCK> uniqueQuadVert = { 0, 2, 6, 8 };
 	std::array<size_t, NUM_FACES_QUADBLOCK> sharedQuadVert = { 1, 5, 3, 7 };
+	for (size_t i = 0; i < NUM_FACES_QUADBLOCK; i++)
+	{
+		if (faceQuadtoOBJ[i] == INVALID)
+			vertQuadtoOBJ[uniqueQuadVert[i]] = vertQuadtoOBJ[centerQuadVertId];
+	}
 	for (size_t i = 0; i < NUM_FACES_QUADBLOCK; i++)
 	{
 		if (vertQuadtoOBJ[sharedQuadVert[i]] == INVALID)
@@ -205,11 +204,13 @@ Quadblock::Quadblock(const std::string& name,
 		{4, 5, 7, 8},
 	};
 
+	ResetUVs();
 	if (hasUV)
 	{
 		for (size_t quadFaceId = 0; quadFaceId < NUM_FACES_QUADBLOCK; quadFaceId++)
 		{
 			const size_t objFaceId = faceQuadtoOBJ[quadFaceId];
+			if (objFaceId == INVALID) continue;
 			for (size_t faceVertId = 0; faceVertId < 4; faceVertId++)
 			{
 				size_t quadVertId = uvVertInd[quadFaceId][faceVertId];
@@ -217,44 +218,19 @@ Quadblock::Quadblock(const std::string& name,
 				size_t objVertFaceId = objFaceVertIdMap[std::make_tuple(objFaceId, objGlobalVertId)];
 				m_uvs[quadFaceId][faceVertId] = faceUVs[objFaceId][objVertFaceId];
 			}
-		}
-
-		float uMin = std::numeric_limits<float>::max(); float vMin = std::numeric_limits<float>::max();
-		float uMax = -std::numeric_limits<float>::max(); float vMax = -std::numeric_limits<float>::max();
-		for (size_t i = 0; i < 4; i++)
-		{
-			for (size_t j = 0; j < 4; j++)
-			{
-				uMin = std::min(uMin, m_uvs[i][j].x); vMin = std::min(vMin, m_uvs[i][j].y);
-				uMax = std::max(uMax, m_uvs[i][j].x); vMax = std::max(vMax, m_uvs[i][j].y);
-			}
-		}
-		bool indexPicked[4] = { false, false, false, false };
-		bool boundPicked[4] = { false, false, false, false };
-		const QuadUV uvBounds = { Vec2(uMin, vMin), Vec2(uMax, vMin), Vec2(uMin, vMax), Vec2(uMax, vMax) };
-		for (size_t indexCount = 0; indexCount < 4; indexCount++)
-		{
-			size_t bestIndex = 0, bestBound = 0;
-			float bestDistance = std::numeric_limits<float>::max();
-			for (size_t i = 0; i < 4; i++)
-			{
-				if (indexPicked[i]) { continue; }
-				for (size_t j = 0; j < 4; j++)
-				{
-					if (boundPicked[j]) { continue; }
-					float dist = ((m_uvs[0][i].x - uvBounds[j].x) * (m_uvs[0][i].x - uvBounds[j].x)) + ((m_uvs[0][i].y - uvBounds[j].y) * (m_uvs[0][i].y - uvBounds[j].y));
-					if (dist < bestDistance) { bestIndex = i; bestBound = j; bestDistance = dist; }
-				}
-			}
-			indexPicked[bestIndex] = true;
-			boundPicked[bestBound] = true;
-			m_uvs[4][bestIndex] = uvBounds[bestBound];
+			// Note : Low LOD UVs are assigned some default Reset UVs values.
 		}
 	}
-	else { ResetUVs(); }
 
 	m_name = name;
-	for (size_t quadFaceId = 0; quadFaceId < NUM_FACES_QUADBLOCK; quadFaceId++) { m_materials[quadFaceId] = faceMaterials[faceQuadtoOBJ[quadFaceId]]; }
+	for (size_t quadFaceId = 0; quadFaceId < NUM_FACES_QUADBLOCK; quadFaceId++) 
+	{ 
+		size_t objFaceId = faceQuadtoOBJ[quadFaceId];
+		if (objFaceId == INVALID) 
+			m_materials[quadFaceId] = faceMaterials[0];
+		else
+			m_materials[quadFaceId] = faceMaterials[objFaceId];
+	}
 	m_materials[NUM_FACES_QUADBLOCK] = m_materials[0];
 	m_triblock = false;
 	m_filterCallback = filterCallback;
