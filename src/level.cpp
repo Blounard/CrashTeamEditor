@@ -4143,7 +4143,7 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 			}
 			catch (const QuadException& e)
 			{
-				ret = false;
+				//ret = false;
 				m_invalidQuadblocks.emplace_back(currQuadblockName, e.what());
 			}
 		};
@@ -4330,7 +4330,7 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 			if (((invalidQuadblocks + 1) % QUADS_PER_LINE) == 0) { m_logMessage += "\n"; }
 			invalidQuadblocks++;
 		}
-		ret = false;
+		//ret = false;
 	}
 	m_loaded = ret;
 

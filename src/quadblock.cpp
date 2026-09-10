@@ -128,52 +128,90 @@ Quadblock::Quadblock(const std::string& name,
 	faceOBJtoQuad[0] = 0; // We always assign face 0 the first face in the .obj
 	faceQuadtoOBJ[0] = 0;
 	vertQuadtoOBJ[centerQuadVertId] = centerIdx;
-	// TODO : Find connected component for the relation "Share an edge" accross all objFaces
-	// there can be only 2 at most I believe.
-	// Populate faceOBJtoQuad there.
-	// This let know from before the vert are assigned, which faceQuadtoObj is invalid
-	// So we can do if (refCount[relOBJVertId] == 2) -> if (refCount[relOBJVertId] == 2 || faceQuadtoOBJ[relQuadFaceId] == INVALID)
-	// Indeed, refCount[relOBJVertId] == 2 was to avoid using the shared edge when it wasn't really shared, but you can do it if the neighboor face is invalid anyway.
 
-	std::vector<size_t> quadFaceIdToVisit = { 0 };
-	while (!quadFaceIdToVisit.empty())
+	std::vector<size_t> objFaceIdToVisit = { 0 };
+	while (!objFaceIdToVisit.empty())
 	{
-		size_t quadFaceId = quadFaceIdToVisit.back();
-		quadFaceIdToVisit.pop_back();
-		size_t objFaceId = faceQuadtoOBJ[quadFaceId];
-		if (objFaceId == INVALID)
-			throw QuadException("Can't resolve the quadFace " + std::to_string(quadFaceId));
+		size_t objFaceId = objFaceIdToVisit.back();
+		objFaceIdToVisit.pop_back();
+		size_t quadFaceId = faceOBJtoQuad[objFaceId];
+		for (int offset : {-1, 1})
+		{
+			size_t relQuadVertId = FindRelativePointQuad(quadFaceId, centerQuadVertId, offset);
+			size_t relOBJVertId = FindRelativePointOBJ(objFaceId, centerIdx, offset);
+			size_t relQuadFaceId = FindRelativeFaceQuad(quadFaceId, offset);
 
+			//if (refCount[relOBJVertId] == 2 || facesIndexes[objFaceId].size() == 4) // Assign vert non ambiguous by this stage
+			//	vertQuadtoOBJ[relQuadVertId] = relOBJVertId;
+
+			for (size_t otherObjFaceId = 0; otherObjFaceId < facesIndexes.size(); otherObjFaceId++)
+			{
+				if (FindRelativePointOBJ(otherObjFaceId, centerIdx, -offset) == relOBJVertId)
+				{
+					if (faceOBJtoQuad[otherObjFaceId] == INVALID)
+					{
+						faceOBJtoQuad[otherObjFaceId] = relQuadFaceId;
+						faceQuadtoOBJ[relQuadFaceId] = otherObjFaceId;
+						objFaceIdToVisit.push_back(otherObjFaceId);
+						break;
+					}
+				}
+			}
+		}
+	}
+
+	// This step is very tricky : Assign not assigned objFaceId. Needs empirical verification.
+	std::vector<size_t> notAssignedOBJFaceId;
+	for (size_t objFaceId = 0; objFaceId < facesIndexes.size(); objFaceId++)
+	{
+		if (faceOBJtoQuad[objFaceId] == INVALID)
+			notAssignedOBJFaceId.push_back(objFaceId);
+	}
+	if (notAssignedOBJFaceId.size() > 2)
+		throw QuadException("3 or more faces not reachable from face 0"); // I think this isn't possible from a quadblock ?
+	if (notAssignedOBJFaceId.size() == 2)
+	{
+
+	}
+	if (notAssignedOBJFaceId.size() == 1)
+	{
+		if (facesIndexes.size() == 2)
+		{
+			// VERY IMPORTANT : WE USE SLOT 1 AND 2 INSTEAD OF 0 AND 3 (so we re assign faceOBJtoQuad[0]!!!)
+			// BECAUSE OF TRIFACE SUBDIV : corner->center is only possible if corner is shared vert of both tri in the quadface.
+			printf("%s has 2 faces, one for slot 0, one for slot3\n", name.c_str());
+			faceOBJtoQuad[1] = 2; // 2 total face, not connected, one on slot 1, one on slot2
+			faceQuadtoOBJ[2] = 1;
+			faceOBJtoQuad[0] = 1;
+			faceQuadtoOBJ[1] = 0;
+			faceQuadtoOBJ[0] = INVALID;
+		}
+	}
+	for (size_t objFaceId = 0; objFaceId < facesIndexes.size(); objFaceId++)
+	{
+		if (faceOBJtoQuad[objFaceId] == INVALID)
+			throw QuadException("Can't resolve the objFace " + std::to_string(objFaceId));
+	}
+
+	
+	for (size_t objFaceId = 0; objFaceId < facesIndexes.size(); objFaceId++)
+	{
+		size_t quadFaceId = faceOBJtoQuad[objFaceId];
 		for (int offset : {-1, 1, 2})
 		{
 			if (offset == 2 && facesIndexes[objFaceId].size() == 3) continue; // No offset 2 for triface, since it's equivalent to -1
 			size_t relQuadVertId = FindRelativePointQuad(quadFaceId, centerQuadVertId, offset);
+			size_t oppQuadVertId = FindRelativePointQuad(quadFaceId, centerQuadVertId, 2); // opposite corner of the quad
 			size_t relOBJVertId = FindRelativePointOBJ(objFaceId, vertQuadtoOBJ[centerQuadVertId], offset);
 			size_t relQuadFaceId = FindRelativeFaceQuad(quadFaceId, offset);
-			if (refCount[relOBJVertId] == 2) 
-			{
+
+			if (refCount[relOBJVertId] == 2 || faceQuadtoOBJ[relQuadFaceId] == INVALID)
 				vertQuadtoOBJ[relQuadVertId] = relOBJVertId;
-				for (size_t otherObjFaceId = 0; otherObjFaceId < facesIndexes.size(); otherObjFaceId++)
-				{
-					if (FindRelativePointOBJ(otherObjFaceId, vertQuadtoOBJ[centerQuadVertId], -offset) == vertQuadtoOBJ[relQuadVertId])
-					{
-						if (faceOBJtoQuad[otherObjFaceId] == INVALID)
-						{
-							faceOBJtoQuad[otherObjFaceId] = relQuadFaceId;
-							faceQuadtoOBJ[relQuadFaceId] = otherObjFaceId;
-							quadFaceIdToVisit.push_back(relQuadFaceId);
-							break;
-						}
-					}
-				}
-			}
-			else // Unique vert
-			{
-				size_t oppQuadVertId = FindRelativePointQuad(quadFaceId, centerQuadVertId, 2);
-				vertQuadtoOBJ[oppQuadVertId] = relOBJVertId;
-			}			
+			else
+				vertQuadtoOBJ[oppQuadVertId] = relOBJVertId;			
 		}
 	}
+
 	std::array<size_t, NUM_FACES_QUADBLOCK> uniqueQuadVert = { 0, 2, 6, 8 };
 	std::array<size_t, NUM_FACES_QUADBLOCK> sharedQuadVert = { 1, 5, 3, 7 };
 	for (size_t i = 0; i < NUM_FACES_QUADBLOCK; i++)
