@@ -128,6 +128,13 @@ Quadblock::Quadblock(const std::string& name,
 	faceOBJtoQuad[0] = 0; // We always assign face 0 the first face in the .obj
 	faceQuadtoOBJ[0] = 0;
 	vertQuadtoOBJ[centerQuadVertId] = centerIdx;
+	// TODO : Find connected component for the relation "Share an edge" accross all objFaces
+	// there can be only 2 at most I believe.
+	// Populate faceOBJtoQuad there.
+	// This let know from before the vert are assigned, which faceQuadtoObj is invalid
+	// So we can do if (refCount[relOBJVertId] == 2) -> if (refCount[relOBJVertId] == 2 || faceQuadtoOBJ[relQuadFaceId] == INVALID)
+	// Indeed, refCount[relOBJVertId] == 2 was to avoid using the shared edge when it wasn't really shared, but you can do it if the neighboor face is invalid anyway.
+
 	std::vector<size_t> quadFaceIdToVisit = { 0 };
 	while (!quadFaceIdToVisit.empty())
 	{
@@ -142,10 +149,10 @@ Quadblock::Quadblock(const std::string& name,
 			if (offset == 2 && facesIndexes[objFaceId].size() == 3) continue; // No offset 2 for triface, since it's equivalent to -1
 			size_t relQuadVertId = FindRelativePointQuad(quadFaceId, centerQuadVertId, offset);
 			size_t relOBJVertId = FindRelativePointOBJ(objFaceId, vertQuadtoOBJ[centerQuadVertId], offset);
-			if (refCount[relOBJVertId] == 2 || facesIndexes[objFaceId].size() == 4) 
+			size_t relQuadFaceId = FindRelativeFaceQuad(quadFaceId, offset);
+			if (refCount[relOBJVertId] == 2) 
 			{
 				vertQuadtoOBJ[relQuadVertId] = relOBJVertId;
-				size_t relQuadFaceId = FindRelativeFaceQuad(quadFaceId, offset);
 				for (size_t otherObjFaceId = 0; otherObjFaceId < facesIndexes.size(); otherObjFaceId++)
 				{
 					if (FindRelativePointOBJ(otherObjFaceId, vertQuadtoOBJ[centerQuadVertId], -offset) == vertQuadtoOBJ[relQuadVertId])
