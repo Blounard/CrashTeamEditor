@@ -209,9 +209,13 @@ Quadblock::Quadblock(const std::string& name,
 		else
 			throw QuadException("More than 3 edge based connected component"); // Should be impossible with correctly formed data
 
-		if (facesIndexes.size() == 3)  // 1 + 2 : Does it ever happens ?
+		if (facesIndexes.size() == 3)  // 1 + 2 : Does it ever happens ? Yes : "Butterfly" 2-1 config (1->4 ; 6->4 ; 7->8)
 		{
-
+			// We can assign the 2 faces to 1 3 Or 3 2. Both should be valid, let's pick 1 3
+			faceQuadtoOBJ[3] = nextObjFace;
+			faceOBJtoQuad[nextObjFace] = 3;
+			faceQuadtoOBJ[1] = prevObjFace;
+			faceOBJtoQuad[prevObjFace] = 1;
 		}
 		if (facesIndexes.size() == 4)  // 2 + 2 : Should only happen with the "butterfly" triangle shape
 		{
@@ -282,7 +286,6 @@ Quadblock::Quadblock(const std::string& name,
 	{
 		if (faceQuadtoOBJ[quadFaceId] == INVALID)
 		{
-			// TODO : ALWAYS ASSIGN UNIQUE TO CENTER, AND FIX BITSHIFTNORMAL MAX TO HIGH LOD
 			int uniqueVertOffset = 2; 
 			size_t uniqueQuadVertInFace = FindRelativePointQuad(quadFaceId, centerQuadVertId, uniqueVertOffset);
 			int prevEdgeOffset = -1;
@@ -310,6 +313,33 @@ Quadblock::Quadblock(const std::string& name,
 		}	
 	}
 
+	if (needRotation && noRotation)
+		throw QuadException("No valid rotation found that preserves geometry"); // Need more research maybe ? Or actually impossible ? Can this even happen ?
+	if (needRotation)
+	{
+		printf("Rotation done on %s\n", name.c_str());
+		std::array<size_t, NUM_FACES_QUADBLOCK> rotation90FaceMap = { 1, 3, 0, 2 };
+		std::array<size_t, NUM_VERTICES_QUADBLOCK> rotation90VertMap = { 2, 5, 8, 1, 4, 7, 0, 3, 6};
+		std::vector<size_t> rotatedFaceOBJtoQuad(facesIndexes.size(), INVALID); 
+		std::array<size_t, NUM_FACES_QUADBLOCK> rotatedFaceQuadtoOBJ{}; rotatedFaceQuadtoOBJ.fill(INVALID);
+		std::array<size_t, NUM_VERTICES_QUADBLOCK> rotatedVertQuadtoOBJ{}; rotatedVertQuadtoOBJ.fill(INVALID);
+		
+		for (size_t quadFaceId = 0; quadFaceId < NUM_FACES_QUADBLOCK; quadFaceId++)
+		{
+			rotatedFaceQuadtoOBJ[quadFaceId] = faceQuadtoOBJ[rotation90FaceMap[quadFaceId]];
+			if (faceQuadtoOBJ[rotation90FaceMap[quadFaceId]] != INVALID)
+				rotatedFaceOBJtoQuad[faceQuadtoOBJ[rotation90FaceMap[quadFaceId]]] = quadFaceId;
+		}
+		for (size_t quadVertId = 0; quadVertId < NUM_VERTICES_QUADBLOCK; quadVertId++)
+		{
+			rotatedVertQuadtoOBJ[quadVertId] = vertQuadtoOBJ[rotation90VertMap[quadVertId]];
+		}
+		faceOBJtoQuad = rotatedFaceOBJtoQuad;
+		faceQuadtoOBJ = rotatedFaceQuadtoOBJ;
+		vertQuadtoOBJ = rotatedVertQuadtoOBJ;
+	}
+	if (noRotation)
+		printf("No-rotation requested on %s\n", name.c_str());
 	for (size_t quadFaceId = 0; quadFaceId < NUM_FACES_QUADBLOCK; quadFaceId++)
 	{
 		int prevEdgeOffset = -1; // Gets the previous edge starting from center
