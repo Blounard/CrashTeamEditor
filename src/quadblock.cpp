@@ -15,12 +15,36 @@ Quadblock::Quadblock(const std::string& name,
 	bool hasUV, UpdateFilterCallback filterCallback)
 {
 	constexpr size_t INVALID = std::numeric_limits<size_t>::max();
+	constexpr size_t MIN_VERTS_PER_FACE = 3;
+	constexpr size_t MAX_VERTS_PER_FACE = 4;
+
+	if (facesIndexes.empty() || facesIndexes.size() > NUM_FACES_QUADBLOCK)
+	{
+		throw QuadException("OBJ error: expected between 1 and " + std::to_string(NUM_FACES_QUADBLOCK) +
+			" faces, found " + std::to_string(facesIndexes.size()) + ".");
+	}
 	if (faceUVs.size() != facesIndexes.size() || faceMaterials.size() != facesIndexes.size())
 	{
 		throw QuadException("OBJ error: face data arrays have mismatched sizes.");
 	}
+	for (size_t objFaceId = 0; objFaceId < facesIndexes.size(); objFaceId++)
+	{
+		const size_t faceVertCount = facesIndexes[objFaceId].size();
+		if (faceVertCount < MIN_VERTS_PER_FACE || faceVertCount > MAX_VERTS_PER_FACE)
+		{
+			throw QuadException("OBJ error: face " + std::to_string(objFaceId) + " has " + std::to_string(faceVertCount) +
+				" vertices, expected between " + std::to_string(MIN_VERTS_PER_FACE) + " and " + std::to_string(MAX_VERTS_PER_FACE) + ".");
+		}
+		if (faceUVs[objFaceId].size() != faceVertCount)
+		{
+			throw QuadException("OBJ error: face " + std::to_string(objFaceId) + " has " + std::to_string(faceVertCount) +
+				" vertices but " + std::to_string(faceUVs[objFaceId].size()) + " UVs.");
+		}
+	}
+	if (points.size() > NUM_VERTICES_QUADBLOCK)
+		throw QuadException("OBJ error : Expected 9 uniques vertices or less, found " + std::to_string(points.size()));
 
-	std::map<std::tuple<size_t, size_t>, size_t> objFaceVertIdMap; // (objFaceId, objGlobalVertId) -> objFaceVertId
+	std::map<std::tuple<size_t, size_t>, size_t> objFaceVertIdMap; // (objFaceId, objVertId) -> objFaceVertId
 
 	std::vector<size_t> refCount(points.size(), 0);
 	for (size_t objFaceId = 0; objFaceId < facesIndexes.size(); objFaceId++)
@@ -28,28 +52,22 @@ Quadblock::Quadblock(const std::string& name,
 		const auto& face = facesIndexes[objFaceId];
 		for (size_t objFaceVertId = 0; objFaceVertId < face.size(); objFaceVertId++)
 		{
-			size_t objGlobalVertId = face[objFaceVertId];
-			if (objGlobalVertId >= points.size()) { throw QuadException("Face references a vertex index out of range."); }
-			refCount[objGlobalVertId]++;
-			objFaceVertIdMap[std::make_tuple(objFaceId, objGlobalVertId)] = objFaceVertId;
+			size_t objVertId = face[objFaceVertId];
+			if (objVertId >= points.size()) { throw QuadException("Face references a vertex index out of range."); }
+			refCount[objVertId]++;
+			objFaceVertIdMap[std::make_tuple(objFaceId, objVertId)] = objFaceVertId;
 		}
 	}
-
-	size_t centerIdx = INVALID;
-	bool triblock_check = true;
-	for (size_t i = 0; i < points.size(); i++)
+	std::vector<size_t> objCenterIds;
+	for (size_t objVertId = 0; objVertId < points.size(); objVertId++)
 	{
-		if (refCount[i] == facesIndexes.size()) // Note "Centers" don't make sense with 2 faces or less.
+		if (refCount[objVertId] == facesIndexes.size())
 		{
-			triblock_check = false; // Triblock have 0 centers. Only valid (legacy) shape with 0 center.
-			if (centerIdx == INVALID)
-				centerIdx = i;
-			else
-				centerIdx = INVALID;
+			objCenterIds.push_back(objVertId);
 		}
 	}
 
-	if (triblock_check)
+	if (objCenterIds.empty())
 	{
 		//printf("NOTE: Object '%s' has no vertex shared by all faces (looks like a triblock); building a placeholder quadblock for it.\n", name.c_str());
 		const size_t placeholderIdx = facesIndexes[0][0];
@@ -63,10 +81,8 @@ Quadblock::Quadblock(const std::string& name,
 		SetDefaultValues();
 		return;
 	}
-	if (centerIdx == INVALID)
-	{
-		throw QuadException("More than one candidate center vertex found");
-	}
+
+	size_t objCenterId = objCenterIds[0]; // any valid center works, we fix one.
 
 	/*
 	p0 -- p1 -- p2
@@ -76,7 +92,6 @@ Quadblock::Quadblock(const std::string& name,
 	p6 -- p7 -- p8
 	*/
 	std::vector<size_t> faceOBJtoQuad(facesIndexes.size(), INVALID); // OBJ face index -> Quadblock face index
-	std::vector<size_t> vertOBJtoQuad(points.size(), INVALID); // OBJ vert index -> Quadblock vert index
 	std::array<size_t, NUM_FACES_QUADBLOCK> faceQuadtoOBJ{}; faceQuadtoOBJ.fill(INVALID); // Quadblock face index -> OBJ face index
 	std::array<size_t, NUM_VERTICES_QUADBLOCK> vertQuadtoOBJ{}; vertQuadtoOBJ.fill(INVALID); // Quadblock vert index -> OBJ vert index
 
@@ -102,15 +117,15 @@ Quadblock::Quadblock(const std::string& name,
 			return quadFaceOrder[(((static_cast<int>(facePos) - offset) % NUM_FACES_QUADBLOCK) + NUM_FACES_QUADBLOCK) % NUM_FACES_QUADBLOCK];
 		};
 
-	auto FindRelativePointQuad = [&](size_t faceId, size_t vertId, int offset) -> size_t
+	auto FindRelativePointQuad = [&](size_t quadFaceId, size_t quadVertId, int offset) -> size_t
 		{
-			size_t vertFacePosition = INVALID;
-			for (size_t i = 0; i < 4; i++)
+			size_t quadVertInFace = INVALID;
+			for (quadVertInFace = 0; quadVertInFace < 4; quadVertInFace++)
 			{
-				if (quadFaceVertOrder[faceId][i] == vertId)
-					vertFacePosition = i;
+				if (quadFaceVertOrder[quadFaceId][quadVertInFace] == quadVertId)
+					break;
 			}
-			return quadFaceVertOrder[faceId][(((static_cast<int>(vertFacePosition) + offset) % 4) + 4) % 4];
+			return quadFaceVertOrder[quadFaceId][(((static_cast<int>(quadVertInFace) + offset) % 4) + 4) % 4];
 		};
 
 	auto FindRelativePointOBJ = [&](size_t objFaceId, size_t objGlobalVertId, int offset) -> size_t
@@ -123,13 +138,21 @@ Quadblock::Quadblock(const std::string& name,
 			return facesIndexes[objFaceId][(((static_cast<int>(objFaceVertId) - offset) % facesSize) + facesSize) % facesSize];
 		};
 
+	// Step 1 : Assign quadFace0 with any face in the OBJ. We pick a 4-vert face if any to avoid rotations later
+	// We assign it to quadFace0 since face it can't always be collapsed, so it's better if it's not INVALID.
+	size_t objFace0 = 0;
+	for (size_t objFaceId = 0; objFaceId < facesIndexes.size(); objFaceId++)
+	{
+		if (facesIndexes[objFaceId].size() == 4) { objFace0 = objFaceId; break; } 
+	}
+	faceOBJtoQuad[objFace0] = 0;
+	faceQuadtoOBJ[0] = objFace0;
 
 	const size_t centerQuadVertId = 4;
-	faceOBJtoQuad[0] = 0; // We always assign face 0 the first face in the .obj
-	faceQuadtoOBJ[0] = 0;
-	vertQuadtoOBJ[centerQuadVertId] = centerIdx;
+	vertQuadtoOBJ[centerQuadVertId] = objCenterId;
 
-	std::vector<size_t> objFaceIdToVisit = { 0 };
+	// Resolve quad faces from 1 connected component
+	std::vector<size_t> objFaceIdToVisit = { objFace0 };
 	while (!objFaceIdToVisit.empty())
 	{
 		size_t objFaceId = objFaceIdToVisit.back();
@@ -138,15 +161,12 @@ Quadblock::Quadblock(const std::string& name,
 		for (int offset : {-1, 1})
 		{
 			size_t relQuadVertId = FindRelativePointQuad(quadFaceId, centerQuadVertId, offset);
-			size_t relOBJVertId = FindRelativePointOBJ(objFaceId, centerIdx, offset);
+			size_t relOBJVertId = FindRelativePointOBJ(objFaceId, objCenterId, offset);
 			size_t relQuadFaceId = FindRelativeFaceQuad(quadFaceId, offset);
-
-			//if (refCount[relOBJVertId] == 2 || facesIndexes[objFaceId].size() == 4) // Assign vert non ambiguous by this stage
-			//	vertQuadtoOBJ[relQuadVertId] = relOBJVertId;
 
 			for (size_t otherObjFaceId = 0; otherObjFaceId < facesIndexes.size(); otherObjFaceId++)
 			{
-				if (FindRelativePointOBJ(otherObjFaceId, centerIdx, -offset) == relOBJVertId)
+				if (FindRelativePointOBJ(otherObjFaceId, objCenterId, -offset) == relOBJVertId)
 				{
 					if (faceOBJtoQuad[otherObjFaceId] == INVALID)
 					{
@@ -160,6 +180,7 @@ Quadblock::Quadblock(const std::string& name,
 		}
 	}
 
+
 	// This step is very tricky : Assign not assigned objFaceId. Needs empirical verification.
 	std::vector<size_t> notAssignedOBJFaceId;
 	for (size_t objFaceId = 0; objFaceId < facesIndexes.size(); objFaceId++)
@@ -168,23 +189,64 @@ Quadblock::Quadblock(const std::string& name,
 			notAssignedOBJFaceId.push_back(objFaceId);
 	}
 	if (notAssignedOBJFaceId.size() > 2)
-		throw QuadException("3 or more faces not reachable from face 0"); // I think this isn't possible from a quadblock ?
+		throw QuadException("3 faces not reachable from face " + std::to_string(faceQuadtoOBJ[0])); // I think this isn't possible from a quadblock ?
 	if (notAssignedOBJFaceId.size() == 2)
 	{
+		// 2 not assigned. They must touch eachother. Let's see which one is ahead/behind the other in face winding order.
+		size_t objFaceA = notAssignedOBJFaceId[0];
+		size_t objFaceB = notAssignedOBJFaceId[1];
+		size_t prevObjFace = INVALID; size_t nextObjFace = INVALID;
+		if (FindRelativePointOBJ(objFaceA, objCenterId, 1) == FindRelativePointOBJ(objFaceB, objCenterId, -1))
+		{
+			nextObjFace = objFaceA; 
+			prevObjFace = objFaceB;
+		}
+		else if (FindRelativePointOBJ(objFaceA, objCenterId, -1) == FindRelativePointOBJ(objFaceB, objCenterId, 1))
+		{
+			nextObjFace = objFaceB;
+			prevObjFace = objFaceA;
+		}
+		else
+			throw QuadException("More than 3 edge based connected component"); // Should be impossible with correctly formed data
 
+		if (facesIndexes.size() == 3)  // 1 + 2 : Does it ever happens ?
+		{
+
+		}
+		if (facesIndexes.size() == 4)  // 2 + 2 : Should only happen with the "butterfly" triangle shape
+		{
+			// The used faces are either 0 and 1 or 0 and 2. Unused are 1 and 3 or 2 and 3
+			if (faceQuadtoOBJ[2] == INVALID)
+			{
+				faceQuadtoOBJ[2] = nextObjFace;
+				faceOBJtoQuad[nextObjFace] = 2;
+				faceQuadtoOBJ[3] = prevObjFace;
+				faceOBJtoQuad[prevObjFace] = 3;
+			}
+			else
+			{
+				faceQuadtoOBJ[3] = nextObjFace;
+				faceOBJtoQuad[nextObjFace] = 3;
+				faceQuadtoOBJ[1] = prevObjFace;
+				faceOBJtoQuad[prevObjFace] = 1;
+			}
+		}
 	}
 	if (notAssignedOBJFaceId.size() == 1)
 	{
-		if (facesIndexes.size() == 2)
+		if (facesIndexes.size() == 2)  // 2 total face, 1 + 1. Clearly always safe.
 		{
-			// VERY IMPORTANT : WE USE SLOT 1 AND 2 INSTEAD OF 0 AND 3 (so we re assign faceOBJtoQuad[0]!!!)
-			// BECAUSE OF TRIFACE SUBDIV : corner->center is only possible if corner is shared vert of both tri in the quadface.
-			printf("%s has 2 faces, one for slot 0, one for slot3\n", name.c_str());
-			faceOBJtoQuad[1] = 2; // 2 total face, not connected, one on slot 1, one on slot2
-			faceQuadtoOBJ[2] = 1;
-			faceOBJtoQuad[0] = 1;
-			faceQuadtoOBJ[1] = 0;
-			faceQuadtoOBJ[0] = INVALID;
+			faceOBJtoQuad[notAssignedOBJFaceId[0]] = 3;
+			faceQuadtoOBJ[3] = notAssignedOBJFaceId[0];
+		}
+		if (facesIndexes.size() == 3) // 3 total faces, 2 + 1. Face 3 always free. I think it can be used safely (because face0 is a quad)
+		{
+			faceOBJtoQuad[notAssignedOBJFaceId[0]] = 3;
+			faceQuadtoOBJ[3] = notAssignedOBJFaceId[0];
+		}
+		if (facesIndexes.size() == 4) // 4 total faces, 3 + 1. Invalid. For the same reason that 1 + 3 was invalid.
+		{
+			throw QuadException("3 faces not reachable from face " + std::to_string(notAssignedOBJFaceId[0])); // I think this isn't possible from a quadblock ?
 		}
 	}
 	for (size_t objFaceId = 0; objFaceId < facesIndexes.size(); objFaceId++)
@@ -193,7 +255,9 @@ Quadblock::Quadblock(const std::string& name,
 			throw QuadException("Can't resolve the objFace " + std::to_string(objFaceId));
 	}
 
+
 	
+	// Resolve quad vertices
 	for (size_t objFaceId = 0; objFaceId < facesIndexes.size(); objFaceId++)
 	{
 		size_t quadFaceId = faceOBJtoQuad[objFaceId];
@@ -203,31 +267,66 @@ Quadblock::Quadblock(const std::string& name,
 			size_t relQuadVertId = FindRelativePointQuad(quadFaceId, centerQuadVertId, offset);
 			size_t oppQuadVertId = FindRelativePointQuad(quadFaceId, centerQuadVertId, 2); // opposite corner of the quad
 			size_t relOBJVertId = FindRelativePointOBJ(objFaceId, vertQuadtoOBJ[centerQuadVertId], offset);
-			size_t relQuadFaceId = FindRelativeFaceQuad(quadFaceId, offset);
 
-			if (refCount[relOBJVertId] == 2 || faceQuadtoOBJ[relQuadFaceId] == INVALID)
+			if (refCount[relOBJVertId] == 2 || (offset != 2 && faceQuadtoOBJ[FindRelativeFaceQuad(quadFaceId, offset)] == INVALID))
 				vertQuadtoOBJ[relQuadVertId] = relOBJVertId;
 			else
 				vertQuadtoOBJ[oppQuadVertId] = relOBJVertId;			
 		}
 	}
 
-	std::array<size_t, NUM_FACES_QUADBLOCK> uniqueQuadVert = { 0, 2, 6, 8 };
-	std::array<size_t, NUM_FACES_QUADBLOCK> sharedQuadVert = { 1, 5, 3, 7 };
-	for (size_t i = 0; i < NUM_FACES_QUADBLOCK; i++)
+	bool needRotation = false;
+	bool noRotation = false;
+
+	for (size_t quadFaceId = 0; quadFaceId < NUM_FACES_QUADBLOCK; quadFaceId++)
 	{
-		if (faceQuadtoOBJ[i] == INVALID)
-			vertQuadtoOBJ[uniqueQuadVert[i]] = vertQuadtoOBJ[centerQuadVertId];
+		if (faceQuadtoOBJ[quadFaceId] == INVALID)
+		{
+			// TODO : ALWAYS ASSIGN UNIQUE TO CENTER, AND FIX BITSHIFTNORMAL MAX TO HIGH LOD
+			int uniqueVertOffset = 2; 
+			size_t uniqueQuadVertInFace = FindRelativePointQuad(quadFaceId, centerQuadVertId, uniqueVertOffset);
+			int prevEdgeOffset = -1;
+			size_t prevQuadFaceId = FindRelativeFaceQuad(quadFaceId, prevEdgeOffset);
+			size_t prevEdgeQuadVertInFace = FindRelativePointQuad(quadFaceId, centerQuadVertId, prevEdgeOffset);
+			int nextEdgeOffset = 1;
+			size_t nextQuadFaceId = FindRelativeFaceQuad(quadFaceId, nextEdgeOffset);
+			size_t nextEdgeQuadVertInFace = FindRelativePointQuad(quadFaceId, centerQuadVertId, nextEdgeOffset);
+			
+			vertQuadtoOBJ[uniqueQuadVertInFace] = vertQuadtoOBJ[centerQuadVertId];
+
+			if (faceQuadtoOBJ[prevQuadFaceId] != INVALID && faceQuadtoOBJ[nextQuadFaceId] != INVALID)
+			{
+				if (vertQuadtoOBJ[prevEdgeQuadVertInFace] != INVALID && vertQuadtoOBJ[nextEdgeQuadVertInFace] != INVALID)
+				{
+					if (uniqueQuadVertInFace == 0 || uniqueQuadVertInFace == 8)
+					{
+						printf("WARNING : When collapsing missing face in %s, we collapsed the vert %zu\n", name.c_str(), uniqueQuadVertInFace);
+						needRotation = true;
+					}
+					else
+						noRotation = true;
+				}				
+			}
+		}	
 	}
-	for (size_t i = 0; i < NUM_FACES_QUADBLOCK; i++)
+
+	for (size_t quadFaceId = 0; quadFaceId < NUM_FACES_QUADBLOCK; quadFaceId++)
 	{
-		if (vertQuadtoOBJ[sharedQuadVert[i]] == INVALID)
-			vertQuadtoOBJ[sharedQuadVert[i]] = vertQuadtoOBJ[centerQuadVertId];
+		int prevEdgeOffset = -1; // Gets the previous edge starting from center
+		size_t prevEdgeQuadVertInFace = FindRelativePointQuad(quadFaceId, centerQuadVertId, prevEdgeOffset);
+		if (vertQuadtoOBJ[prevEdgeQuadVertInFace] == INVALID)
+			vertQuadtoOBJ[prevEdgeQuadVertInFace] = vertQuadtoOBJ[centerQuadVertId];
 	}
-	for (size_t i = 0; i < NUM_FACES_QUADBLOCK; i++)
+
+
+	for (size_t quadFaceId = 0; quadFaceId < NUM_FACES_QUADBLOCK; quadFaceId++)
 	{
-		if (vertQuadtoOBJ[uniqueQuadVert[i]] == INVALID)
-			vertQuadtoOBJ[uniqueQuadVert[i]] = vertQuadtoOBJ[sharedQuadVert[i]];
+		int prevEdgeOffset = -1;
+		int uniqueVertOffset = 2;
+		size_t uniqueQuadVertInFace = FindRelativePointQuad(quadFaceId, centerQuadVertId, uniqueVertOffset);
+		size_t prevEdgeQuadVertInFace = FindRelativePointQuad(quadFaceId, centerQuadVertId, prevEdgeOffset);
+		if (vertQuadtoOBJ[uniqueQuadVertInFace] == INVALID)
+			vertQuadtoOBJ[uniqueQuadVertInFace] = vertQuadtoOBJ[prevEdgeQuadVertInFace];
 	}
 	for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++) 
 	{ 
@@ -235,7 +334,6 @@ Quadblock::Quadblock(const std::string& name,
 			throw QuadException("Quadblock Vert " + std::to_string(i) + " couldn't be identified");	
 			
 		m_p[i] = Vertex(points[vertQuadtoOBJ[i]]);
-		vertOBJtoQuad[vertQuadtoOBJ[i]] = i;
 	}
 
 	// Step 6: UVs. A synthesized corner's grid index equals its substitute edge's grid index,
@@ -900,7 +998,15 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 
 	if (!m_hasRawNormalData)
 	{
-		quadblock.triNormalVecBitshift = static_cast<uint8_t>(std::round(std::log2(std::max(ComputeNormalVector(0, 2, 6).Length(), ComputeNormalVector(2, 8, 6).Length()) * 512.0f)));
+		std::vector<float> normalLengths;
+		for (std::array<size_t, 3> triFace : GetTriFacesIndexes())
+			normalLengths.push_back(ComputeNormalVector(triFace[0], triFace[1], triFace[2]).Length());
+		normalLengths.push_back(ComputeNormalVector(0, 2, 6).Length());
+		normalLengths.push_back(ComputeNormalVector(2, 8, 6).Length());
+		float maxNormalLength = *std::max_element(normalLengths.begin(), normalLengths.end());
+
+		quadblock.triNormalVecBitshift = static_cast<uint8_t>(std::round(std::log2(maxNormalLength * 512.0f)));
+
 		auto CalculateNormalDividend = [this](size_t id0, size_t id1, size_t id2, float scaler) -> int16_t
 			{
 				return static_cast<int16_t>(std::round(scaler / ComputeNormalVector(id0, id1, id2).Length()));
