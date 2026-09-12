@@ -67,17 +67,59 @@ Quadblock::Quadblock(const std::string& name,
 
 	if (objCenterIds.empty())
 	{
-		//printf("NOTE: Object '%s' has no vertex shared by all faces (looks like a triblock); building a placeholder quadblock for it.\n", name.c_str());
-		const size_t placeholderIdx = facesIndexes[0][0];
-		for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++) { m_p[i] = Vertex(points[placeholderIdx]); }
-		ResetUVs();
-		m_name = name;
-		for (size_t i = 0; i < NUM_FACES_QUADBLOCK; i++) { m_materials[i] = faceMaterials[i]; }
-		m_materials[NUM_FACES_QUADBLOCK] = faceMaterials[0];
-		m_triblock = true;
-		m_filterCallback = filterCallback;
-		SetDefaultValues();
-		return;
+		// Could be a legacy triblock.
+		if (facesIndexes.size() != 4)
+			throw QuadException("Not a quadblock (no center) and not a legacy triblock (not 4 trifaces)");
+		for (size_t objFaceId = 0; objFaceId < facesIndexes.size(); objFaceId++)
+		{
+			if (facesIndexes[objFaceId].size() != 3)
+				throw QuadException("Not a quadblock (no center) and not a legacy triblock (not 4 trifaces)");
+		}
+		// Find center face
+		size_t centerFace = INVALID;
+		for (size_t objFaceId = 0; objFaceId < facesIndexes.size(); objFaceId++)
+		{
+			bool isCenter = true;
+			for (size_t objVertId : facesIndexes[objFaceId])
+			{
+				if (refCount[objVertId] != 3)
+					isCenter = false;
+			}
+			if (isCenter) { centerFace = objFaceId; break; }
+		}
+		if (centerFace == INVALID)
+			throw QuadException("Couldn't assimilate to a valid triblock");
+
+		// Find matching UVs	
+		bool foundMatching = false;
+		for (size_t faceVertId = 0; faceVertId < 3; faceVertId++)
+		{
+			if (foundMatching) { break; }
+			size_t edgeVert1 = facesIndexes[centerFace][faceVertId];
+			size_t edgeVert2 = facesIndexes[centerFace][(faceVertId + 1) % 3];
+			for (size_t outFaceId = 0; outFaceId < facesIndexes.size(); outFaceId++)
+			{
+				if (outFaceId == centerFace) { continue; }
+				if (!objFaceVertIdMap.contains(std::make_tuple(outFaceId, edgeVert1))) { continue; }
+				if (!objFaceVertIdMap.contains(std::make_tuple(outFaceId, edgeVert2))) { continue; }
+				size_t outFaceEdgeVert1Id = objFaceVertIdMap[std::make_tuple(outFaceId, edgeVert1)];
+				size_t outFaceEdgeVert2Id = objFaceVertIdMap[std::make_tuple(outFaceId, edgeVert2)];
+				if (outFaceEdgeVert1Id != (outFaceEdgeVert2Id + 1) % 3) { continue; }
+				// Correct face, now check UVs
+				if (faceUVs[centerFace][faceVertId] == faceUVs[outFaceId][outFaceEdgeVert1Id] && faceUVs[centerFace][(faceVertId + 1) % 3] == faceUVs[outFaceId][outFaceEdgeVert2Id])
+				{
+					// Found matching, merge CenterFace and OutFaceId into a quadface, and go back to the start.
+					foundMatching = true;
+					printf("Valid triblock, need to be actually constructed now\n");
+					break;
+				}
+			}
+		}
+		if (!foundMatching)
+		{
+			throw QuadException("Wrong triblock UVs : Make sure 2 trifaces can be merged into a quadFace without breaking UVs");
+		}
+
 	}
 
 	size_t objCenterId = objCenterIds[0]; // any valid center works, we fix one.
