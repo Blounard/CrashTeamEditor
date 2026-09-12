@@ -44,7 +44,7 @@ AnimTexture::AnimTexture(const std::string& animName, const std::filesystem::pat
 	// Caller guarantees all 4 faces are animated with matching frame counts before
 	// this constructor ever runs, so every face has data for every frameIdx below -
 	// no per-face skip/fallback needed here anymore.
-	bool isTriblock = false; // TODO: always loaded as quadblock for now, see original note
+	bool isTriblock = false; 
 
 	objFile << "mtllib frames.mtl\n";
 
@@ -55,14 +55,14 @@ AnimTexture::AnimTexture(const std::string& animName, const std::filesystem::pat
 
 		// 9 vertices
 		objFile << "v 0.0 0.0 " << z << " 0.5 0.5 0.5\n";
-		objFile << "v 1.0 0.0 " << z << " 0.5 0.5 0.5\n";
-		objFile << "v 0.0 1.0 " << z << " 0.5 0.5 0.5\n";
-		objFile << "v 1.0 1.0 " << z << " 0.5 0.5 0.5\n";
-		objFile << "v 0.5 0.5 " << z << " 0.5 0.5 0.5\n";
-		objFile << "v 1.0 0.5 " << z << " 0.5 0.5 0.5\n";
-		objFile << "v 0.5 1.0 " << z << " 0.5 0.5 0.5\n";
 		objFile << "v 0.0 0.5 " << z << " 0.5 0.5 0.5\n";
+		objFile << "v 0.0 1.0 " << z << " 0.5 0.5 0.5\n";
 		objFile << "v 0.5 0.0 " << z << " 0.5 0.5 0.5\n";
+		objFile << "v 0.5 0.5 " << z << " 0.5 0.5 0.5\n";
+		objFile << "v 0.5 1.0 " << z << " 0.5 0.5 0.5\n";
+		objFile << "v 1.0 0.0 " << z << " 0.5 0.5 0.5\n";
+		objFile << "v 1.0 0.5 " << z << " 0.5 0.5 0.5\n";
+		objFile << "v 1.0 1.0 " << z << " 0.5 0.5 0.5\n";
 
 		// 3 normals
 		objFile << "vn 0.0 1.0 0.0\n";
@@ -91,55 +91,35 @@ AnimTexture::AnimTexture(const std::string& animName, const std::filesystem::pat
 		int vtOffset = static_cast<int>(frameIdx * 16) + 1;
 		int vnOffset = static_cast<int>(frameIdx * 3) + 1;
 
-		if (isTriblock)
-		{
-			objFile << "f " << (vOffset + 0) << "/" << (vtOffset + 0) << "/" << (vnOffset + 0) << " "
-				<< (vOffset + 1) << "/" << (vtOffset + 1) << "/" << (vnOffset + 0) << " "
-				<< (vOffset + 4) << "/" << (vtOffset + 2) << "/" << (vnOffset + 0) << "\n";
-			objFile << "f " << (vOffset + 1) << "/" << (vtOffset + 4) << "/" << (vnOffset + 1) << " "
-				<< (vOffset + 5) << "/" << (vtOffset + 5) << "/" << (vnOffset + 1) << " "
-				<< (vOffset + 4) << "/" << (vtOffset + 6) << "/" << (vnOffset + 1) << "\n";
-			objFile << "f " << (vOffset + 5) << "/" << (vtOffset + 8) << "/" << (vnOffset + 2) << " "
-				<< (vOffset + 3) << "/" << (vtOffset + 9) << "/" << (vnOffset + 2) << " "
-				<< (vOffset + 4) << "/" << (vtOffset + 10) << "/" << (vnOffset + 2) << "\n";
-			objFile << "f " << (vOffset + 3) << "/" << (vtOffset + 12) << "/" << (vnOffset + 2) << " "
-				<< (vOffset + 2) << "/" << (vtOffset + 13) << "/" << (vnOffset + 2) << " "
-				<< (vOffset + 4) << "/" << (vtOffset + 14) << "/" << (vnOffset + 2) << "\n";
-		}
-		else
-		{
-			// usemtl now written per-face, right before that face's own f line, since
-			// faces can carry independent per-frame materials (unlike the old
-			// once-per-object usemtl, which only ever worked for 1-tex/quadblock content).
 
-			// Face 0: Top-Left Quadrant
-			objFile << "usemtl " << faceFrameMaterials[0][frameIdx] << "\n";
-			objFile << "f " << (vOffset + 0) << "/" << (vtOffset + 0) << "/" << (vnOffset + 0) << " "
-				<< (vOffset + 7) << "/" << (vtOffset + 1) << "/" << (vnOffset + 0) << " "
-				<< (vOffset + 8) << "/" << (vtOffset + 3) << "/" << (vnOffset + 0) << " "
-				<< (vOffset + 5) << "/" << (vtOffset + 2) << "/" << (vnOffset + 0) << "\n";
+		// Face 0: Top-Left Quadrant
+		objFile << "usemtl " << faceFrameMaterials[0][frameIdx] << "\n";
+		objFile << "f " << (vOffset + 0) << "/" << (vtOffset + 0) << "/" << (vnOffset + 0) << " "
+			<< (vOffset + 1) << "/" << (vtOffset + 1) << "/" << (vnOffset + 0) << " "
+			<< (vOffset + 4) << "/" << (vtOffset + 3) << "/" << (vnOffset + 0) << " "
+			<< (vOffset + 3) << "/" << (vtOffset + 2) << "/" << (vnOffset + 0) << "\n";
 
-			// Face 1: Top-Right Quadrant
-			objFile << "usemtl " << faceFrameMaterials[1][frameIdx] << "\n";
-			objFile << "f " << (vOffset + 7) << "/" << (vtOffset + 4) << "/" << (vnOffset + 1) << " "
-				<< (vOffset + 1) << "/" << (vtOffset + 5) << "/" << (vnOffset + 1) << " "
-				<< (vOffset + 4) << "/" << (vtOffset + 7) << "/" << (vnOffset + 1) << " "
-				<< (vOffset + 8) << "/" << (vtOffset + 6) << "/" << (vnOffset + 1) << "\n";
+		// Face 1: Top-Right Quadrant
+		objFile << "usemtl " << faceFrameMaterials[1][frameIdx] << "\n";
+		objFile << "f " << (vOffset + 1) << "/" << (vtOffset + 4) << "/" << (vnOffset + 1) << " "
+			<< (vOffset + 2) << "/" << (vtOffset + 5) << "/" << (vnOffset + 1) << " "
+			<< (vOffset + 5) << "/" << (vtOffset + 7) << "/" << (vnOffset + 1) << " "
+			<< (vOffset + 4) << "/" << (vtOffset + 6) << "/" << (vnOffset + 1) << "\n";
 
-			// Face 2: Bottom-Left Quadrant
-			objFile << "usemtl " << faceFrameMaterials[2][frameIdx] << "\n";
-			objFile << "f " << (vOffset + 5) << "/" << (vtOffset + 8) << "/" << (vnOffset + 2) << " "
-				<< (vOffset + 8) << "/" << (vtOffset + 9) << "/" << (vnOffset + 2) << " "
-				<< (vOffset + 6) << "/" << (vtOffset + 11) << "/" << (vnOffset + 2) << " "
-				<< (vOffset + 2) << "/" << (vtOffset + 10) << "/" << (vnOffset + 2) << "\n";
+		// Face 2: Bottom-Left Quadrant
+		objFile << "usemtl " << faceFrameMaterials[2][frameIdx] << "\n";
+		objFile << "f " << (vOffset + 3) << "/" << (vtOffset + 8) << "/" << (vnOffset + 2) << " "
+			<< (vOffset + 4) << "/" << (vtOffset + 9) << "/" << (vnOffset + 2) << " "
+			<< (vOffset + 7) << "/" << (vtOffset + 11) << "/" << (vnOffset + 2) << " "
+			<< (vOffset + 6) << "/" << (vtOffset + 10) << "/" << (vnOffset + 2) << "\n";
 
-			// Face 3: Bottom-Right Quadrant
-			objFile << "usemtl " << faceFrameMaterials[3][frameIdx] << "\n";
-			objFile << "f " << (vOffset + 8) << "/" << (vtOffset + 12) << "/" << (vnOffset + 2) << " "
-				<< (vOffset + 4) << "/" << (vtOffset + 13) << "/" << (vnOffset + 2) << " "
-				<< (vOffset + 3) << "/" << (vtOffset + 15) << "/" << (vnOffset + 2) << " "
-				<< (vOffset + 6) << "/" << (vtOffset + 14) << "/" << (vnOffset + 2) << "\n";
-		}
+		// Face 3: Bottom-Right Quadrant
+		objFile << "usemtl " << faceFrameMaterials[3][frameIdx] << "\n";
+		objFile << "f " << (vOffset + 4) << "/" << (vtOffset + 12) << "/" << (vnOffset + 2) << " "
+			<< (vOffset + 5) << "/" << (vtOffset + 13) << "/" << (vnOffset + 2) << " "
+			<< (vOffset + 8) << "/" << (vtOffset + 15) << "/" << (vnOffset + 2) << " "
+			<< (vOffset + 7) << "/" << (vtOffset + 14) << "/" << (vnOffset + 2) << "\n";
+		
 	}
 	objFile.close();
 

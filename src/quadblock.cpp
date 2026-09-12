@@ -45,7 +45,6 @@ Quadblock::Quadblock(const std::string& name,
 		throw QuadException("OBJ error : Expected 9 uniques vertices or less, found " + std::to_string(points.size()));
 
 	std::map<std::tuple<size_t, size_t>, size_t> objFaceVertIdMap; // (objFaceId, objVertId) -> objFaceVertId
-
 	std::vector<size_t> refCount(points.size(), 0);
 	for (size_t objFaceId = 0; objFaceId < facesIndexes.size(); objFaceId++)
 	{
@@ -58,13 +57,12 @@ Quadblock::Quadblock(const std::string& name,
 			objFaceVertIdMap[std::make_tuple(objFaceId, objVertId)] = objFaceVertId;
 		}
 	}
+
 	std::vector<size_t> objCenterIds;
 	for (size_t objVertId = 0; objVertId < points.size(); objVertId++)
 	{
 		if (refCount[objVertId] == facesIndexes.size())
-		{
 			objCenterIds.push_back(objVertId);
-		}
 	}
 
 	if (objCenterIds.empty())
@@ -83,14 +81,6 @@ Quadblock::Quadblock(const std::string& name,
 	}
 
 	size_t objCenterId = objCenterIds[0]; // any valid center works, we fix one.
-
-	/*
-	p0 -- p1 -- p2
-	|  q0 |  q1 |
-	p3 -- p4 -- p5
-	|  q2 |  q3 |
-	p6 -- p7 -- p8
-	*/
 	std::vector<size_t> faceOBJtoQuad(facesIndexes.size(), INVALID); // OBJ face index -> Quadblock face index
 	std::array<size_t, NUM_FACES_QUADBLOCK> faceQuadtoOBJ{}; faceQuadtoOBJ.fill(INVALID); // Quadblock face index -> OBJ face index
 	std::array<size_t, NUM_VERTICES_QUADBLOCK> vertQuadtoOBJ{}; vertQuadtoOBJ.fill(INVALID); // Quadblock vert index -> OBJ vert index
@@ -102,7 +92,6 @@ Quadblock::Quadblock(const std::string& name,
 		{4, 7, 6, 3},
 		{4, 5, 8, 7}
 	};
-
 	constexpr size_t quadFaceOrder[NUM_FACES_QUADBLOCK] = { 0, 1 , 3 , 2 };
 
 
@@ -163,7 +152,6 @@ Quadblock::Quadblock(const std::string& name,
 			size_t relQuadVertId = FindRelativePointQuad(quadFaceId, centerQuadVertId, offset);
 			size_t relOBJVertId = FindRelativePointOBJ(objFaceId, objCenterId, offset);
 			size_t relQuadFaceId = FindRelativeFaceQuad(quadFaceId, offset);
-
 			for (size_t otherObjFaceId = 0; otherObjFaceId < facesIndexes.size(); otherObjFaceId++)
 			{
 				if (FindRelativePointOBJ(otherObjFaceId, objCenterId, -offset) == relOBJVertId)
@@ -208,50 +196,28 @@ Quadblock::Quadblock(const std::string& name,
 		}
 		else
 			throw QuadException("More than 3 edge based connected component"); // Should be impossible with correctly formed data
-
-		if (facesIndexes.size() == 3)  // 1 + 2 : Does it ever happens ? Yes : "Butterfly" 2-1 config (1->4 ; 6->4 ; 7->8)
+		// The used faces are either 0 and 1 or 0 and 2. Unused are 1 and 3 or 2 and 3
+		if (faceQuadtoOBJ[2] == INVALID)
 		{
-			// We can assign the 2 faces to 1 3 Or 3 2. Both should be valid, let's pick 1 3
+			faceQuadtoOBJ[2] = nextObjFace;
+			faceOBJtoQuad[nextObjFace] = 2;
+			faceQuadtoOBJ[3] = prevObjFace;
+			faceOBJtoQuad[prevObjFace] = 3;
+		}
+		else
+		{
 			faceQuadtoOBJ[3] = nextObjFace;
 			faceOBJtoQuad[nextObjFace] = 3;
 			faceQuadtoOBJ[1] = prevObjFace;
 			faceOBJtoQuad[prevObjFace] = 1;
 		}
-		if (facesIndexes.size() == 4)  // 2 + 2 : Should only happen with the "butterfly" triangle shape
-		{
-			// The used faces are either 0 and 1 or 0 and 2. Unused are 1 and 3 or 2 and 3
-			if (faceQuadtoOBJ[2] == INVALID)
-			{
-				faceQuadtoOBJ[2] = nextObjFace;
-				faceOBJtoQuad[nextObjFace] = 2;
-				faceQuadtoOBJ[3] = prevObjFace;
-				faceOBJtoQuad[prevObjFace] = 3;
-			}
-			else
-			{
-				faceQuadtoOBJ[3] = nextObjFace;
-				faceOBJtoQuad[nextObjFace] = 3;
-				faceQuadtoOBJ[1] = prevObjFace;
-				faceOBJtoQuad[prevObjFace] = 1;
-			}
-		}
 	}
 	if (notAssignedOBJFaceId.size() == 1)
 	{
-		if (facesIndexes.size() == 2)  // 2 total face, 1 + 1. Clearly always safe.
-		{
-			faceOBJtoQuad[notAssignedOBJFaceId[0]] = 3;
-			faceQuadtoOBJ[3] = notAssignedOBJFaceId[0];
-		}
-		if (facesIndexes.size() == 3) // 3 total faces, 2 + 1. Face 3 always free. I think it can be used safely (because face0 is a quad)
-		{
-			faceOBJtoQuad[notAssignedOBJFaceId[0]] = 3;
-			faceQuadtoOBJ[3] = notAssignedOBJFaceId[0];
-		}
 		if (facesIndexes.size() == 4) // 4 total faces, 3 + 1. Invalid. For the same reason that 1 + 3 was invalid.
-		{
 			throw QuadException("3 faces not reachable from face " + std::to_string(notAssignedOBJFaceId[0])); // I think this isn't possible from a quadblock ?
-		}
+		faceOBJtoQuad[notAssignedOBJFaceId[0]] = 3;
+		faceQuadtoOBJ[3] = notAssignedOBJFaceId[0];
 	}
 	for (size_t objFaceId = 0; objFaceId < facesIndexes.size(); objFaceId++)
 	{
@@ -259,8 +225,6 @@ Quadblock::Quadblock(const std::string& name,
 			throw QuadException("Can't resolve the objFace " + std::to_string(objFaceId));
 	}
 
-
-	
 	// Resolve quad vertices
 	for (size_t objFaceId = 0; objFaceId < facesIndexes.size(); objFaceId++)
 	{
@@ -270,7 +234,7 @@ Quadblock::Quadblock(const std::string& name,
 			if (offset == 2 && facesIndexes[objFaceId].size() == 3) continue; // No offset 2 for triface, since it's equivalent to -1
 			size_t relQuadVertId = FindRelativePointQuad(quadFaceId, centerQuadVertId, offset);
 			size_t oppQuadVertId = FindRelativePointQuad(quadFaceId, centerQuadVertId, 2); // opposite corner of the quad
-			size_t relOBJVertId = FindRelativePointOBJ(objFaceId, vertQuadtoOBJ[centerQuadVertId], offset);
+			size_t relOBJVertId = FindRelativePointOBJ(objFaceId, objCenterId, offset);
 
 			if (refCount[relOBJVertId] == 2 || (offset != 2 && faceQuadtoOBJ[FindRelativeFaceQuad(quadFaceId, offset)] == INVALID))
 				vertQuadtoOBJ[relQuadVertId] = relOBJVertId;
@@ -279,9 +243,38 @@ Quadblock::Quadblock(const std::string& name,
 		}
 	}
 
+	// Adjust some geometry (to potentially avoid a rotation later)
+	// The idea is : If we can free a sharedVert (1,5,7,3) onto a unique vert collapsable (2, 6), we do it. So collapsing missing face don't trigger a rotation.
+	for (size_t quadFaceId : {1, 2})
+	{
+		size_t objFaceId = faceQuadtoOBJ[quadFaceId];
+		if (objFaceId != INVALID)
+		{
+			size_t prevOBJVertId = FindRelativePointOBJ(objFaceId, objCenterId, -1);
+			size_t nextOBJVertId = FindRelativePointOBJ(objFaceId, objCenterId, 1);
+			size_t prevQuadVertId = FindRelativePointQuad(quadFaceId, centerQuadVertId, -1);
+			size_t nextQuadVertId = FindRelativePointQuad(quadFaceId, centerQuadVertId, 1);
+			size_t oppQuadVertId = FindRelativePointQuad(quadFaceId, centerQuadVertId, 2);
+			if (vertQuadtoOBJ[oppQuadVertId] == INVALID)
+			{
+				if (refCount[prevOBJVertId] == 1)
+				{
+					vertQuadtoOBJ[oppQuadVertId] = vertQuadtoOBJ[prevQuadVertId];
+					vertQuadtoOBJ[prevQuadVertId] = INVALID;
+				}
+				else if (refCount[nextOBJVertId] == 1)
+				{
+					vertQuadtoOBJ[oppQuadVertId] = vertQuadtoOBJ[nextQuadVertId];
+					vertQuadtoOBJ[nextQuadVertId] = INVALID;
+				}
+			}
+		}
+	}
+
+
 	bool needRotation = false;
 	bool noRotation = false;
-
+	// Collapse missing face's unique vert
 	for (size_t quadFaceId = 0; quadFaceId < NUM_FACES_QUADBLOCK; quadFaceId++)
 	{
 		if (faceQuadtoOBJ[quadFaceId] == INVALID)
@@ -296,8 +289,7 @@ Quadblock::Quadblock(const std::string& name,
 			size_t nextEdgeQuadVertInFace = FindRelativePointQuad(quadFaceId, centerQuadVertId, nextEdgeOffset);
 			
 			vertQuadtoOBJ[uniqueQuadVertInFace] = vertQuadtoOBJ[centerQuadVertId];
-
-			if (faceQuadtoOBJ[prevQuadFaceId] != INVALID && faceQuadtoOBJ[nextQuadFaceId] != INVALID)
+			if (faceQuadtoOBJ[prevQuadFaceId] != INVALID && faceQuadtoOBJ[nextQuadFaceId] != INVALID) // Check that logic
 			{
 				if (vertQuadtoOBJ[prevEdgeQuadVertInFace] != INVALID && vertQuadtoOBJ[nextEdgeQuadVertInFace] != INVALID)
 				{
@@ -308,9 +300,9 @@ Quadblock::Quadblock(const std::string& name,
 					}
 					else
 						noRotation = true;
-				}				
+				}
 			}
-		}	
+		}
 	}
 
 	if (needRotation && noRotation)
@@ -340,6 +332,7 @@ Quadblock::Quadblock(const std::string& name,
 	}
 	if (noRotation)
 		printf("No-rotation requested on %s\n", name.c_str());
+	// collapse missing edges to center
 	for (size_t quadFaceId = 0; quadFaceId < NUM_FACES_QUADBLOCK; quadFaceId++)
 	{
 		int prevEdgeOffset = -1; // Gets the previous edge starting from center
@@ -347,8 +340,7 @@ Quadblock::Quadblock(const std::string& name,
 		if (vertQuadtoOBJ[prevEdgeQuadVertInFace] == INVALID)
 			vertQuadtoOBJ[prevEdgeQuadVertInFace] = vertQuadtoOBJ[centerQuadVertId];
 	}
-
-
+	// collapse missing unique vert to edges
 	for (size_t quadFaceId = 0; quadFaceId < NUM_FACES_QUADBLOCK; quadFaceId++)
 	{
 		int prevEdgeOffset = -1;
