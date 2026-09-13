@@ -744,7 +744,7 @@ std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures)
 }
 
 
-PSX::TextureLayout LayoutKey::Serialize(QuadUV uvs, uint32_t rotateFlip, PixelBounds bounds) const
+PSX::TextureLayout LayoutKey::Serialize(QuadUV uvs, PixelBounds bounds, uint32_t rotateFlip) const
 {
 	PSX::TextureLayout layout = {};
 

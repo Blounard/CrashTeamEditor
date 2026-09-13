@@ -1023,7 +1023,8 @@ namespace // SerializeInto
 
 
 void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t modelOffset, size_t headerStructOffset,
-	std::unordered_map<std::string, Texture>& materialToTexture,
+	std::unordered_map<std::string, Texture>& materialToTexture, bool useRawTextures,
+	std::unordered_map<std::string, LayoutKey> matToKey, std::unordered_map<LayoutKey, PixelBounds> pixelBounds,
 	std::vector<uint32_t>& outPointerLocations) const
 {
 	PSX::ModelHeader header{};
@@ -1081,39 +1082,39 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 
 	// Encode a ModelFrame + vertices + padding
 	auto EncodeFrame = [&](const std::vector<Tri>& frame) -> std::vector<uint8_t>
-		{
-			Vec3 frameMin(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
-			for (const Tri& tri : frame)
-				for (int c = 0; c < 3; c++)
-				{
-					frameMin.x = std::min(frameMin.x, tri.p[c].pos.x);
-					frameMin.y = std::min(frameMin.y, tri.p[c].pos.y);
-					frameMin.z = std::min(frameMin.z, tri.p[c].pos.z);
-				}
-			if (frame.empty()) { frameMin = Vec3(0, 0, 0); }
-			Vec3 origin = frameMin / effScale;
-
-			std::vector<uint8_t> res;
-			PSX::ModelFrame modelFrame{};
-			modelFrame.pos = ConvertVec3(origin, FP_ONE_MODEL_ORIGIN);
-			modelFrame.maybePosMaybePadding = 0;
-			std::memset(modelFrame.unk16, 0, sizeof(modelFrame.unk16));
-			modelFrame.vertexOffset = sizeof(PSX::ModelFrame);
-			AppendValue(res, modelFrame);
-
-			Vec3 effOrigin = ConvertPSXVec3(modelFrame.pos, FP_ONE_MODEL_ORIGIN);
-			for (const Tri& tri : frame)
+	{
+		Vec3 frameMin(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+		for (const Tri& tri : frame)
+			for (int c = 0; c < 3; c++)
 			{
-				for (int pushOrder = 0; pushOrder < 3; pushOrder++)
-				{
-					int cornerIdx = 2 - pushOrder; 
-					PSX::Vec3b vert = ConvertVec3b((tri.p[cornerIdx].pos / effScale) - effOrigin, 255) ;
-					AppendValue(res, vert);
-				}
+				frameMin.x = std::min(frameMin.x, tri.p[c].pos.x);
+				frameMin.y = std::min(frameMin.y, tri.p[c].pos.y);
+				frameMin.z = std::min(frameMin.z, tri.p[c].pos.z);
 			}
-			AppendPadding(res, 4);
-			return res;
-		};
+		if (frame.empty()) { frameMin = Vec3(0, 0, 0); }
+		Vec3 origin = frameMin / effScale;
+
+		std::vector<uint8_t> res;
+		PSX::ModelFrame modelFrame{};
+		modelFrame.pos = ConvertVec3(origin, FP_ONE_MODEL_ORIGIN);
+		modelFrame.maybePosMaybePadding = 0;
+		std::memset(modelFrame.unk16, 0, sizeof(modelFrame.unk16));
+		modelFrame.vertexOffset = sizeof(PSX::ModelFrame);
+		AppendValue(res, modelFrame);
+
+		Vec3 effOrigin = ConvertPSXVec3(modelFrame.pos, FP_ONE_MODEL_ORIGIN);
+		for (const Tri& tri : frame)
+		{
+			for (int pushOrder = 0; pushOrder < 3; pushOrder++)
+			{
+				int cornerIdx = 2 - pushOrder; 
+				PSX::Vec3b vert = ConvertVec3b((tri.p[cornerIdx].pos / effScale) - effOrigin, 255) ;
+				AppendValue(res, vert);
+			}
+		}
+		AppendPadding(res, 4);
+		return res;
+	};
 
 	// Command list: topology/color/texture/doubleSided
 	std::vector<PSX::InstDrawCommand> commands;
@@ -1157,7 +1158,21 @@ void InstanceModelHeader::SerializeInto(std::vector<uint8_t>& output, uint32_t m
 				(tri.p[0].uv.y + tri.p[1].uv.y + tri.p[2].uv.y) / 3.0f
 			);
 			QuadUV quadUV = { tri.p[2].uv, tri.p[1].uv, tri.p[0].uv, centroid };
-			PSX::TextureLayout layout = materialToTexture[tri.texture].Serialize(quadUV);
+			PSX::TextureLayout layout{};
+			if (useRawTextures)
+			{
+				if (matToKey.contains(tri.texture))
+				{
+					LayoutKey& key = matToKey[tri.texture];
+					PixelBounds& bounds = pixelBounds[key];
+					layout = key.Serialize(quadUV, bounds);
+				}
+			}
+			else
+			{
+				layout = materialToTexture[tri.texture].Serialize(quadUV);
+			}
+			
 
 			if (!layoutLookup.contains(layout))
 			{
@@ -1409,6 +1424,8 @@ std::vector<Primitive> InstanceModel::GetGeometry()
 }
 
 std::vector<uint8_t> InstanceModel::Serialize(uint32_t modelOffset, std::unordered_map<std::string, Texture>& materialToTexture,
+	bool useRawTextures,
+	std::unordered_map<std::string, LayoutKey> matToKey, std::unordered_map<LayoutKey, PixelBounds> pixelBounds,
 	std::vector<uint32_t>& outPointerLocations) const
 {
 	std::vector<uint8_t> output;
@@ -1442,7 +1459,7 @@ std::vector<uint8_t> InstanceModel::Serialize(uint32_t modelOffset, std::unorder
 	for (size_t h = 0; h < m_headers.size(); h++)
 	{
 		const size_t headerStructOffset = headersBlockOffset + h * sizeof(PSX::ModelHeader);
-		m_headers[h].SerializeInto(output, modelOffset, headerStructOffset, materialToTexture, outPointerLocations);
+		m_headers[h].SerializeInto(output, modelOffset, headerStructOffset, materialToTexture, useRawTextures, matToKey, pixelBounds, outPointerLocations);
 	}
 
 	AppendPadding(output, 4);

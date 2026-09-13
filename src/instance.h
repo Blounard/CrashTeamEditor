@@ -347,9 +347,9 @@ public:
 	nlohmann::json WriteMetadataJson(const std::string& gltfFile) const;
 
 	bool RenderUI();
-	void SerializeInto(std::vector<uint8_t>& output, uint32_t modelOffset,
-		size_t headerStructOffset,
-		std::unordered_map<std::string, Texture>& materialToTexture,
+	void SerializeInto(std::vector<uint8_t>& output, uint32_t modelOffset, size_t headerStructOffset,
+		std::unordered_map<std::string, Texture>& materialToTexture, bool useRawTextures,
+		std::unordered_map<std::string, LayoutKey> matToKey, std::unordered_map<LayoutKey, PixelBounds> pixelBounds,
 		std::vector<uint32_t>& outPointerLocations) const;
 private:
 	std::string m_name;
@@ -384,6 +384,8 @@ public:
 
 	bool RenderUI(std::unordered_map<std::string, Texture>& materialToTexture);
 	std::vector<uint8_t> Serialize(uint32_t modelOffset, std::unordered_map<std::string, Texture>& materialToTexture,
+		bool useRawTextures,
+		std::unordered_map<std::string, LayoutKey> matToKey, std::unordered_map<LayoutKey, PixelBounds> pixelBounds,
 		std::vector<uint32_t>& outPointerLocations) const;
 
 
