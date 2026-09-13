@@ -65,6 +65,7 @@ Quadblock::Quadblock(const std::string& name,
 			objCenterIds.push_back(objVertId);
 	}
 
+	m_triblock = false;
 	if (objCenterIds.empty()) // Test if this is a legacy triblock.
 	{
 		if (facesIndexes.size() != 4)
@@ -158,6 +159,7 @@ Quadblock::Quadblock(const std::string& name,
 					}
 					if (objCenterIds.empty())
 						throw QuadException("Couldn't assimilate to a valid triblock");
+					m_triblock = true;
 					break;
 				}
 			}
@@ -485,7 +487,6 @@ Quadblock::Quadblock(const std::string& name,
 			m_materials[quadFaceId] = faceMaterials[objFaceId];
 	}
 	m_materials[NUM_FACES_QUADBLOCK] = m_materials[0];
-	m_triblock = false;
 	m_filterCallback = filterCallback;
 	SetDefaultValues();
 }
@@ -1173,7 +1174,6 @@ void Quadblock::ComputeCollTrifaces()
 		}
 	}
 }
-
 
 void Quadblock::SetDefaultValues()
 {
