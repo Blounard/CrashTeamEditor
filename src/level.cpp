@@ -4318,7 +4318,6 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 
 bool Level::SaveOBJ(const std::filesystem::path& objFile) 
 {
-	// TODO : Rework that since now quad can have multiple mat
 	std::ofstream file(objFile);
 	if (!file.is_open()) { return false; }
 
