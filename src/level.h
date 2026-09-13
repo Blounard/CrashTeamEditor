@@ -178,11 +178,8 @@ private:
 	Texture m_envMapTex;
 
 	bool m_hasRawTexture;
-	std::unordered_map<uint32_t, PSX::TextureGroup> m_rawTextureGroup;
 	std::unordered_map<LayoutKey, std::string> m_materialCache; // Layout Key -> matName
 	std::unordered_map<LayoutKey, PixelBounds> m_textureToPixelBounds; // Map Layout key -> Pixels bounds of the texture.
-	std::unordered_map<uint32_t, PSX::AnimTex> m_rawAnimTex;
-	std::unordered_map<uint32_t, std::vector<uint32_t>> m_rawAnimTexFrames;
 	PSX::TextureLayout m_rawWaterLayout;
 	//std::vector<PSX::Vertex> m_rawWaterVertices;
 	//std::vector<PSX::OceanVertex> m_rawWaterColors;

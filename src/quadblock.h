@@ -195,6 +195,7 @@ public:
 private:
 	void ResetUVs();
 	void SetDefaultValues();
+	void ComputeCollTrifaces();
 	void ComputeBoundingBox();
 
 private:

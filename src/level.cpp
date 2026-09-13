@@ -1615,15 +1615,12 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	}
 
 
-	std::map<size_t, std::array<uint32_t, NUM_FACES_QUADBLOCK>> quadblockFaceToAnimOffset; // Map: quadblock index -> Array animTexOffset *5
-	std::unordered_map<uint32_t, std::string> textureGroupToMaterial; // Map : texture group offset -> material name
+	std::map<size_t, std::array<uint32_t, NUM_FACES_QUADBLOCK>> quadblockFaceToAnimOffset; // Map: quadblock index -> Array animTexOffset per face
 	std::vector<uint32_t> quadblocksVisibleSetOff; // List of VisibleSetOffset for quadblock. Needed for vistree loading, parsed with quadblocks.
+	std::set<uint32_t> parsedAnimTexOffset;
 	int texCounter = 0;
 	bool hasAnimData = header.offAnimTex > 0;
 	size_t offAnimStart = header.offAnimTex;
-	m_rawAnimTex.clear(); // Map : Absolute Offset -> PSX::AnimTex
-	m_rawTextureGroup.clear(); // Map : Absolute Offset ->  PSX::TextureGroup
-	m_rawAnimTexFrames.clear(); // Map : Absolute Offset -> List of Absolute Offset for PSX::TextureGroup
 
 	// 1st pass : Parse Quadblock, find TextureGroups, and caclulate UV bounds
 	// Take care of all texture group for static quad and animated quads
@@ -1650,12 +1647,12 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 					quadblockFaceToAnimOffset[i][f] = realOffset;
 				}
 
-				if (!m_rawAnimTex.contains(realOffset))
+				if (!parsedAnimTexOffset.contains(realOffset))
 				{
 					file.seekg(offLev + std::streampos(realOffset));
 					PSX::AnimTex animTex;
 					Read(file, animTex);
-					m_rawAnimTex[realOffset] = animTex;
+					parsedAnimTexOffset.insert(realOffset);
 
 					std::vector<uint32_t> frameTextureGroupOffset;
 					for (uint16_t frame = 0; frame < animTex.frameCount; frame++)
@@ -1669,13 +1666,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 						PSX::TextureGroup group = {};
 						Read(file, group);
 						file.seekg(currentPos);
-						// Tempfix for vanilla : group.mosaic is broken for a lot of texture, need research
-						PSX::TextureGroup tempTexGroup = {};
-						tempTexGroup.far = group.far;
-						tempTexGroup.middle = group.middle;
-						tempTexGroup.near = group.near;
-						tempTexGroup.mosaic = group.near;
-						m_rawTextureGroup[frameTexOffset] = tempTexGroup;
 						const PSX::TextureLayout& layout = group.middle;
 						LayoutKey key(layout);
 
@@ -1684,13 +1674,9 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 							std::string newMatName = "tex_" + std::to_string(texCounter++);
 							m_materialCache[key] = newMatName;
 						}
-						textureGroupToMaterial[frameTexOffset] = m_materialCache[key];
-
 						RawUV rawUV(layout);
 						m_textureToPixelBounds[key].Update(rawUV);
-
 					}
-					m_rawAnimTexFrames[realOffset] = frameTextureGroupOffset;
 				}
 			}
 			else // Regular Textures
@@ -1698,13 +1684,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				file.seekg(offLev + static_cast<std::streamoff>(texOffset));
 				PSX::TextureGroup group = {};
 				Read(file, group);
-				// Tempfix for vanilla : group.mosaic is broken for a lot of texture, need research
-				PSX::TextureGroup tempTexGroup = {};
-				tempTexGroup.far = group.far;
-				tempTexGroup.middle = group.middle;
-				tempTexGroup.near = group.near;
-				tempTexGroup.mosaic = group.near;
-				m_rawTextureGroup[texOffset] = tempTexGroup;
 				const PSX::TextureLayout& layout = group.middle;
 				LayoutKey key(layout);
 
@@ -1713,8 +1692,6 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 					std::string newMatName = "tex_" + std::to_string(texCounter++);
 					m_materialCache[key] = newMatName;
 				}
-				textureGroupToMaterial[texOffset] = m_materialCache[key];
-
 				RawUV rawUV(layout, psxQuad.drawOrderLow, f);
 				m_textureToPixelBounds[key].Update(rawUV);
 			}
@@ -2733,78 +2710,78 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 			Quadblock& currQuad = m_quadblocks[qi];
 			if (currQuad.GetAnimated())
 			{
-				for (size_t i = 0; i < NUM_FACES_QUADBLOCK + 1; i++)
-				{
-					uint32_t rawTexOffset = currQuad.GetRawTexOffset(i);
-					uint32_t animTexKey = rawTexOffset - 1;
+				//for (size_t i = 0; i < NUM_FACES_QUADBLOCK + 1; i++)
+				//{
+				//	uint32_t rawTexOffset = currQuad.GetRawTexOffset(i);
+				//	uint32_t animTexKey = rawTexOffset - 1;
 
-					if (!m_rawAnimTex.contains(animTexKey))
-					{
-						// This face is not animated, treat it as a static texture
-						if (!rawOffsetRemap.contains(rawTexOffset))
-						{
-							rawOffsetRemap[rawTexOffset] = texGroups.size();
-							if (!m_rawTextureGroup.contains(rawTexOffset))
-							{
-								printf("MISSING TEXTURE FOR %s FACE %zu\n", currQuad.GetName().c_str(), i);
-							}
-							texGroups.push_back(m_rawTextureGroup[rawTexOffset]);
-						}
-						currQuad.SetTextureID(rawOffsetRemap[rawTexOffset], i); // TODO rework that, make PSX::TexLayout LayoutKey + QUadUV, and just store Keys as raw, UVs stays in quad, keys are in material
-						continue;
-					}
+				//	if (!m_rawAnimTex.contains(animTexKey))
+				//	{
+				//		// This face is not animated, treat it as a static texture
+				//		if (!rawOffsetRemap.contains(rawTexOffset))
+				//		{
+				//			rawOffsetRemap[rawTexOffset] = texGroups.size();
+				//			if (!m_rawTextureGroup.contains(rawTexOffset))
+				//			{
+				//				printf("MISSING TEXTURE FOR %s FACE %zu\n", currQuad.GetName().c_str(), i);
+				//			}
+				//			texGroups.push_back(m_rawTextureGroup[rawTexOffset]);
+				//		}
+				//		currQuad.SetTextureID(rawOffsetRemap[rawTexOffset], i); // TODO rework that, make PSX::TexLayout LayoutKey + QUadUV, and just store Keys as raw, UVs stays in quad, keys are in material
+				//		continue;
+				//	}
 
-					const PSX::AnimTex& animTex = m_rawAnimTex[animTexKey];
-					const std::vector<uint32_t>& frameOffsets = m_rawAnimTexFrames[animTexKey];
+				//	const PSX::AnimTex& animTex = m_rawAnimTex[animTexKey];
+				//	const std::vector<uint32_t>& frameOffsets = m_rawAnimTexFrames[animTexKey];
 
-					std::vector<size_t> remappedFrameIndexes;
-					for (uint32_t frameRawOffset : frameOffsets)
-					{
-						if (!rawOffsetRemap.contains(frameRawOffset))
-						{
-							rawOffsetRemap[frameRawOffset] = texGroups.size();
-							if (!m_rawTextureGroup.contains(frameRawOffset))
-							{
-								printf("MISSING FRAME TEXTURE FOR %s FACE %zu FRAME OFFSET %u\n",
-									currQuad.GetName().c_str(), i, frameRawOffset);
-							}
-							texGroups.push_back(m_rawTextureGroup[frameRawOffset]);
-						}
-						remappedFrameIndexes.push_back(rawOffsetRemap[frameRawOffset]);
-					}
+				//	std::vector<size_t> remappedFrameIndexes;
+				//	for (uint32_t frameRawOffset : frameOffsets)
+				//	{
+				//		if (!rawOffsetRemap.contains(frameRawOffset))
+				//		{
+				//			rawOffsetRemap[frameRawOffset] = texGroups.size();
+				//			if (!m_rawTextureGroup.contains(frameRawOffset))
+				//			{
+				//				printf("MISSING FRAME TEXTURE FOR %s FACE %zu FRAME OFFSET %u\n",
+				//					currQuad.GetName().c_str(), i, frameRawOffset);
+				//			}
+				//			texGroups.push_back(m_rawTextureGroup[frameRawOffset]);
+				//		}
+				//		remappedFrameIndexes.push_back(rawOffsetRemap[frameRawOffset]);
+				//	}
 
-					if (i == NUM_FACES_QUADBLOCK)
-					{
-						currQuad.SetTextureID(remappedFrameIndexes[0], i);
-						continue;
-					}
+				//	if (i == NUM_FACES_QUADBLOCK)
+				//	{
+				//		currQuad.SetTextureID(remappedFrameIndexes[0], i);
+				//		continue;
+				//	}
 
-					if (!rawAnimOffsetRemap.contains(animTexKey))
-					{
-						size_t animTexOffset = animData.size();
-						rawAnimOffsetRemap[animTexKey] = animTexOffset;
-						animPtrMapOffsets.push_back(animTexOffset);
+				//	if (!rawAnimOffsetRemap.contains(animTexKey))
+				//	{
+				//		size_t animTexOffset = animData.size();
+				//		rawAnimOffsetRemap[animTexKey] = animTexOffset;
+				//		animPtrMapOffsets.push_back(animTexOffset);
 
-						PSX::AnimTex rawAnimTex = animTex;
-						rawAnimTex.offActiveFrame = static_cast<uint32_t>(
-							offTexture + (remappedFrameIndexes[0] * sizeof(PSX::TextureGroup)));
-						animData.resize(animData.size() + sizeof(PSX::AnimTex));
-						memcpy(&animData[animTexOffset], &rawAnimTex, sizeof(PSX::AnimTex));
+				//		PSX::AnimTex rawAnimTex = animTex;
+				//		rawAnimTex.offActiveFrame = static_cast<uint32_t>(
+				//			offTexture + (remappedFrameIndexes[0] * sizeof(PSX::TextureGroup)));
+				//		animData.resize(animData.size() + sizeof(PSX::AnimTex));
+				//		memcpy(&animData[animTexOffset], &rawAnimTex, sizeof(PSX::AnimTex));
 
-						for (size_t j = 0; j < remappedFrameIndexes.size(); j++)
-						{
-							uint32_t offset = static_cast<uint32_t>(
-								(remappedFrameIndexes[j] * sizeof(PSX::TextureGroup)) + offTexture);
-							size_t offAnimTexArr = animData.size();
-							animPtrMapOffsets.push_back(offAnimTexArr);
-							for (size_t k = 0; k < sizeof(uint32_t); k++) { animData.push_back(0); }
-							memcpy(&animData[offAnimTexArr], &offset, sizeof(uint32_t));
-						}
-					}
+				//		for (size_t j = 0; j < remappedFrameIndexes.size(); j++)
+				//		{
+				//			uint32_t offset = static_cast<uint32_t>(
+				//				(remappedFrameIndexes[j] * sizeof(PSX::TextureGroup)) + offTexture);
+				//			size_t offAnimTexArr = animData.size();
+				//			animPtrMapOffsets.push_back(offAnimTexArr);
+				//			for (size_t k = 0; k < sizeof(uint32_t); k++) { animData.push_back(0); }
+				//			memcpy(&animData[offAnimTexArr], &offset, sizeof(uint32_t));
+				//		}
+				//	}
 
-					quadFaceToAnimOffset[{qi, i}] = rawAnimOffsetRemap[animTexKey];
-				}
-				continue;
+				//	quadFaceToAnimOffset[{qi, i}] = rawAnimOffsetRemap[animTexKey];
+				//}
+				//continue;
 			}
 			else // Not animated
 			{

@@ -488,8 +488,6 @@ Quadblock::Quadblock(const std::string& name,
 	m_triblock = false;
 	m_filterCallback = filterCallback;
 	SetDefaultValues();
-	// TODO : adjust geometry and stuff like getcolltriface
-
 }
 
 Quadblock::Quadblock(const PSX::Quadblock& quadblock, const std::vector<PSX::Vertex>& vertices, UpdateFilterCallback filterCallback)
@@ -535,7 +533,7 @@ Quadblock::Quadblock(const PSX::Quadblock& quadblock, const std::vector<PSX::Ver
 	{
 		m_materials[face] = "default";
 	}	
-	m_triblock = indexes.size() == 6;
+	m_triblock = false;
 	m_filterCallback = filterCallback;
 		
 }
@@ -815,12 +813,12 @@ void Quadblock::SetHide(bool active)
 
 void Quadblock::SetTextureID(size_t id, size_t quad)
 {
-	m_textureIDs[quad] = id;
+	m_textureIDs[quad] = static_cast<int>(id);
 }
 
 void Quadblock::SetAnimTextureOffset(size_t relOffset, size_t levOffset, size_t quad)
 {
-	m_animTexOffset[quad] = relOffset + levOffset;
+	m_animTexOffset[quad] = static_cast<int>(relOffset + levOffset);
 }
 
 void Quadblock::SetTrigger(QuadblockTrigger trigger)
@@ -1145,24 +1143,12 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 	std::memcpy(buffer.data(), &quadblock, sizeof(quadblock));
 	return buffer;
 }
-
-void Quadblock::SetDefaultValues()
+void Quadblock::ComputeCollTrifaces()
 {
-	ComputeBoundingBox();
-	m_checkpointIndex = -1;
-	m_flags = QuadFlags::DEFAULT;
-	m_terrain = TerrainType::LABELS.at(TerrainType::DEFAULT);
-
-	for (size_t i = 0; i < NUM_FACES_QUADBLOCK; i++)
-	{
-		m_faceDrawMode[i] = FaceDrawMode::DRAW_BOTH;
-		m_faceRotateFlip[i] = FaceRotateFlip::NONE;
-	}
-
 	const bool equivalentDiagonal = std::abs((m_p[2].m_pos - m_p[6].m_pos).Length() - ((m_p[2].m_pos - m_p[4].m_pos).Length() + (m_p[4].m_pos - m_p[6].m_pos).Length())) <= EPSILON;
 	const bool equivalentSide02 = std::abs((m_p[0].m_pos - m_p[2].m_pos).Length() - ((m_p[0].m_pos - m_p[1].m_pos).Length() + (m_p[1].m_pos - m_p[2].m_pos).Length())) <= EPSILON;
 	const bool equivalentSide06 = std::abs((m_p[0].m_pos - m_p[6].m_pos).Length() - ((m_p[0].m_pos - m_p[3].m_pos).Length() + (m_p[3].m_pos - m_p[6].m_pos).Length())) <= EPSILON;
-	if (equivalentDiagonal && equivalentSide02 && equivalentSide06) { m_collTriFaces = {{0, 2, 6}}; }
+	if (equivalentDiagonal && equivalentSide02 && equivalentSide06) { m_collTriFaces = { {0, 2, 6} }; }
 	else
 	{
 		m_collTriFaces = {
@@ -1177,14 +1163,30 @@ void Quadblock::SetDefaultValues()
 	{
 		const bool equivalentSide28 = std::abs((m_p[2].m_pos - m_p[8].m_pos).Length() - ((m_p[2].m_pos - m_p[5].m_pos).Length() + (m_p[5].m_pos - m_p[8].m_pos).Length())) <= EPSILON;
 		const bool equivalentSide68 = std::abs((m_p[6].m_pos - m_p[8].m_pos).Length() - ((m_p[6].m_pos - m_p[7].m_pos).Length() + (m_p[7].m_pos - m_p[8].m_pos).Length())) <= EPSILON;
-		if (equivalentDiagonal && equivalentSide28 && equivalentSide68) { m_collTriFaces.push_back({2, 8, 6}); }
+		if (equivalentDiagonal && equivalentSide28 && equivalentSide68) { m_collTriFaces.push_back({ 2, 8, 6 }); }
 		else
 		{
-			m_collTriFaces.push_back({2, 5, 4});
-			m_collTriFaces.push_back({4, 7, 6});
-			m_collTriFaces.push_back({4, 5, 7});
-			m_collTriFaces.push_back({5, 8, 7});
+			m_collTriFaces.push_back({ 2, 5, 4 });
+			m_collTriFaces.push_back({ 4, 7, 6 });
+			m_collTriFaces.push_back({ 4, 5, 7 });
+			m_collTriFaces.push_back({ 5, 8, 7 });
 		}
+	}
+}
+
+
+void Quadblock::SetDefaultValues()
+{
+	ComputeBoundingBox();
+	ComputeCollTrifaces();
+	m_checkpointIndex = -1;
+	m_flags = QuadFlags::DEFAULT;
+	m_terrain = TerrainType::LABELS.at(TerrainType::DEFAULT);
+
+	for (size_t i = 0; i < NUM_FACES_QUADBLOCK; i++)
+	{
+		m_faceDrawMode[i] = FaceDrawMode::DRAW_BOTH;
+		m_faceRotateFlip[i] = FaceRotateFlip::NONE;
 	}
 
 	m_doubleSided = false;
