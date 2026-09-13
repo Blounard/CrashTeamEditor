@@ -4044,9 +4044,6 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 	auto FinalizeCurrentObject = [&]()
 		{
 			if (currQuadblockName.empty() || objFaceIndices.empty()) { return; }
-
-			// Register materials/properties regardless of construction success, matching
-			// previous behavior (a malformed quadblock's declared materials still show up).
 			for (const std::string& material : objFaceMaterials)
 			{
 				if (material.empty() || materials.contains(material)) { continue; }
@@ -4107,7 +4104,7 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 			}
 			catch (const QuadException& e)
 			{
-				//ret = false;
+				ret = false;
 				m_invalidQuadblocks.emplace_back(currQuadblockName, e.what());
 			}
 		};
@@ -4152,7 +4149,7 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 			{
 				ret = false;
 				m_invalidQuadblocks.emplace_back(tokens.size() < 2 ? std::string("<unnamed>") : tokens[1], "Duplicated mesh name.");
-				currQuadblockName.clear(); // avoid silently re-attaching subsequent geometry to a stale object
+				currQuadblockName.clear(); 
 				ResetObjState();
 				continue;
 			}
@@ -4294,7 +4291,7 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 			if (((invalidQuadblocks + 1) % QUADS_PER_LINE) == 0) { m_logMessage += "\n"; }
 			invalidQuadblocks++;
 		}
-		//ret = false;
+		ret = false;
 	}
 	m_loaded = ret;
 
@@ -4347,7 +4344,7 @@ bool Level::SaveOBJ(const std::filesystem::path& objFile)
 
 	// Per-quadblock face data: each face = list of (vi, uvi, ni) tuples
 	struct FaceVertex { int vi, uvi, ni; };
-	struct FaceData { std::vector<std::vector<FaceVertex>> faces; }; // each face is 3 or 4 verts
+	struct FaceData { std::vector<std::vector<FaceVertex>> faces; };
 	std::vector<FaceData> quadblockFaces(m_quadblocks.size());
 
 	auto GetOrAddVertex = [&](size_t quadblockIndex, int vertexSlot, const Vec3& pos, const Color& color) -> int {
@@ -4465,13 +4462,15 @@ bool Level::SaveOBJ(const std::filesystem::path& objFile)
 
 		if (!material.empty())
 		{
-			file << "usemtl " << material << "\n";
+			
 		}
 
 		file << "s off\n"; // smoothing group, standard Blender export
-
+		size_t faceId = 0;
 		for (const std::vector<FaceVertex>& face : fd.faces)
 		{
+			file << "usemtl " << qb.GetMaterial(faceId) << "\n";
+			faceId++;
 			file << "f";
 			for (const FaceVertex& fv : face)
 			{

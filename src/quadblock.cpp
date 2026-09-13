@@ -488,6 +488,8 @@ Quadblock::Quadblock(const std::string& name,
 	m_triblock = false;
 	m_filterCallback = filterCallback;
 	SetDefaultValues();
+	// TODO : adjust geometry and stuff like getcolltriface
+
 }
 
 Quadblock::Quadblock(const PSX::Quadblock& quadblock, const std::vector<PSX::Vertex>& vertices, UpdateFilterCallback filterCallback)
