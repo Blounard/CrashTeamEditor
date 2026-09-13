@@ -9,9 +9,9 @@
 
 Quadblock::Quadblock(const std::string& name,
 	const std::vector<Point>& points,
-	const std::vector<std::vector<size_t>>& facesIndexes,
-	const std::vector<std::vector<Vec2>>& faceUVs,
-	const std::vector<std::string>& faceMaterials,
+	std::vector<std::vector<size_t>>& facesIndexes,
+	std::vector<std::vector<Vec2>>& faceUVs,
+	std::vector<std::string>& faceMaterials,
 	bool hasUV, UpdateFilterCallback filterCallback)
 {
 	constexpr size_t INVALID = std::numeric_limits<size_t>::max();
@@ -65,9 +65,8 @@ Quadblock::Quadblock(const std::string& name,
 			objCenterIds.push_back(objVertId);
 	}
 
-	if (objCenterIds.empty())
+	if (objCenterIds.empty()) // Test if this is a legacy triblock.
 	{
-		// Could be a legacy triblock.
 		if (facesIndexes.size() != 4)
 			throw QuadException("Not a quadblock (no center) and not a legacy triblock (not 4 trifaces)");
 		for (size_t objFaceId = 0; objFaceId < facesIndexes.size(); objFaceId++)
@@ -106,11 +105,59 @@ Quadblock::Quadblock(const std::string& name,
 				size_t outFaceEdgeVert2Id = objFaceVertIdMap[std::make_tuple(outFaceId, edgeVert2)];
 				if (outFaceEdgeVert1Id != (outFaceEdgeVert2Id + 1) % 3) { continue; }
 				// Correct face, now check UVs
-				if (faceUVs[centerFace][faceVertId] == faceUVs[outFaceId][outFaceEdgeVert1Id] && faceUVs[centerFace][(faceVertId + 1) % 3] == faceUVs[outFaceId][outFaceEdgeVert2Id])
+				auto UVsMatch = [](const Vec2& a, const Vec2& b) -> bool
+					{
+						constexpr float UV_EPS = 1/256.0f; 
+						return std::abs(a.x - b.x) < UV_EPS && std::abs(a.y - b.y) < UV_EPS;
+					};
+				if (UVsMatch(faceUVs[centerFace][faceVertId], faceUVs[outFaceId][outFaceEdgeVert1Id]) &&
+					UVsMatch(faceUVs[centerFace][(faceVertId + 1) % 3], faceUVs[outFaceId][outFaceEdgeVert2Id])) 
 				{
-					// Found matching, merge CenterFace and OutFaceId into a quadface, and go back to the start.
+					// Found matching, merge CenterFace and OutFaceId into a quadface.
 					foundMatching = true;
-					printf("Valid triblock, need to be actually constructed now\n");
+					std::vector<size_t> newFaceIndexes; 
+					std::vector<Vec2> newFaceUVs;
+					newFaceIndexes.push_back(facesIndexes[centerFace][(faceVertId + 1) % 3]);
+					newFaceUVs.push_back(faceUVs[centerFace][(faceVertId + 1) % 3]);
+					newFaceIndexes.push_back(facesIndexes[centerFace][(faceVertId + 2) % 3]);
+					newFaceUVs.push_back(faceUVs[centerFace][(faceVertId + 2) % 3]);
+					newFaceIndexes.push_back(facesIndexes[centerFace][faceVertId]);
+					newFaceUVs.push_back(faceUVs[centerFace][faceVertId]);
+					newFaceIndexes.push_back(facesIndexes[outFaceId][(outFaceEdgeVert1Id + 1) % 3]);
+					newFaceUVs.push_back(faceUVs[outFaceId][(outFaceEdgeVert1Id + 1) % 3]);
+					std::string newMaterial = faceMaterials[centerFace];
+					size_t firstEraseIdx = std::max(centerFace, outFaceId);
+					size_t secondEraseIdx = std::min(centerFace, outFaceId);
+					facesIndexes.erase(std::next(facesIndexes.begin(), firstEraseIdx));
+					facesIndexes.erase(std::next(facesIndexes.begin(), secondEraseIdx));
+					faceUVs.erase(std::next(faceUVs.begin(), firstEraseIdx));
+					faceUVs.erase(std::next(faceUVs.begin(), secondEraseIdx));
+					faceMaterials.erase(std::next(faceMaterials.begin(), firstEraseIdx));
+					faceMaterials.erase(std::next(faceMaterials.begin(), secondEraseIdx));
+					facesIndexes.push_back(newFaceIndexes);
+					faceUVs.push_back(newFaceUVs);
+					faceMaterials.push_back(newMaterial);
+
+					// Re compute the start of this constructor with those new params : 
+					objFaceVertIdMap.clear();
+					for (size_t& count : refCount) { count = 0 ; }
+					for (size_t objFaceId = 0; objFaceId < facesIndexes.size(); objFaceId++)
+					{
+						const auto& face = facesIndexes[objFaceId];
+						for (size_t objFaceVertId = 0; objFaceVertId < face.size(); objFaceVertId++)
+						{
+							size_t objVertId = face[objFaceVertId];
+							refCount[objVertId]++;
+							objFaceVertIdMap[std::make_tuple(objFaceId, objVertId)] = objFaceVertId;
+						}
+					}
+					for (size_t objVertId = 0; objVertId < points.size(); objVertId++)
+					{
+						if (refCount[objVertId] == facesIndexes.size())
+							objCenterIds.push_back(objVertId);
+					}
+					if (objCenterIds.empty())
+						throw QuadException("Couldn't assimilate to a valid triblock");
 					break;
 				}
 			}
@@ -119,7 +166,6 @@ Quadblock::Quadblock(const std::string& name,
 		{
 			throw QuadException("Wrong triblock UVs : Make sure 2 trifaces can be merged into a quadFace without breaking UVs");
 		}
-
 	}
 
 	size_t objCenterId = objCenterIds[0]; // any valid center works, we fix one.
