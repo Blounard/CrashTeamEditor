@@ -19,13 +19,9 @@ class AnimTexture
 public:
 	AnimTexture() {};
 	AnimTexture(const std::filesystem::path& path, const std::vector<std::string>& usedNames);
-	AnimTexture(const std::string& animName, const std::filesystem::path& tempDir,
-		const std::array<std::vector<PSX::TextureLayout>, NUM_FACES_QUADBLOCK>& faceFrameLayouts,
-		const std::array<std::vector<std::string>, NUM_FACES_QUADBLOCK>& faceFrameMaterials,
-		const std::unordered_map<LayoutKey, PixelBounds>& textureToPixelBounds,
-		const std::unordered_map<std::string, Texture>& materialToTexture,
-		const PSX::AnimTex& firstAnimData,
-		const std::vector<AnimTexture>& animTextures);
+	AnimTexture(const PSX::AnimTex& animTex, const std::string& animName, const std::filesystem::path& tempDir,
+		const std::array<std::vector<std::pair<std::string, QuadUV>>, NUM_FACES_QUADBLOCK>& faceFrames,
+		const std::unordered_map<std::string, Texture>& materialToTexture);
 	bool IsEmpty() const;
 	bool IsTriblock() const;
 	const std::vector<AnimTextureFrame>& GetFrames() const;
@@ -62,6 +58,7 @@ private:
 	std::filesystem::path m_path;
 	std::vector<AnimTextureFrame> m_frames;
 	std::vector<Texture> m_textures;
+	std::vector<std::string> m_texNames;
 	std::vector<size_t> m_quadblockIndexes;
 
 	int m_startAtFrame;
