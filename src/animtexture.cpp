@@ -4,6 +4,9 @@
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
+#include <set>
+#include <iostream>
+#include <fstream>
 
 AnimTexture::AnimTexture(const std::filesystem::path& path, const std::vector<std::string>& usedNames)
 {
@@ -145,7 +148,7 @@ bool AnimTexture::IsEquivalent(const AnimTexture& animTex) const
 	if (m_textures.size() != animTex.m_textures.size()) { return false; }
 	for (size_t i = 0; i < m_frames.size(); i++)
 	{
-		if (m_frames[i].textureIndex != animTex.m_frames[i].textureIndex) { return false; }
+		if (m_frames[i].textureIndexes != animTex.m_frames[i].textureIndexes) { return false; }
 		if (m_frames[i].uvs != animTex.m_frames[i].uvs) { return false; }
 	}
 	for (size_t i = 0; i < m_textures.size(); i++)
@@ -170,16 +173,25 @@ bool AnimTexture::ReadAnimation(const std::filesystem::path& path)
 	const std::vector<Quadblock>& quadblocks = dummy.GetQuadblocks();
 	for (const Quadblock& quadblock : quadblocks)
 	{
-		m_triblock = !quadblock.IsQuadblock();
-		const auto& uvs = quadblock.GetUVs();
-		const std::filesystem::path& texPath = quadblock.GetTexPath();
-		if (texPath.empty()) { return false; }
-		if (loadedPaths.contains(texPath)) { m_frames.emplace_back(loadedPaths.at(texPath), uvs); continue; }
-
-		size_t index = m_textures.size();
-		loadedPaths.insert({texPath, index});
-		m_frames.emplace_back(index, uvs);
-		m_textures.emplace_back(texPath);
+		AnimTextureFrame frame = {};
+		frame.uvs = quadblock.GetUVs();
+		for (size_t face = 0; face < NUM_FACES_QUADBLOCK + 1; face++)
+		{
+			const std::filesystem::path& texPath = quadblock.GetTexPath(face);
+			if (texPath.empty())
+			{
+				if (face == NUM_FACES_QUADBLOCK) { frame.textureIndexes[face] = frame.textureIndexes[0]; continue; }
+				return false;
+			}
+			if (!loadedPaths.contains(texPath))
+			{
+				size_t index = m_textures.size();
+				loadedPaths.insert({ texPath, index });
+				m_textures.emplace_back(texPath);
+			}
+			frame.textureIndexes[face] = loadedPaths.at(texPath);
+		}
+		m_frames.push_back(frame);
 	}
 	SetDefaultParams();
 	return true;
@@ -194,6 +206,18 @@ void AnimTexture::ClearAnimation()
 	m_previewQuadName.clear();
 	m_previewMaterialName.clear();
 	m_lastAppliedMaterialName.clear();
+}
+
+void AnimTexture::SetStartFrame(int frame)
+{
+	m_startAtFrame = frame;
+	m_renderDirty = true;
+}
+
+void AnimTexture::SetDuration(int duration)
+{
+	m_duration = duration;
+	m_renderDirty = true;
 }
 
 void AnimTexture::SetDefaultParams()

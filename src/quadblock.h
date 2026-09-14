@@ -111,8 +111,9 @@ typedef std::function<void(const Quadblock&)> UpdateFilterCallback;
 class Quadblock
 {
 public:
-	Quadblock(const std::string& name, Tri& t0, Tri& t1, Tri& t2, Tri& t3, const Vec3& normal, const std::string& material, bool hasUV, UpdateFilterCallback filterCallback);
-	Quadblock(const std::string& name, Quad& q0, Quad& q1, Quad& q2, Quad& q3, const Vec3& normal, const std::string& material, bool hasUV, UpdateFilterCallback filterCallback);
+	Quadblock(const std::string& name, const std::vector<Point>& points,
+		std::vector<std::vector<size_t>>& faceIndices, std::vector<std::vector<Vec2>>& faceUVs, std::vector<std::string>& faceMaterials,
+		bool hasUV, UpdateFilterCallback filterCallback);
 	Quadblock(const PSX::Quadblock& quadblock, const std::vector<PSX::Vertex>& vertices, UpdateFilterCallback filterCallback);
 	const std::string& GetName() const;
 	Vec3 GetCenter() const;
@@ -134,10 +135,10 @@ public:
 	bool GetCheckpointPathable() const;
 	bool GetVisTreeTransparent() const;
 	const QuadUV& GetQuadUV(size_t quad) const;
-	const std::filesystem::path& GetTexPath() const;
+	const std::filesystem::path& GetTexPath(size_t face) const;
 	const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>& GetUVs() const;
 	size_t GetRenderPrimitiveIndex() const;
-	const std::string& GetMaterial() const;
+	const std::string& GetMaterial(size_t face) const;
 	void SetRenderPrimitiveIndex(size_t triangleIndex);
 	void SetTerrain(uint8_t terrain);
 	void SetFlag(uint16_t flag);
@@ -154,14 +155,15 @@ public:
 	void SetAnimTextureOffset(size_t relOffset, size_t levOffset, size_t quad);
 	bool IsQuadblock() const;
 	void SetTrigger(QuadblockTrigger trigger);
-	void SetTexPath(const std::filesystem::path& path);
+	void SetTexPath(size_t face, const std::filesystem::path& path);
+	void SetMaterial(size_t face, const std::string& material);
 	void SetAnimated(bool animated);
 	void SetFilter(bool filter);
 	void SetFilterColor(const Color& color);
 	void SetSpeedImpact(int speed);
 	void Translate(float ratio, const Vec3& direction);
 	const BoundingBox& GetBoundingBox() const;
-	std::vector<Primitive> ToGeometry(bool filterTriangles = false, const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>* overrideUvs = nullptr, const std::filesystem::path* overrideTexturePath = nullptr) const;
+	std::vector<Primitive> ToGeometry(bool filterTriangles = false, const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>* overrideUvs = nullptr, const std::array<std::filesystem::path, NUM_FACES_QUADBLOCK>* overrideTexturePaths = nullptr) const;
 	std::vector<Vertex> GetVertices() const;
 	const Vertex* const GetUnswizzledVertices() const;
 	float DistanceClosestVertex(Vec3& out, const Vec3& v) const;
@@ -193,7 +195,7 @@ private:
 	Vertex m_p[NUM_VERTICES_QUADBLOCK];
 	BoundingBox m_bbox;
 	std::string m_name;
-	std::string m_material;
+	std::array<std::string, NUM_FACES_QUADBLOCK + 1> m_materials;
 	int m_checkpointIndex;
 	uint32_t m_faceDrawMode[NUM_FACES_QUADBLOCK];
 	uint32_t m_faceRotateFlip[NUM_FACES_QUADBLOCK];
@@ -208,7 +210,7 @@ private:
 	std::array<QuadUV, NUM_FACES_QUADBLOCK + 1> m_uvs; /* Last id is reserved for low tex */
 	std::array<size_t, NUM_FACES_QUADBLOCK + 1> m_textureIDs = { 0, 0, 0, 0, 0 };
 	std::array<size_t, NUM_FACES_QUADBLOCK + 1> m_animTexOffset = {0, 0, 0, 0, 0};
-	std::filesystem::path m_texPath;
+	std::array<std::filesystem::path, NUM_FACES_QUADBLOCK + 1> m_texPaths;
 	size_t m_renderPrimitiveIndex = RENDER_INDEX_NONE;
 	UpdateFilterCallback m_filterCallback;
 };
