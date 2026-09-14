@@ -118,6 +118,7 @@ public:
 	const std::string& GetName() const;
 	Vec3 GetCenter() const;
 	Vec3 GetNormal() const;
+	const std::vector<std::array<size_t, 3>>& GetCollTriFacesIndexes() const;
 	std::vector<std::array<size_t, 3>> GetTriFacesIndexes() const;
 	std::array<Vec3, 3> GetTriFace(size_t id0, size_t id1, size_t id2) const;
 	uint8_t GetTerrain() const;
@@ -167,6 +168,8 @@ public:
 	std::vector<Vertex> GetVertices() const;
 	const Vertex* const GetUnswizzledVertices() const;
 	float DistanceClosestVertex(Vec3& out, const Vec3& v) const;
+	bool IntersectRay(const Vec3& point, const Vec3& projectDir, float& outdist, Vec3& outnormal, float barycentricTolerance = EPSILON) const;
+	bool SnapPoint(Vec3& pos, Vec3& rot, const Vec3& projectDir, float barycentricTolerance = EPSILON) const;
 	bool Neighbours(const Quadblock& quadblock, float threshold = 0.1f) const;
 	std::vector<uint8_t> Serialize(size_t id, size_t offTextures, const std::vector<size_t>& vertexIndexes) const;
 	bool RenderUI(size_t checkpointCount, bool& resetBsp);
@@ -175,6 +178,7 @@ public:
 private:
 	void ResetUVs();
 	void SetDefaultValues();
+	void ComputeCollTrifaces();
 	void ComputeBoundingBox();
 
 private:
@@ -207,6 +211,7 @@ private:
 	size_t m_turboPadIndex;
 	Color m_filterColor;
 	mutable size_t m_bspID;
+	std::vector<std::array<size_t, 3>> m_collTriFaces;
 	std::array<QuadUV, NUM_FACES_QUADBLOCK + 1> m_uvs; /* Last id is reserved for low tex */
 	std::array<size_t, NUM_FACES_QUADBLOCK + 1> m_textureIDs = { 0, 0, 0, 0, 0 };
 	std::array<size_t, NUM_FACES_QUADBLOCK + 1> m_animTexOffset = {0, 0, 0, 0, 0};
@@ -223,3 +228,5 @@ public:
 private:
   std::string m_message;
 };
+
+int SnapToClosestQuad(const std::vector<Quadblock>& quadblocks, const std::vector<size_t>quadIndexes, Vec3& outpos, Vec3& outrot, const Vec3& projectDir, float negSnapLimit, float posSnapLimit, float barycentricTolerance = EPSILON);
