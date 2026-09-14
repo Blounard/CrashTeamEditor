@@ -202,7 +202,7 @@ Quadblock::Quadblock(const std::string& name, Tri& t0, Tri& t1, Tri& t2, Tri& t3
 	else { ResetUVs(); }
 
 	m_name = name;
-	m_material = material;
+	for (size_t f = 0; f < NUM_FACES_QUADBLOCK + 1; f++) { m_materials[f] = material; }
 	m_triblock = true;
 	m_filterCallback = filterCallback;
 	SetDefaultValues();
@@ -382,7 +382,7 @@ Quadblock::Quadblock(const std::string& name, Quad& q0, Quad& q1, Quad& q2, Quad
 	else { ResetUVs(); }
 
 	m_name = name;
-	m_material = material;
+	for (size_t f = 0; f < NUM_FACES_QUADBLOCK + 1; f++) { m_materials[f] = material; }
 	m_triblock = false;
 	m_filterCallback = filterCallback;
 	SetDefaultValues();
@@ -414,8 +414,13 @@ Quadblock::Quadblock(const PSX::Quadblock& quadblock, const std::vector<PSX::Ver
 	m_checkpointIndex = quadblock.checkpointIndex;
 	if (m_checkpointIndex == std::numeric_limits<uint8_t>::max()) { m_checkpointIndex = -1; }
 	else { m_checkpointStatus = true; }
-	m_material = "default";
+
 	m_triblock = false;
+	for (size_t face = 0; face < NUM_FACES_QUADBLOCK + 1; face++)
+	{
+		m_materials[face] = "default";
+	}	
+
 	m_filterCallback = filterCallback;
 }
 
@@ -566,9 +571,9 @@ const QuadUV& Quadblock::GetQuadUV(size_t quad) const
 	return m_uvs[quad];
 }
 
-const std::filesystem::path& Quadblock::GetTexPath() const
+const std::filesystem::path& Quadblock::GetTexPath(size_t face) const
 {
-	return m_texPath;
+	return m_texPaths[face];
 }
 
 const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>& Quadblock::GetUVs() const
@@ -581,9 +586,9 @@ size_t Quadblock::GetRenderPrimitiveIndex() const
 	return m_renderPrimitiveIndex;
 }
 
-const std::string& Quadblock::GetMaterial() const
+const std::string& Quadblock::GetMaterial(size_t face) const
 {
-	return m_material;
+	return m_materials[face];
 }
 
 void Quadblock::SetRenderPrimitiveIndex(size_t primitiveIndex)
@@ -661,9 +666,9 @@ void Quadblock::SetTrigger(QuadblockTrigger trigger)
 	m_trigger = trigger;
 }
 
-void Quadblock::SetTexPath(const std::filesystem::path& path)
+void Quadblock::SetTexPath(size_t face, const std::filesystem::path& path)
 {
-	m_texPath = path;
+	m_texPaths[face] = path;
 }
 
 void Quadblock::SetAnimated(bool animated)
@@ -687,6 +692,13 @@ void Quadblock::SetSpeedImpact(int speed)
 {
 	m_downforce = speed;
 }
+
+
+void Quadblock::SetMaterial(size_t face, const std::string& material) 
+{ 
+	m_materials[face] = material;
+}
+
 
 void Quadblock::Translate(float ratio, const Vec3& direction)
 {
@@ -713,7 +725,6 @@ std::vector<Primitive> Quadblock::ToGeometry(bool filterTriangles, const std::ar
 	};
 
 	const bool isQuadblock = IsQuadblock();
-	const std::filesystem::path& texPath = overrideTexturePath ? *overrideTexturePath : m_texPath;
 	const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>& uvs = overrideUvs ? *overrideUvs : m_uvs;
 	const Color filterColor = GetFilter() ? GetFilterColor() : Color(static_cast<unsigned char>(0u), static_cast<unsigned char>(0u), static_cast<unsigned char>(0u));
 
@@ -728,13 +739,14 @@ std::vector<Primitive> Quadblock::ToGeometry(bool filterTriangles, const std::ar
 			return quv[vertIndInUvs];
 		};
 
-	const std::string textureString = filterTriangles ? std::string() : texPath.string();
 	std::vector<Primitive> primitives;
 	if (isQuadblock)
 	{
 		primitives.reserve(NUM_FACES_QUADBLOCK);
 		for (int quadIndex = 0; quadIndex < NUM_FACES_QUADBLOCK; quadIndex++)
 		{
+			const std::filesystem::path& texPath = overrideTexturePath ? *overrideTexturePath : m_texPaths[quadIndex];
+			const std::string textureString = filterTriangles ? std::string() : texPath.string();
 			Quad quad;
 			quad.texture = textureString;
 			for (int i = 0; i < NUM_VERTICES_QUAD; i++)
@@ -765,7 +777,8 @@ std::vector<Primitive> Quadblock::ToGeometry(bool filterTriangles, const std::ar
 		{
 			const int quadIndex = triblockQuadIndex[triIndex];
 			const int* triVerts = triblockVertArrangements[triIndex];
-
+			const std::filesystem::path& texPath = overrideTexturePath ? *overrideTexturePath : m_texPaths[quadIndex];
+			const std::string textureString = filterTriangles ? std::string() : texPath.string();
 			Tri tri;
 			tri.texture = textureString;
 			for (int i = 0; i < 3; i++)
@@ -855,6 +868,7 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 		quadblock.offMidTextures[3] = static_cast<uint32_t>(offTextures + (m_textureIDs[3] * sizeof(PSX::TextureGroup)));
 		quadblock.offLowTexture = static_cast<uint32_t>(offTextures + (m_textureIDs[4] * sizeof(PSX::TextureGroup)));
 	}
+	quadblock.offLowTexture = static_cast<uint32_t>(offTextures + (m_textureIDs[4] * sizeof(PSX::TextureGroup)));
 	quadblock.bbox.min = ConvertVec3(m_bbox.min, FP_ONE_GEO);
 	quadblock.bbox.max = ConvertVec3(m_bbox.max, FP_ONE_GEO);
 	quadblock.terrain = m_terrain;

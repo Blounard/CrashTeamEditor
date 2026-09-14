@@ -134,7 +134,7 @@ private:
 	std::vector<uint8_t> m_vrm;
 	Skybox m_skybox;
 
-	std::map<std::string, std::vector<size_t>> m_materialToQuadblocks;
+	std::map<std::string, std::vector<std::pair<size_t, size_t>>> m_materialToQuadFaces; // MaterialName -> List of (QuadId, FaceId)
 	std::unordered_map<std::string, Texture> m_materialToTexture;
 	MaterialProperty<std::string, MaterialType::TERRAIN> m_propTerrain;
 	MaterialProperty<uint16_t, MaterialType::QUAD_FLAGS> m_propQuadFlags;

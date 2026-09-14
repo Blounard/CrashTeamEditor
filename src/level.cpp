@@ -61,7 +61,7 @@ void Level::Clear(bool clearErrors)
 	m_quadblocks.clear();
 	m_checkpoints.clear();
 	m_bsp.Clear();
-	m_materialToQuadblocks.clear();
+	m_materialToQuadFaces.clear();
 	m_materialToTexture.clear();
 	m_checkpointPaths.clear();
 	m_tropyGhost.clear();
@@ -122,15 +122,20 @@ const std::filesystem::path& Level::GetParentPath() const
 std::vector<std::string> Level::GetMaterialNames() const
 {
 	std::vector<std::string> names;
-	names.reserve(m_materialToQuadblocks.size());
-	for (const auto& [key, value] : m_materialToQuadblocks) { names.push_back(key); }
+	names.reserve(m_materialToTexture.size());
+	for (const auto& [key, value] : m_materialToTexture) { names.push_back(key); }
 	return names;
 }
 
 std::vector<size_t> Level::GetMaterialQuadblockIndexes(const std::string& material) const
 {
-	if (!m_materialToQuadblocks.contains(material)) { return std::vector<size_t>(); }
-	return m_materialToQuadblocks.at(material);
+	if (!m_materialToQuadFaces.contains(material)) { return std::vector<size_t>(); }
+	std::vector<size_t> res;
+	for (auto& quadFace : m_materialToQuadFaces.at(material))
+	{
+		res.push_back(quadFace.first);
+	}
+	return res;
 }
 
 std::tuple<std::vector<Quadblock*>, Vec3> Level::GetRendererSelectedData()
@@ -459,27 +464,27 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 			std::vector<std::string> materials = json["materials"];
 			for (const std::string& material : materials)
 			{
-				if (m_materialToQuadblocks.contains(material))
+				if (m_materialToQuadFaces.contains(material))
 				{
 					if (json.contains(material + "_terrain"))
 					{
 						m_propTerrain.SetPreview(material, json[material + "_terrain"]);
-						m_propTerrain.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+						m_propTerrain.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 					}
 					if (json.contains(material + "_quadflags"))
 					{
 						m_propQuadFlags.SetPreview(material, json[material + "_quadflags"]);
-						m_propQuadFlags.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+						m_propQuadFlags.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 					}
 					if (json.contains(material + "_drawflags"))
 					{
 						m_propDoubleSided.SetPreview(material, json[material + "_drawflags"]);
-						m_propDoubleSided.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+						m_propDoubleSided.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 					}
 					if (json.contains(material + "_checkpoint"))
 					{
 						m_propCheckpoints.SetPreview(material, json[material + "_checkpoint"]);
-						m_propCheckpoints.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+						m_propCheckpoints.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 					}
 					if (json.contains(material + "_trigger"))
 					{
@@ -490,17 +495,17 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 					if (json.contains(material + "_speedImpact"))
 					{
 						m_propSpeedImpact.SetPreview(material, json[material + "_speedImpact"]);
-						m_propSpeedImpact.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+						m_propSpeedImpact.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 					}
 					if (json.contains(material + "_checkpointPathable"))
 					{
 						m_propCheckpointPathable.SetPreview(material, json[material + "_checkpointPathable"]);
-						m_propCheckpointPathable.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+						m_propCheckpointPathable.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 					}
 					if (json.contains(material + "_visTreeTransparent"))
 					{
 						m_propVisTreeTransparent.SetPreview(material, json[material + "_visTreeTransparent"]);
-						m_propVisTreeTransparent.Apply(material, m_materialToQuadblocks[material], m_quadblocks);
+						m_propVisTreeTransparent.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 					}
 				}
 			}
@@ -590,12 +595,12 @@ bool Level::SavePreset(const std::filesystem::path& path)
 	}
 	SaveJSON(dirPath / "path.json", pathJson);
 
-	if (!m_materialToQuadblocks.empty())
+	if (!m_materialToQuadFaces.empty())
 	{
 		nlohmann::json materialJson = {};
 		materialJson["header"] = PresetHeader::MATERIAL;
-		std::vector<std::string> materials; materials.reserve(m_materialToQuadblocks.size());
-		for (const auto& [key, value] : m_materialToQuadblocks)
+		std::vector<std::string> materials; materials.reserve(m_materialToQuadFaces.size());
+		for (const auto& [key, value] : m_materialToQuadFaces)
 		{
 			materials.push_back(key);
 			materialJson[key + "_terrain"] = m_propTerrain.GetBackup(key);
@@ -765,7 +770,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		PSX::Quadblock quadblock = {};
 		Read(file, quadblock);
 		m_quadblocks.emplace_back(quadblock, vertices, [this](const Quadblock& qb) { UpdateFilterRenderData(qb); });
-		m_materialToQuadblocks["default"].push_back(i);
+		for (size_t f = 0; f < NUM_FACES_QUADBLOCK + 1; f++) { m_materialToQuadFaces["default"].push_back(std::make_pair(i, f)); }
 	}
 
 
@@ -918,24 +923,22 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 	std::unordered_map<PSX::TextureLayout, size_t> savedLayouts;
 	if (UpdateVRM())
 	{
-		for (auto& [material, texture] : m_materialToTexture)
+		for (Quadblock& quad : m_quadblocks)
 		{
-			std::vector<size_t>& quadIndexes = m_materialToQuadblocks[material];
-			for (size_t index : quadIndexes)
+			if (quad.GetAnimated()) { continue; }
+			for (size_t i = 0; i < NUM_FACES_QUADBLOCK + 1; i++)
 			{
-				Quadblock& currQuad = m_quadblocks[index];
-				if (currQuad.GetAnimated()) { continue; }
-				for (size_t i = 0; i < NUM_FACES_QUADBLOCK + 1; i++)
+				if (m_materialToTexture.contains(quad.GetMaterial(i)))
 				{
+					Texture& texture = m_materialToTexture[quad.GetMaterial(i)];
 					size_t textureID = 0;
-					const QuadUV& uvs = currQuad.GetQuadUV(i);
+					const QuadUV& uvs = quad.GetQuadUV(i);
 					PSX::TextureLayout layout = texture.Serialize(uvs);
 					if (savedLayouts.contains(layout)) { textureID = savedLayouts[layout]; }
 					else
 					{
 						textureID = texGroups.size();
 						savedLayouts[layout] = textureID;
-
 						PSX::TextureGroup texGroup = {};
 						texGroup.far = layout;
 						texGroup.middle = layout;
@@ -943,7 +946,7 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 						texGroup.mosaic = layout;
 						texGroups.push_back(texGroup);
 					}
-					currQuad.SetTextureID(textureID, i);
+					quad.SetTextureID(textureID, i);
 				}
 			}
 		}
@@ -1605,7 +1608,7 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile)
 				if (materialMap.contains(currQuadblockName))
 				{
 					material = materialMap[currQuadblockName];
-					m_materialToQuadblocks[material].push_back(m_quadblocks.size());
+					for (size_t f = 0; f < NUM_FACES_QUADBLOCK + 1; f++) { m_materialToQuadFaces[material].push_back(std::make_pair(m_quadblocks.size(), f)); } // Will be reworked next commit.
 					if (!materials.contains(material))
 					{
 						materials.insert(material);
@@ -1730,11 +1733,11 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile)
 			m_propVisTreeTransparent.SetDefaultValue(material, semiTransparent);
 
 			const std::filesystem::path& texPath = texture.GetPath();
-			const std::vector<size_t>& quadblockIndexes = m_materialToQuadblocks[material];
-			for (const size_t index : quadblockIndexes)
+			const std::vector<std::pair<size_t, size_t>>& quadFaces = m_materialToQuadFaces[material]; // Will change in next commit
+			for (auto& pair : quadFaces)
 			{
-				m_quadblocks[index].SetTexPath(texPath);
-				m_quadblocks[index].SetVisTreeTransparent(semiTransparent);
+				m_quadblocks[pair.first].SetTexPath(pair.second, texPath);
+				m_quadblocks[pair.first].SetVisTreeTransparent(semiTransparent);
 			}
 		}
 	}

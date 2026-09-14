@@ -134,10 +134,10 @@ public:
 	bool GetCheckpointPathable() const;
 	bool GetVisTreeTransparent() const;
 	const QuadUV& GetQuadUV(size_t quad) const;
-	const std::filesystem::path& GetTexPath() const;
+	const std::filesystem::path& GetTexPath(size_t face) const;
 	const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>& GetUVs() const;
 	size_t GetRenderPrimitiveIndex() const;
-	const std::string& GetMaterial() const;
+	const std::string& GetMaterial(size_t face) const;
 	void SetRenderPrimitiveIndex(size_t triangleIndex);
 	void SetTerrain(uint8_t terrain);
 	void SetFlag(uint16_t flag);
@@ -154,7 +154,8 @@ public:
 	void SetAnimTextureOffset(size_t relOffset, size_t levOffset, size_t quad);
 	bool IsQuadblock() const;
 	void SetTrigger(QuadblockTrigger trigger);
-	void SetTexPath(const std::filesystem::path& path);
+	void SetTexPath(size_t face, const std::filesystem::path& path);
+	void SetMaterial(size_t face, const std::string& material);
 	void SetAnimated(bool animated);
 	void SetFilter(bool filter);
 	void SetFilterColor(const Color& color);
@@ -193,7 +194,7 @@ private:
 	Vertex m_p[NUM_VERTICES_QUADBLOCK];
 	BoundingBox m_bbox;
 	std::string m_name;
-	std::string m_material;
+	std::array<std::string, NUM_FACES_QUADBLOCK + 1> m_materials;
 	int m_checkpointIndex;
 	uint32_t m_faceDrawMode[NUM_FACES_QUADBLOCK];
 	uint32_t m_faceRotateFlip[NUM_FACES_QUADBLOCK];
@@ -208,7 +209,7 @@ private:
 	std::array<QuadUV, NUM_FACES_QUADBLOCK + 1> m_uvs; /* Last id is reserved for low tex */
 	std::array<size_t, NUM_FACES_QUADBLOCK + 1> m_textureIDs = { 0, 0, 0, 0, 0 };
 	std::array<size_t, NUM_FACES_QUADBLOCK + 1> m_animTexOffset = {0, 0, 0, 0, 0};
-	std::filesystem::path m_texPath;
+	std::array<std::filesystem::path, NUM_FACES_QUADBLOCK + 1> m_texPaths;
 	size_t m_renderPrimitiveIndex = RENDER_INDEX_NONE;
 	UpdateFilterCallback m_filterCallback;
 };
