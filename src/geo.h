@@ -6,26 +6,34 @@
 #include <cstdint>
 #include <cmath>
 #include <string>
+#include <filesystem>
+
 
 static constexpr float EPSILON = 0.000001f;
+static constexpr float MATH_PI = 3.14159265358979323846f;
 
 struct Color
 {
- 	Color() : r(0u), g(0u), b(0u), a(255u) {};
- 	Color(float r, float g, float b) : r(static_cast<unsigned char>(Clamp(r * 255.0f, 0.0f, 255.0f))), g(static_cast<unsigned char>(Clamp(g * 255.0f, 0.0f, 255.0f))), b(static_cast<unsigned char>(Clamp(b * 255.0f, 0.0f, 255.0f))), a(255u) {};
- 	Color(float r, float g, float b, float a) : r(static_cast<unsigned char>(Clamp(r * 255.0f, 0.0f, 255.0f))), g(static_cast<unsigned char>(Clamp(g * 255.0f, 0.0f, 255.0f))), b(static_cast<unsigned char>(Clamp(b * 255.0f, 0.0f, 255.0f))), a(static_cast<unsigned char>(Clamp(a * 255.0f, 0.0f, 255.0f))) {};
+	Color() : r(0u), g(0u), b(0u), a(255u) {};
+	Color(float r, float g, float b)
+		: r(static_cast<unsigned char>(Clamp(std::round(r * 255.0f), 0.0f, 255.0f))),
+		g(static_cast<unsigned char>(Clamp(std::round(g * 255.0f), 0.0f, 255.0f))),
+		b(static_cast<unsigned char>(Clamp(std::round(b * 255.0f), 0.0f, 255.0f))),
+		a(255u) {
+	};
+	Color(float r, float g, float b, float a) : r(static_cast<unsigned char>(Clamp(r * 255.0f, 0.0f, 255.0f))), g(static_cast<unsigned char>(Clamp(g * 255.0f, 0.0f, 255.0f))), b(static_cast<unsigned char>(Clamp(b * 255.0f, 0.0f, 255.0f))), a(static_cast<unsigned char>(Clamp(a * 255.0f, 0.0f, 255.0f))) {};
 	Color(unsigned char r, unsigned char g, unsigned char b) : r(r), g(g), b(b), a(255u) {};
 	Color(unsigned char r, unsigned char g, unsigned char b, unsigned char a) : r(r), g(g), b(b), a(a) {};
 	Color(double hue, double sat, double value);
- 	inline bool operator==(const Color& color) const { return (r == color.r) && (g == color.g) && (b == color.b) && (a == color.a); }
- 	inline float Red() const { return static_cast<float>(r) / 255.0f; }
- 	inline float Green() const { return static_cast<float>(g) / 255.0f; }
- 	inline float Blue() const { return static_cast<float>(b) / 255.0f; }
+	inline bool operator==(const Color& color) const { return (r == color.r) && (g == color.g) && (b == color.b) && (a == color.a); }
+	inline float Red() const { return static_cast<float>(r) / 255.0f; }
+	inline float Green() const { return static_cast<float>(g) / 255.0f; }
+	inline float Blue() const { return static_cast<float>(b) / 255.0f; }
 	inline float Alpha() const { return static_cast<float>(a) / 255.0f; }
- 	inline Color Negated() const
- 	{
- 		return Color(static_cast<unsigned char>(255 - r), static_cast<unsigned char>(255 - g), static_cast<unsigned char>(255 - b), a);
- 	}
+	inline Color Negated() const
+	{
+		return Color(static_cast<unsigned char>(255 - r), static_cast<unsigned char>(255 - g), static_cast<unsigned char>(255 - b), a);
+	}
 
 	unsigned char r, g, b, a;
 };
@@ -67,13 +75,16 @@ struct Vec3
 	inline float* Data() { return &x; }
 	inline const float* Data() const { return &x; }
 	inline float Length() const { return static_cast<float>(std::sqrt((x * x) + (y * y) + (z * z))); }
+	inline float LengthHorizontal() const { return static_cast<float>(std::sqrt((x * x) + (z * z))); }
 	inline float LengthSquared() const { return (x * x) + (y * y) + (z * z); }
 	inline Vec3 Cross(const Vec3& v) const { return { y * v.z - z * v.y, z * v.x - x * v.z, x * v.y - v.x * y }; }
 	inline float Dot(const Vec3& v) const { return x * v.x + y * v.y + z * v.z; }
-	inline void Normalize() { const float len = Length(); x /= len; y /= len; z /= len; }
+	inline void Normalize() { const float len = Length(); if (len > EPSILON) { x /= len; y /= len; z /= len; } }
 
 	inline Vec3 operator+(const Vec3& v) const { return { x + v.x, y + v.y, z + v.z }; }
 	inline Vec3 operator-(const Vec3& v) const { return { x - v.x, y - v.y, z - v.z }; }
+	inline Vec3 operator*(const Vec3& v) const { return { x * v.x, y * v.y, z * v.z }; }
+	inline Vec3 operator/(const Vec3& v) const { return { x / v.x, y / v.y, z / v.z }; }
 	inline Vec3 operator*(float n) const { return { x * n, y * n, z * n }; }
 	inline Vec3 operator/(float n) const { return { x / n, y / n, z / n }; }
 	inline bool operator>(float n) const { return x > n && y > n && z > n; }
@@ -112,12 +123,60 @@ struct BoundingBox
 	Vec3 min;
 	Vec3 max;
 
+	void Expand(const Vec3& pos);
 	float Area() const;
 	float SemiPerimeter() const;
+	float NormL(int power) const;
+	float MaxAxisLength() const;
 	Vec3 AxisLength() const;
 	Vec3 Midpoint() const;
+	float Distance(const Vec3& point) const;
+	float Distance(const BoundingBox& other) const;
+	BoundingBox Union(const BoundingBox& other) const;
+	BoundingBox Intersect(const BoundingBox& other) const;
 	std::vector<Primitive> ToGeometry() const;
 	void RenderUI() const;
+	static BoundingBox Empty();
+};
+
+struct Quaternion
+{
+	Quaternion() : x(0.0f), y(0.0f), z(0.0f), w(1.0f) {};
+	Quaternion(float x, float y, float z, float w) : x(x), y(y), z(z), w(w) {};
+	Quaternion(const Vec3& axis, float angleRad);
+	Quaternion(const Vec3& eulerDeg);
+
+	inline float* Data() { return &x; }
+	inline const float* Data() const { return &x; }
+	inline float Length() const { return static_cast<float>(std::sqrt((x * x) + (y * y) + (z * z) + (w * w))); }
+	inline float LengthSquared() const { return (x * x) + (y * y) + (z * z) + (w * w); }
+	inline void Normalize() { const float len = Length(); if (len > EPSILON) { x /= len; y /= len; z /= len; w /= len; } }
+	inline Quaternion Normalized() const { Quaternion q = *this; q.Normalize(); return q; }
+	inline Quaternion Conjugate() const { return { -x, -y, -z, w }; }
+	inline float Dot(const Quaternion& q) const { return (x * q.x) + (y * q.y) + (z * q.z) + (w * q.w); }
+	Quaternion operator*(const Quaternion& q) const; // Hamilton Product (q1 * q2)
+	inline Quaternion& operator*=(const Quaternion& q) { *this = *this * q; return *this; }
+	Vec3 operator*(const Vec3& v) const; // Rotate a 3D vector by this quaternion
+	inline Quaternion operator+(const Quaternion& q) const { return { x + q.x, y + q.y, z + q.z, w + q.w }; }
+	inline Quaternion operator-(const Quaternion& q) const { return { x - q.x, y - q.y, z - q.z, w - q.w }; }
+	inline Quaternion operator*(float n) const { return { x * n, y * n, z * n, w * n }; }
+	inline Quaternion operator/(float n) const { return { x / n, y / n, z / n, w / n }; }
+	inline bool operator==(const Quaternion& q) const { return (x == q.x) && (y == q.y) && (z == q.z) && (w == q.w); }
+	inline bool operator!=(const Quaternion& q) const { return !(*this == q); }
+	inline Quaternion& operator+=(const Quaternion& q) { x += q.x; y += q.y; z += q.z; w += q.w; return *this; }
+	inline Quaternion& operator-=(const Quaternion& q) { x -= q.x; y -= q.y; z -= q.z; w -= q.w; return *this; }
+	inline Quaternion& operator*=(float n) { x *= n; y *= n; z *= n; w *= n; return *this; }
+	inline Quaternion& operator/=(float n) { x /= n; y /= n; z /= n; w /= n; return *this; }
+	Vec3 ToEulerYXZ() const;
+
+	static Quaternion Identity() { return Quaternion(0.0f, 0.0f, 0.0f, 1.0f); }
+	static Quaternion Zero() { return Quaternion(0.0f, 0.0f, 0.0f, 0.0f); }
+	static Quaternion FromAxisAngle(const Vec3& axis, float angleRad) { return Quaternion(axis, angleRad); }
+
+	float x;
+	float y;
+	float z;
+	float w;
 };
 
 struct Point
@@ -167,6 +226,7 @@ struct Primitive
 		, texture()
 		, p()
 		, pointCount(pointCount)
+		, doubleSided(false)
 	{
 	}
 
@@ -174,6 +234,7 @@ struct Primitive
 	std::string texture;
 	Point p[4];
 	unsigned pointCount;
+	bool doubleSided;
 };
 
 struct Tri : public Primitive
@@ -193,3 +254,18 @@ struct Line : public Primitive
 	Line() : Primitive(PrimitiveType::LINE, 2) {};
 	Line(const Point& p0, const Point& p1);
 };
+
+// Test if point can be projected alongside projectDir onto ABC plane, and land inside the ABC triangle.
+// projectDir must be normalized.
+// If the test is true, also update outdist so [point + projectDir * outdist] is in the ABC plane.
+// If the test is true, also update outnormal to be equal to the normal of the ABC plane (depends on ABC order)
+bool TestBarycentric(const Vec3& A, const Vec3& B, const Vec3& C, const Vec3& point, const Vec3& projectDir, float& outdist, Vec3& outnormal, float barycentricTolerance = EPSILON);
+
+// Snap a point and rot to a triangle.
+// rot must be in degree.
+bool SnapTriangle(const Vec3& A, const Vec3& B, const Vec3& C, Vec3& pos, Vec3& rot, const Vec3& projectDir, float barycentricTolerance = EPSILON);
+
+std::vector<Vec3> LoadPath(const std::filesystem::path& path);
+std::vector<Vec3> LoadGhostPath(const std::filesystem::path& path, float startTime, float endTime);
+std::vector<Vec3> ComputeYaw(const std::vector<Vec3>& pos, bool loop);
+std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist, bool loop);
