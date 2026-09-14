@@ -962,10 +962,10 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 				bool firstFrame = true;
 				for (const AnimTextureFrame& frame : animFrames)
 				{
-					Texture& texture = const_cast<Texture&>(animTextures[frame.textureIndex]);
 					for (size_t i = 0; i < NUM_FACES_QUADBLOCK + 1; i++)
 					{
 						if (i == NUM_FACES_QUADBLOCK && !firstFrame) { continue; }
+						Texture& texture = const_cast<Texture&>(animTextures[frame.textureIndexes[i]]);
 						size_t textureID = 0;
 						const QuadUV& uvs = frame.uvs[i];
 						PSX::TextureLayout layout = texture.Serialize(uvs);
@@ -1840,19 +1840,22 @@ bool Level::UpdateVRM()
 		const std::vector<Texture>& animTextures = animTex.GetTextures();
 		for (const AnimTextureFrame& frame : animFrames)
 		{
-			bool foundEqual = false;
-			Texture* texture = const_cast<Texture*>(&animTextures[frame.textureIndex]);
-			for (Texture* addedTexture : textures)
+			for (size_t f = 0; f < NUM_FACES_QUADBLOCK + 1; f++)
 			{
-				if (*texture == *addedTexture)
+				bool foundEqual = false;
+				Texture* texture = const_cast<Texture*>(&animTextures[frame.textureIndexes[f]]);
+				for (Texture* addedTexture : textures)
 				{
-					copyTextureAttributes.push_back({addedTexture, texture});
-					foundEqual = true;
-					break;
+					if (*texture == *addedTexture)
+					{
+						copyTextureAttributes.push_back({ addedTexture, texture });
+						foundEqual = true;
+						break;
+					}
 				}
+				if (foundEqual) { continue; }
+				textures.push_back(texture);
 			}
-			if (foundEqual) { continue; }
-			textures.push_back(texture);
 		}
 	}
 
@@ -1962,8 +1965,12 @@ void Level::UpdateAnimationRenderData()
 			const size_t basePrimitiveIndex = qb.GetRenderPrimitiveIndex();
 			if (basePrimitiveIndex == RENDER_INDEX_NONE) { continue; }
 
-			const std::filesystem::path texturePath = textures[frame.textureIndex].GetPath();
-			std::vector<Primitive> qbTriangles = qb.ToGeometry(false, &uvs, &texturePath);
+			std::array<std::filesystem::path, NUM_FACES_QUADBLOCK> texPaths{};
+			for (size_t f = 0; f < NUM_FACES_QUADBLOCK; f++)
+			{
+				texPaths[f] = textures[frame.textureIndexes[f]].GetPath();
+			}
+			std::vector<Primitive> qbTriangles = qb.ToGeometry(false, &uvs, &texPaths);
 			size_t primitiveIndex = basePrimitiveIndex;
 			for (const Primitive& primitive : qbTriangles)
 			{
@@ -2112,11 +2119,12 @@ void Level::GenerateRenderSelectedBlockData(const Quadblock& quadblock, const Ve
 	triangles.reserve(m_rendererSelectedQuadblockIndexes.size() * 8 + 8);
 
 	const std::filesystem::path emptyTexturePath;
+	const std::array<std::filesystem::path, NUM_FACES_QUADBLOCK> emptyTexturePaths = { emptyTexturePath, emptyTexturePath, emptyTexturePath, emptyTexturePath };
 	const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1> emptyUvs = {};
 	for (size_t index : m_rendererSelectedQuadblockIndexes)
 	{
 		const Quadblock& qb = m_quadblocks[index];
-		std::vector<Primitive> qbTriangles = qb.ToGeometry(false, &emptyUvs, &emptyTexturePath);
+		std::vector<Primitive> qbTriangles = qb.ToGeometry(false, &emptyUvs, &emptyTexturePaths);
 		for (Primitive& primitive : qbTriangles)
 		{
 			for (unsigned i = 0; i < primitive.pointCount; i++) { primitive.p[i].color = primitive.p[i].color.Negated(); }
@@ -2152,7 +2160,7 @@ void Level::GenerateRenderSelectedBlockData(const Quadblock& quadblock, const Ve
 				for (size_t qbInd : qbIndeces)
 				{
 					Quadblock& qb = m_quadblocks[qbInd];
-					std::vector<Primitive> qbTriangles = qb.ToGeometry(false, &emptyUvs, &emptyTexturePath);
+					std::vector<Primitive> qbTriangles = qb.ToGeometry(false, &emptyUvs, &emptyTexturePaths);
 					for (Primitive& primitive : qbTriangles)
 					{
 						for (unsigned i = 0; i < primitive.pointCount; i++) { primitive.p[i].color = primitive.p[i].color.Negated(); }
