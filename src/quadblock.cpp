@@ -554,6 +554,11 @@ Vec3 Quadblock::GetNormal() const
 	return normal;
 }
 
+const std::vector<std::array<size_t, 3>>& Quadblock::GetCollTriFacesIndexes() const
+{
+	return m_collTriFaces;
+}
+
 std::vector<std::array<size_t, 3>> Quadblock::GetTriFacesIndexes() const
 {
 	// Return a list of (size_t, size_t, size_t) containing vertex ID
@@ -922,6 +927,32 @@ float Quadblock::DistanceClosestVertex(Vec3& out, const Vec3& v) const
 	return minDist;
 }
 
+bool Quadblock::IntersectRay(const Vec3& point, const Vec3& projectDir, float& outdist, Vec3& outnormal, float barycentricTolerance) const
+{
+	for (std::array<size_t, 3> tri : m_collTriFaces)
+	{
+		const Vec3& A = m_p[tri[0]].m_pos;
+		const Vec3& B = m_p[tri[1]].m_pos;
+		const Vec3& C = m_p[tri[2]].m_pos;
+		if (TestBarycentric(A, B, C, point, projectDir, outdist, outnormal, barycentricTolerance))
+			return true;
+	}
+	return false;
+}
+
+bool Quadblock::SnapPoint(Vec3& pos, Vec3& rot, const Vec3& projectDir, float barycentricTolerance) const
+{
+	for (std::array<size_t, 3> tri : m_collTriFaces)
+	{
+		const Vec3& A = m_p[tri[0]].m_pos;
+		const Vec3& B = m_p[tri[1]].m_pos;
+		const Vec3& C = m_p[tri[2]].m_pos;
+		if (SnapTriangle(A, B, C, pos, rot, projectDir, barycentricTolerance))
+			return true;
+	}
+	return false;
+}
+
 bool Quadblock::Neighbours(const Quadblock& quadblock, float threshold) const
 {
 	for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++)
@@ -998,9 +1029,41 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 	return buffer;
 }
 
+void Quadblock::ComputeCollTrifaces()
+{
+	const bool equivalentDiagonal = std::abs((m_p[2].m_pos - m_p[6].m_pos).Length() - ((m_p[2].m_pos - m_p[4].m_pos).Length() + (m_p[4].m_pos - m_p[6].m_pos).Length())) <= EPSILON;
+	const bool equivalentSide02 = std::abs((m_p[0].m_pos - m_p[2].m_pos).Length() - ((m_p[0].m_pos - m_p[1].m_pos).Length() + (m_p[1].m_pos - m_p[2].m_pos).Length())) <= EPSILON;
+	const bool equivalentSide06 = std::abs((m_p[0].m_pos - m_p[6].m_pos).Length() - ((m_p[0].m_pos - m_p[3].m_pos).Length() + (m_p[3].m_pos - m_p[6].m_pos).Length())) <= EPSILON;
+	if (equivalentDiagonal && equivalentSide02 && equivalentSide06) { m_collTriFaces = { {0, 2, 6} }; }
+	else
+	{
+		m_collTriFaces = {
+			{0, 1, 3},
+			{1, 2, 4},
+			{1, 4, 3},
+			{4, 6, 3}
+		};
+	}
+
+	if (!m_triblock)
+	{
+		const bool equivalentSide28 = std::abs((m_p[2].m_pos - m_p[8].m_pos).Length() - ((m_p[2].m_pos - m_p[5].m_pos).Length() + (m_p[5].m_pos - m_p[8].m_pos).Length())) <= EPSILON;
+		const bool equivalentSide68 = std::abs((m_p[6].m_pos - m_p[8].m_pos).Length() - ((m_p[6].m_pos - m_p[7].m_pos).Length() + (m_p[7].m_pos - m_p[8].m_pos).Length())) <= EPSILON;
+		if (equivalentDiagonal && equivalentSide28 && equivalentSide68) { m_collTriFaces.push_back({ 2, 8, 6 }); }
+		else
+		{
+			m_collTriFaces.push_back({ 2, 5, 4 });
+			m_collTriFaces.push_back({ 4, 7, 6 });
+			m_collTriFaces.push_back({ 4, 5, 7 });
+			m_collTriFaces.push_back({ 5, 8, 7 });
+		}
+	}
+}
+
 void Quadblock::SetDefaultValues()
 {
 	ComputeBoundingBox();
+	ComputeCollTrifaces();
 	m_checkpointIndex = -1;
 	m_flags = QuadFlags::DEFAULT;
 	m_terrain = TerrainType::LABELS.at(TerrainType::DEFAULT);
@@ -1052,4 +1115,30 @@ void Quadblock::ComputeBoundingBox()
 	}
 	m_bbox.min = min;
 	m_bbox.max = max;
+}
+
+int SnapToClosestQuad(const std::vector<Quadblock>& quadblocks, const std::vector<size_t>quadIndexes, Vec3& outpos, Vec3& outrot, const Vec3& projectDir, float negSnapLimit, float posSnapLimit, float barycentricTolerance)
+{
+	int quadId = -1;
+	float minDist = std::numeric_limits<float>::max();
+	Vec3 pos = outpos;
+	for (size_t i : quadIndexes)
+	{
+		const Quadblock& quad = quadblocks[i];
+		float dist;
+		Vec3 normal;
+		if (quad.IntersectRay(pos, projectDir, dist, normal, barycentricTolerance))
+		{
+			if (dist > negSnapLimit && dist < posSnapLimit)
+			{
+				if (std::fabs(dist) < minDist)
+				{
+					minDist = std::fabs(dist);
+					quadId = static_cast<int>(i);
+					quad.SnapPoint(outpos, outrot, projectDir, barycentricTolerance);
+				}
+			}
+		}
+	}
+	return quadId;
 }

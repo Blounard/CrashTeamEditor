@@ -1356,6 +1356,7 @@ bool Quadblock::RenderUI(size_t checkpointCount, bool& resetBsp)
 				{
 					resetBsp = true;
 					ComputeBoundingBox();
+					ComputeCollTrifaces();
 				}
 			}
 			ImGui::TreePop();
