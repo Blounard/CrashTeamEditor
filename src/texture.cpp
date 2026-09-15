@@ -103,7 +103,7 @@ Texture::Texture(const LayoutKey& key, const PixelBounds& bounds, const std::vec
 		m_blendMode = key.blendMode;
 
 		// Load the PNG back into the class buffers (m_image, m_width, m_height, etc.)
-		if (!CreateTexture()) {
+		if (!CreateTexture(false)) {
 			ClearTexture();
 		}
 	}
@@ -162,7 +162,7 @@ Texture::Texture(const Texture& top, const Texture& bottom, const std::string& n
 	if (stbi_write_png(m_path.string().c_str(), width, mergedHeight, 4, rgba.data(), width * 4))
 	{
 		m_blendMode = top.GetBlendMode();
-		if (!CreateTexture()) { ClearTexture(); }
+		if (!CreateTexture(false)) { ClearTexture(); }
 	}
 	else
 	{
