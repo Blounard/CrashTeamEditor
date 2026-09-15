@@ -18,10 +18,6 @@ struct RawUV
 	uint8_t u0, v0, u1, v1, u2, v2, u3, v3;
 	RawUV() = default;
 	RawUV(const PSX::TextureLayout& layout);
-	void Rotate90();
-	void Flip();
-	void ApplyRotateFlip(uint32_t rotateFlip);
-	void UndoRotateFlip(uint32_t rotateFlip);
 };
 
 struct PixelBounds

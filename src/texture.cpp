@@ -327,15 +327,10 @@ PSX::TextureLayout Texture::Serialize(const QuadUV& uvs) const
 	uint8_t y = static_cast<uint8_t>(m_imageY % TEXPAGE_HEIGHT);
 
 	RawUV rawUVs = ConvertUV(uvs, GetWidth(), GetHeight());
-	rawUVs.u0 += x; rawUVs.v0 += y;
-	rawUVs.u1 += x; rawUVs.v1 += y;
-	rawUVs.u2 += x; rawUVs.v2 += y;
-	rawUVs.u3 += x; rawUVs.v3 += y;
-
-	layout.u0 = rawUVs.u0; layout.v0 = rawUVs.v0;
-	layout.u1 = rawUVs.u1; layout.v1 = rawUVs.v1;
-	layout.u2 = rawUVs.u2; layout.v2 = rawUVs.v2;
-	layout.u3 = rawUVs.u3; layout.v3 = rawUVs.v3;
+	layout.u0 = rawUVs.u0 + x; layout.v0 = rawUVs.v0 + y;
+	layout.u1 = rawUVs.u1 + x; layout.v1 = rawUVs.v1 + y;
+	layout.u2 = rawUVs.u2 + x; layout.v2 = rawUVs.v2 + y;
+	layout.u3 = rawUVs.u3 + x; layout.v3 = rawUVs.v3 + y;
 	return layout;
 }
 
@@ -692,61 +687,6 @@ RawUV::RawUV(const PSX::TextureLayout& layout)
 	v3 = layout.v3;
 }
 
-//RawUV::RawUV(const PSX::TextureLayout& layout, uint32_t drawOrderLow, int f)
-//	: RawUV(layout)
-//{
-//	uint32_t shift = 8 + (f * 5);
-//	uint32_t rotateFlip = (drawOrderLow >> shift);
-//	ApplyRotateFlip(rotateFlip);
-//}
-
-void RawUV::Rotate90()
-{
-	uint8_t tmp_u = u0, tmp_v = v0;
-	u0 = u2; v0 = v2;
-	u2 = u3; v2 = v3;
-	u3 = u1; v3 = v1;
-	u1 = tmp_u; v1 = tmp_v;
-}
-
-void RawUV::Flip()
-{
-	Swap(u0, u1);
-	Swap(v0, v1);
-	Swap(u2, u3);
-	Swap(v2, v3);
-}
-
-void RawUV::ApplyRotateFlip(uint32_t rotateFlip)
-{
-	switch (rotateFlip & 0x7)
-	{
-	case 1: Rotate90(); break;
-	case 2: Rotate90(); Rotate90(); break;
-	case 3: Rotate90(); Rotate90(); Rotate90(); break;
-	case 4: Flip(); Rotate90(); Rotate90(); Rotate90(); break;
-	case 5: Flip(); Rotate90(); Rotate90(); break;
-	case 6: Flip(); Rotate90(); break;
-	case 7: Flip(); break;
-	default: break;
-	}
-}
-
-void RawUV::UndoRotateFlip(uint32_t rotateFlip)
-{
-	switch (rotateFlip & 0x7)
-	{
-	case 1: Rotate90(); Rotate90(); Rotate90(); break;
-	case 2: Rotate90(); Rotate90(); break;
-	case 3: Rotate90(); break;
-	case 4: Rotate90(); Flip(); break;
-	case 5: Rotate90(); Rotate90(); Flip(); break;
-	case 6: Rotate90(); Rotate90(); Rotate90(); Flip(); break;
-	case 7: Flip(); break;
-	default: break;
-	}
-}
-
 void PixelBounds::Update(const RawUV& uvs)
 {
 	if (uvs.u0 < minU) minU = uvs.u0;
@@ -793,15 +733,10 @@ PSX::TextureLayout LayoutKey::Serialize(QuadUV uvs, PixelBounds bounds) const
 
 	RawUV rawUVs = ConvertUV(uvs, bounds.maxU - bounds.minU + 1, bounds.maxV - bounds.minV + 1);
 	uint8_t x = bounds.minU; uint8_t y = bounds.minV;
-	rawUVs.u0 += x; rawUVs.v0 += y;
-	rawUVs.u1 += x; rawUVs.v1 += y;
-	rawUVs.u2 += x; rawUVs.v2 += y;
-	rawUVs.u3 += x; rawUVs.v3 += y;
-
-	layout.u0 = rawUVs.u0; layout.v0 = rawUVs.v0;
-	layout.u1 = rawUVs.u1; layout.v1 = rawUVs.v1;
-	layout.u2 = rawUVs.u2; layout.v2 = rawUVs.v2;
-	layout.u3 = rawUVs.u3; layout.v3 = rawUVs.v3;
+	layout.u0 = rawUVs.u0 + x; layout.v0 = rawUVs.v0 + y;
+	layout.u1 = rawUVs.u1 + x; layout.v1 = rawUVs.v1 + y;
+	layout.u2 = rawUVs.u2 + x; layout.v2 = rawUVs.v2 + y;
+	layout.u3 = rawUVs.u3 + x; layout.v3 = rawUVs.v3 + y;
 
 	return layout;
 }
