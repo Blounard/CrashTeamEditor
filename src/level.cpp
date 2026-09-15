@@ -1692,7 +1692,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 					std::string newMatName = "tex_" + std::to_string(texCounter++);
 					m_materialCache[key] = newMatName;
 				}
-				RawUV rawUV(layout, psxQuad.drawOrderLow, f);
+				RawUV rawUV(layout);
 				m_textureToPixelBounds[key].Update(rawUV);
 			}
 
@@ -2107,7 +2107,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				qb.SetTexPath(f, m_materialToTexture[qbMatName].GetPath());
 				m_materialToQuadFaces[qbMatName].push_back(std::make_pair(i, f));
 
-				RawUV rawUV(layout, psxQuad.drawOrderLow, f);
+				RawUV rawUV(layout);
 				const PixelBounds& bounds = m_textureToPixelBounds[key];
 				qb.SetFaceUVs(f, ConvertUV(bounds, rawUV));
 			}
@@ -2721,12 +2721,12 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 						{
 							LayoutKey& key = matToKey[quad.GetMaterial(i)];
 							PixelBounds& bounds = m_textureToPixelBounds[key];
-							layout = key.Serialize(quad.GetQuadUV(i), bounds, quad.GetFaceRotateFlip(i));
+							layout = key.Serialize(quad.GetQuadUV(i), bounds);
 						}
 					}
 					else
 					{
-						layout = texture.Serialize(uvs, quad.GetFaceRotateFlip(i));
+						layout = texture.Serialize(uvs);
 					}
 							
 					if (savedLayouts.contains(layout)) { textureID = savedLayouts[layout]; }

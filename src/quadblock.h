@@ -141,6 +141,7 @@ public:
 	bool GetVisTreeTransparent() const;
 	int GetDrawOrderHigh() const;
 	uint32_t GetFaceRotateFlip(size_t face) const;
+	uint32_t GetFaceDrawMode(size_t face) const;
 	int GetWeatherIntensity() const;
 	int GetWeatherVanishRate() const;
 	const QuadUV& GetQuadUV(size_t quad) const;

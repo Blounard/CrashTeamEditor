@@ -5,6 +5,35 @@
 #include <unordered_set>
 #include <unordered_map>
 
+void Rotate90(QuadUV& uvs)
+{
+	Vec2 tmp = uvs[0];
+	uvs[0] = uvs[2];
+	uvs[2] = uvs[3];
+	uvs[3] = uvs[1];
+	uvs[1] = tmp;
+}
+
+void Flip(QuadUV& uvs)
+{
+	std::swap(uvs[0], uvs[1]);
+	std::swap(uvs[2], uvs[3]);
+}
+
+void RotateFlip(QuadUV& uvs, uint32_t rotateFlip)
+{
+	switch (rotateFlip & 0x7)
+	{
+	case 1: Rotate90(uvs); break;
+	case 2: Rotate90(uvs); Rotate90(uvs); break;
+	case 3: Rotate90(uvs); Rotate90(uvs); Rotate90(uvs); break;
+	case 4: Flip(uvs); Rotate90(uvs); Rotate90(uvs); Rotate90(uvs); break;
+	case 5: Flip(uvs); Rotate90(uvs); Rotate90(uvs); break;
+	case 6: Flip(uvs); Rotate90(uvs); break;
+	case 7: Flip(uvs); break;
+	default: break;
+	}
+}
 
 Tri::Tri(const Point& p0, const Point& p1, const Point& p2)
 	: Primitive(PrimitiveType::TRI, 3)

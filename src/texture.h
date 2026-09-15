@@ -18,7 +18,6 @@ struct RawUV
 	uint8_t u0, v0, u1, v1, u2, v2, u3, v3;
 	RawUV() = default;
 	RawUV(const PSX::TextureLayout& layout);
-	RawUV(const PSX::TextureLayout& layout, uint32_t drawOrderLow, int f);
 	void Rotate90();
 	void Flip();
 	void ApplyRotateFlip(uint32_t rotateFlip);
@@ -42,7 +41,7 @@ struct LayoutKey // 2 PSX::TextureLayout have the same LayoutKey if they use the
 	uint16_t blendMode;
 	LayoutKey() = default;
 	LayoutKey(const PSX::TextureLayout& layout);
-	PSX::TextureLayout Serialize(QuadUV uvs, PixelBounds bounds, uint32_t rotateFlip = 0) const;
+	PSX::TextureLayout Serialize(QuadUV uvs, PixelBounds bounds) const;
 	bool operator==(const LayoutKey& other) const;
 };
 
@@ -77,7 +76,7 @@ public:
 	void SetImageCoords(size_t x, size_t y);
 	void SetCLUTCoords(size_t x, size_t y);
 	void SetBlendMode(uint16_t mode);
-	PSX::TextureLayout Serialize(const QuadUV& uvs, uint32_t rotateFlip = 0) const;
+	PSX::TextureLayout Serialize(const QuadUV& uvs) const;
 	bool CompareEquivalency(const Texture& tex);
 	void CopyVRAMAttributes(const Texture& tex);
 	bool operator==(const Texture& tex) const;

@@ -286,7 +286,7 @@ void Texture::SetBlendMode(uint16_t mode)
 	m_blendMode = mode;
 }
 
-PSX::TextureLayout Texture::Serialize(const QuadUV& uvs, uint32_t rotateFlip) const
+PSX::TextureLayout Texture::Serialize(const QuadUV& uvs) const
 {
 	PSX::TextureLayout layout = {};
 	if (IsEmpty()) 
@@ -331,7 +331,6 @@ PSX::TextureLayout Texture::Serialize(const QuadUV& uvs, uint32_t rotateFlip) co
 	rawUVs.u1 += x; rawUVs.v1 += y;
 	rawUVs.u2 += x; rawUVs.v2 += y;
 	rawUVs.u3 += x; rawUVs.v3 += y;
-	rawUVs.UndoRotateFlip(rotateFlip);
 
 	layout.u0 = rawUVs.u0; layout.v0 = rawUVs.v0;
 	layout.u1 = rawUVs.u1; layout.v1 = rawUVs.v1;
@@ -693,13 +692,13 @@ RawUV::RawUV(const PSX::TextureLayout& layout)
 	v3 = layout.v3;
 }
 
-RawUV::RawUV(const PSX::TextureLayout& layout, uint32_t drawOrderLow, int f)
-	: RawUV(layout)
-{
-	uint32_t shift = 8 + (f * 5);
-	uint32_t rotateFlip = (drawOrderLow >> shift);
-	ApplyRotateFlip(rotateFlip);
-}
+//RawUV::RawUV(const PSX::TextureLayout& layout, uint32_t drawOrderLow, int f)
+//	: RawUV(layout)
+//{
+//	uint32_t shift = 8 + (f * 5);
+//	uint32_t rotateFlip = (drawOrderLow >> shift);
+//	ApplyRotateFlip(rotateFlip);
+//}
 
 void RawUV::Rotate90()
 {
@@ -781,7 +780,7 @@ LayoutKey::LayoutKey(const PSX::TextureLayout& layout)
 	blendMode = layout.texPage.blendMode;
 }
 
-PSX::TextureLayout LayoutKey::Serialize(QuadUV uvs, PixelBounds bounds, uint32_t rotateFlip) const
+PSX::TextureLayout LayoutKey::Serialize(QuadUV uvs, PixelBounds bounds) const
 {
 	PSX::TextureLayout layout = {};
 
@@ -798,7 +797,6 @@ PSX::TextureLayout LayoutKey::Serialize(QuadUV uvs, PixelBounds bounds, uint32_t
 	rawUVs.u1 += x; rawUVs.v1 += y;
 	rawUVs.u2 += x; rawUVs.v2 += y;
 	rawUVs.u3 += x; rawUVs.v3 += y;
-	rawUVs.UndoRotateFlip(rotateFlip);
 
 	layout.u0 = rawUVs.u0; layout.v0 = rawUVs.v0;
 	layout.u1 = rawUVs.u1; layout.v1 = rawUVs.v1;
