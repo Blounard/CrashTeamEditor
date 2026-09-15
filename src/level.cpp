@@ -1967,7 +1967,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 									LayoutKey key(layout);
 									PixelBounds& bounds = m_textureToPixelBounds[key];
 									RawUV rawUV(layout);
-									uvs = MakeUV(bounds, rawUV);
+									uvs = ConvertUV(bounds, rawUV);
 									texName = m_materialCache[key];
 								}
 
@@ -2109,7 +2109,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 
 				RawUV rawUV(layout, psxQuad.drawOrderLow, f);
 				const PixelBounds& bounds = m_textureToPixelBounds[key];
-				qb.SetFaceUVs(f, MakeUV(bounds, rawUV));
+				qb.SetFaceUVs(f, ConvertUV(bounds, rawUV));
 			}
 			else // for now assign mat and UVs of the 1st frame of animation
 			{
@@ -2135,7 +2135,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 
 						RawUV rawUV(layout); // TODO VERIFY IF WE NEED THE draworderlow
 						const PixelBounds& bounds = m_textureToPixelBounds[key];
-						qb.SetFaceUVs(f, MakeUV(bounds, rawUV));
+						qb.SetFaceUVs(f, ConvertUV(bounds, rawUV));
 						continue;
 					}
 				}
@@ -2188,7 +2188,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 					LayoutKey key(layout);
 					const PixelBounds& bounds = m_textureToPixelBounds[key];
 					RawUV rawUV(layout);
-					faceFrames[face].push_back({ m_materialCache[key], MakeUV(bounds, rawUV) });
+					faceFrames[face].push_back({ m_materialCache[key], ConvertUV(bounds, rawUV) });
 				}
 			}
 			if (!validAnimation || frameCount == 0) { continue; }

@@ -12,87 +12,24 @@
 
 typedef std::unordered_set<size_t> Shape;
 
-
 //Helper structs for reading texture from .lev/.vrm. Maybe move to psx_types.h ?
-struct RawUV {
+struct RawUV
+{
 	uint8_t u0, v0, u1, v1, u2, v2, u3, v3;
-
 	RawUV() = default;
-
-	RawUV(const PSX::TextureLayout& layout)
-		: u0(layout.u0), v0(layout.v0)
-		, u1(layout.u1), v1(layout.v1)
-		, u2(layout.u2), v2(layout.v2)
-		, u3(layout.u3), v3(layout.v3)
-	{
-	}
-
-	RawUV(const PSX::TextureLayout& layout, uint32_t drawOrderLow, int f)
-		: RawUV(layout)
-	{
-		auto SwapUV = [](uint8_t& u1, uint8_t& v1, uint8_t& u2, uint8_t& v2) {
-			uint8_t tmpU = u1, tmpV = v1;
-			u1 = u2; v1 = v2;
-			u2 = tmpU; v2 = tmpV;
-			};
-		auto Rotate90 = [&](RawUV& u) {
-			uint8_t tmp_u = u.u0, tmp_v = u.v0;
-			u.u0 = u.u2; u.v0 = u.v2;
-			u.u2 = u.u3; u.v2 = u.v3;
-			u.u3 = u.u1; u.v3 = u.v1;
-			u.u1 = tmp_u; u.v1 = tmp_v;
-			};
-		auto Flip = [&](RawUV& u) {
-			SwapUV(u.u0, u.v0, u.u1, u.v1);
-			SwapUV(u.u2, u.v2, u.u3, u.v3);
-			};
-
-		uint32_t shift = 8 + (f * 5);
-		uint32_t rotateFlip = (drawOrderLow >> shift) & 0x7;
-
-		switch (rotateFlip)
-		{
-		case 1: Rotate90(*this); break;
-		case 2: Rotate90(*this); Rotate90(*this); break;
-		case 3: Rotate90(*this); Rotate90(*this); Rotate90(*this); break;
-		case 4: Flip(*this); Rotate90(*this); Rotate90(*this); Rotate90(*this); break;
-		case 5: Flip(*this); Rotate90(*this); Rotate90(*this); break;
-		case 6: Flip(*this); Rotate90(*this); break;
-		case 7: Flip(*this); break;
-		default: break;
-		}
-	}
+	RawUV(const PSX::TextureLayout& layout);
+	RawUV(const PSX::TextureLayout& layout, uint32_t drawOrderLow, int f);
+	void Rotate90();
+	void Flip();
+	void ApplyRotateFlip(uint32_t rotateFlip);
+	void UndoRotateFlip(uint32_t rotateFlip);
 };
-
-
 
 struct PixelBounds
 {
 	uint8_t minU = 255, minV = 255;
 	uint8_t maxU = 0, maxV = 0;
-
-	void Update(const RawUV& uvs)
-	{
-		if (uvs.u0 < minU) minU = uvs.u0;
-		if (uvs.u1 < minU) minU = uvs.u1;
-		if (uvs.u2 < minU) minU = uvs.u2;
-		if (uvs.u3 < minU) minU = uvs.u3;
-
-		if (uvs.v0 < minV) minV = uvs.v0;
-		if (uvs.v1 < minV) minV = uvs.v1;
-		if (uvs.v2 < minV) minV = uvs.v2;
-		if (uvs.v3 < minV) minV = uvs.v3;
-
-		if (uvs.u0 > maxU) maxU = uvs.u0;
-		if (uvs.u1 > maxU) maxU = uvs.u1;
-		if (uvs.u2 > maxU) maxU = uvs.u2;
-		if (uvs.u3 > maxU) maxU = uvs.u3;
-
-		if (uvs.v0 > maxV) maxV = uvs.v0;
-		if (uvs.v1 > maxV) maxV = uvs.v1;
-		if (uvs.v2 > maxV) maxV = uvs.v2;
-		if (uvs.v3 > maxV) maxV = uvs.v3;
-	}
+	void Update(const RawUV& uvs);
 };
 
 struct LayoutKey // 2 PSX::TextureLayout have the same LayoutKey if they use the same vram page and colors. Roughly correspond to materials
@@ -103,53 +40,11 @@ struct LayoutKey // 2 PSX::TextureLayout have the same LayoutKey if they use the
 	uint16_t clutX;
 	uint16_t clutY;
 	uint16_t blendMode;
-
 	LayoutKey() = default;
-
-	LayoutKey(const PSX::TextureLayout& layout)
-		: pageX(layout.texPage.x)
-		, pageY(layout.texPage.y)
-		, bpp(layout.texPage.texpageColors)
-		, clutX(layout.clut.x)
-		, clutY(layout.clut.y)
-		, blendMode(layout.texPage.blendMode)
-	{
-	}
+	LayoutKey(const PSX::TextureLayout& layout);
 	PSX::TextureLayout Serialize(QuadUV uvs, PixelBounds bounds, uint32_t rotateFlip = 0) const;
-
-	bool operator==(const LayoutKey& other) const
-	{
-		return pageX == other.pageX &&
-			pageY == other.pageY &&
-			bpp == other.bpp &&
-			clutX == other.clutX &&
-			clutY == other.clutY &&
-			blendMode == other.blendMode;
-	}
+	bool operator==(const LayoutKey& other) const;
 };
-
-
-
-namespace std
-{
-	template<>
-	struct hash<LayoutKey>
-	{
-		size_t operator()(const LayoutKey& key) const
-		{
-			size_t h1 = std::hash<uint16_t>{}(key.pageX);
-			size_t h2 = std::hash<uint16_t>{}(key.pageY);
-			size_t h3 = std::hash<uint16_t>{}(key.bpp);
-			size_t h4 = std::hash<uint16_t>{}(key.clutX);
-			size_t h5 = std::hash<uint16_t>{}(key.clutY);
-			size_t h6 = std::hash<uint16_t>{}(key.blendMode);
-
-			return h1 ^ (h2 << 1) ^ (h3 << 2) ^ (h4 << 3) ^ (h5 << 4) ^ (h6 << 5);
-		}
-	};
-}
-
-
 
 class Texture
 {
@@ -158,7 +53,7 @@ public:
 	{
 		BPP_4, BPP_8, BPP_16
 	};
-	Texture() : m_width(0), m_height(0), m_imageX(0), m_imageY(0), m_clutX(0), m_clutY(0), m_blendMode(0), m_semiTransparent(false) {};
+	Texture() : m_width(0), m_height(0), m_imageX(0), m_imageY(0), m_clutX(0), m_clutY(0), m_blendMode(0), m_semiTransparent(false), m_placed(false) {};
 	Texture(const std::filesystem::path& path);
 	Texture(const LayoutKey& key, const PixelBounds& bounds, const std::vector<uint16_t>& vram, const std::string& newMatName, const std::filesystem::path& tempDir, bool crop = true);
 	Texture(const Texture& top, const Texture& bottom, const std::string& newMatName, const std::filesystem::path& tempDir);
@@ -211,26 +106,18 @@ private:
 
 std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures);
 
-inline QuadUV MakeUV(const PixelBounds& bounds, const RawUV rawUV) 
-{
-	float croppedWidth = 1.0f + static_cast<float>(bounds.maxU - bounds.minU);
-	float croppedHeight = 1.0f + static_cast<float>(bounds.maxV - bounds.minV);
-	uint8_t maxU = std::max(std::max(rawUV.u0, rawUV.u1), std::max(rawUV.u2, rawUV.u3));
-	uint8_t maxV = std::max(std::max(rawUV.v0, rawUV.v1), std::max(rawUV.v2, rawUV.v3));
 
-	auto toFloat = [&](const uint8_t raw, const uint8_t min, uint8_t max , float size) -> float
-		{
-			if (raw == max)
-				return (static_cast<float>(raw - min) + 1.0f) / size;
-			else 
-				return (static_cast<float>(raw - min)) / size;
-		};
-	QuadUV uvs = {
-		Vec2(toFloat(rawUV.u0, bounds.minU, maxU, croppedWidth), toFloat(rawUV.v0, bounds.minV, maxV, croppedHeight)),
-		Vec2(toFloat(rawUV.u1, bounds.minU, maxU, croppedWidth), toFloat(rawUV.v1, bounds.minV, maxV, croppedHeight)),
-		Vec2(toFloat(rawUV.u2, bounds.minU, maxU, croppedWidth), toFloat(rawUV.v2, bounds.minV, maxV, croppedHeight)),
-		Vec2(toFloat(rawUV.u3, bounds.minU, maxU, croppedWidth), toFloat(rawUV.v3, bounds.minV, maxV, croppedHeight))
+
+namespace std
+{
+	template<>
+	struct hash<LayoutKey>
+	{
+		size_t operator()(const LayoutKey& key) const;
 	};
-	return uvs;
 }
+
+QuadUV ConvertUV(const PixelBounds& bounds, const RawUV rawUV);
+RawUV ConvertUV(const QuadUV uvs, int texWidth, int texHeight);
+
 
