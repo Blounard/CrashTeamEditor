@@ -1567,6 +1567,8 @@ void Texture::RenderUI(const std::vector<std::pair<size_t, size_t>>& quadblockFa
 			if (ImGui::Selectable(BLEND_MODES[i].c_str()))
 			{
 				SetBlendMode(static_cast<uint16_t>(i));
+				std::filesystem::path path = GetPath();
+				UpdateTexture(path);
 			}
 		}
 		ImGui::EndCombo();

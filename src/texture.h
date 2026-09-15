@@ -86,7 +86,7 @@ public:
 private:
 	void FillShapes(const std::vector<size_t>& colorIndexes);
 	void ClearTexture();
-	bool CreateTexture();
+	bool CreateTexture(bool updateBlendMode =  false);
 	void ConvertPixels(const std::vector<size_t>& colorIndexes, unsigned indexesPerPixel);
 
 private:
@@ -104,5 +104,5 @@ private:
 std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures);
 QuadUV ConvertUV(const PixelBounds& bounds, const RawUV rawUV);
 RawUV ConvertUV(const QuadUV uvs, int texWidth, int texHeight);
-uint16_t ConvertVRAMColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a);
-void ConvertVRAMColor(uint16_t vramColor, uint8_t * rgba);
+uint16_t ConvertVRAMColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a, uint16_t blendMode);
+void ConvertVRAMColor(uint16_t vramColor, uint8_t * rgba, uint16_t blendMode);
