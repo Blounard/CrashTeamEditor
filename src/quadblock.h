@@ -135,6 +135,8 @@ public:
 	bool GetCheckpointStatus() const;
 	bool GetCheckpointPathable() const;
 	bool GetVisTreeTransparent() const;
+	uint32_t GetFaceRotateFlip(size_t face) const;
+	uint32_t GetFaceDrawMode(size_t face) const;
 	const QuadUV& GetQuadUV(size_t quad) const;
 	const std::filesystem::path& GetTexPath(size_t face) const;
 	const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>& GetUVs() const;

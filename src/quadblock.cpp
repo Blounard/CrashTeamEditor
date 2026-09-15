@@ -669,6 +669,17 @@ bool Quadblock::GetVisTreeTransparent() const
 	return m_visTreeTransparent;
 }
 
+uint32_t Quadblock::GetFaceRotateFlip(size_t face) const
+{
+	return m_faceRotateFlip[face];
+}
+
+uint32_t Quadblock::GetFaceDrawMode(size_t face) const
+{
+	return m_faceDrawMode[face];
+}
+
+
 const QuadUV& Quadblock::GetQuadUV(size_t quad) const
 {
 	return m_uvs[quad];
@@ -833,7 +844,8 @@ std::vector<Primitive> Quadblock::ToGeometry(bool filterTriangles, const std::ar
 
 	auto GetUVForVertex = [&](int quadInd, int vertInd) -> Vec2
 		{
-			const QuadUV& quv = uvs[quadInd];
+			QuadUV quv = uvs[quadInd];
+			RotateFlip(quv, m_faceRotateFlip[quadInd]);
 			int vertIndInUvs = 0;
 			for (int i = 0; i < NUM_VERTICES_QUAD; i++)
 			{
