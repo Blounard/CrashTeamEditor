@@ -23,13 +23,8 @@ static size_t GetTexPage(size_t x, size_t y)
 Texture::Texture(const std::filesystem::path& path)
 {
 	m_path = path;
-	m_blendMode = PSX::BlendMode::HALF_TRANSPARENT;
 	m_placed = false;
-	if (!CreateTexture()) 
-	{ 
-		ClearTexture(); 
-		printf("ERROR : Couldn't create texture from path %s\n", path.string().c_str());
-	}
+	if (!CreateTexture(true)) { ClearTexture(); }
 }
 
 
@@ -183,7 +178,7 @@ void Texture::UpdateTexture(const std::filesystem::path& path)
 	ClearTexture();
 	m_path = path;
 	m_blendMode = blendMode;
-	if (!CreateTexture()) { ClearTexture(); }
+	if (!CreateTexture(false)) { ClearTexture(); }
 }
 
 Texture::BPP Texture::GetBPP() const
@@ -408,7 +403,7 @@ void Texture::ClearTexture()
 	m_path.clear(); m_shapes.clear();
 }
 
-bool Texture::CreateTexture()
+bool Texture::CreateTexture(bool updateBlendMode)
 {
 	int channels;
 	stbi_uc* image = stbi_load(m_path.string().c_str(), &m_width, &m_height, &channels, 0);
@@ -421,24 +416,30 @@ bool Texture::CreateTexture()
 	int semiTransparentPx = 0;
 	std::vector<size_t> colorIndexes;
 	const int pxCount = m_width * m_height;
+	for (int i = 0; i < pxCount; i++) { if (alphaImage && (image[i * channels + 3] != 255)) { semiTransparentPx++; } }
+	m_semiTransparent = semiTransparentPx > 0;
+	if (updateBlendMode)
+	{
+		if (!m_semiTransparent)
+			m_blendMode = PSX::BlendMode::ADDITIVE_TRANSLUCENT;
+		else
+			m_blendMode = PSX::BlendMode::HALF_TRANSPARENT;
+	}
 	for (int i = 0; i < pxCount; i++)
 	{
 		int px = i * channels;
-		uint16_t color = alphaImage ? ConvertVRAMColor(image[px + 0], image[px + 1], image[px + 2], image[px + 3]) : ConvertVRAMColor(image[px + 0], image[px + 1], image[px + 2], 255);
-		if (alphaImage && (image[px + 3] != 255)) { semiTransparentPx++; }
+		uint16_t color = alphaImage ? ConvertVRAMColor(image[px + 0], image[px + 1], image[px + 2], image[px + 3], m_blendMode) : ConvertVRAMColor(image[px + 0], image[px + 1], image[px + 2], 255, m_blendMode);
 		bool foundColor = false;
 		size_t clutIndex = m_clut.size();
 		for (size_t j = 0; j < m_clut.size(); j++)
 		{
 			if (color == m_clut[j]) { clutIndex = j; foundColor = true; break; }
 		}
-		if (!foundColor) { m_clut.push_back(color); }
+		if (!foundColor) 
+		{ 
+			m_clut.push_back(color); 
+		}
 		colorIndexes.push_back(clutIndex);
-	}
-	m_semiTransparent = semiTransparentPx > 0;
-	if (!m_semiTransparent && m_blendMode == PSX::BlendMode::HALF_TRANSPARENT)
-	{ 
-		m_blendMode = PSX::BlendMode::ADDITIVE_TRANSLUCENT;
 	}
 
 	Texture::BPP bpp = GetBPP();
@@ -818,8 +819,9 @@ RawUV ConvertUV(const QuadUV uvs, int texWidth, int texHeight)
 	return rawUVs;
 }
 
-uint16_t ConvertVRAMColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a)
+uint16_t ConvertVRAMColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a, uint16_t blendMode)
 {
+	// Opaque black doesn't exist for HALF_TRANSPARENT (need to be converted to dark grey)
 	if (a == 0) { return 0; }
 
 	a = a == 255 ? 0 : 1;
@@ -829,13 +831,20 @@ uint16_t ConvertVRAMColor(unsigned char r, unsigned char g, unsigned char b, uns
 	color |= (((g * 249) + 1014) >> 11) & 0x1F;
 	color <<= 5;
 	color |= (((r * 249) + 1014) >> 11) & 0x1F;
-	if (color == 1 << 15) { color = 1 << 15 | 1 << 10 | 1 << 5 | 1; } // Semi transparent black 32bit becomes semi transparent dark grey 16bit because semi transparent black 16bit doesn't exist
-	if (color == 0) { color = 1 << 15; } // Opaque black is encoded with stp = 1, unlike other colors.
+	if (color == 0) // Opaque Black
+	{
+		if (blendMode != PSX::BlendMode::ADDITIVE_TRANSLUCENT)
+			color = 1 << 10 | 1 << 5 | 1; // Encoding to opaque dark grey because with other blend mode, full black is rendered as semi transparent.
+		else
+			color = 1 << 15; // True full black, need the stp bit to be equal to 1
+	}
 	return color;
 }
 
-void ConvertVRAMColor(uint16_t vramColor, uint8_t* rgba)
+void ConvertVRAMColor(uint16_t vramColor, uint8_t* rgba, uint16_t blendMode)
 {
+	// vram color ==  0 -> Full transparent.
+	// vram color ==  1 << 15 -> Opaque Black with ADDITIVE_TRANSLUCENT ; Semi Transparent Black with HALF_TRANSPARENT
 	uint8_t r = (vramColor >> 0) & 0x1F;
 	uint8_t g = (vramColor >> 5) & 0x1F;
 	uint8_t b = (vramColor >> 10) & 0x1F;
@@ -847,10 +856,13 @@ void ConvertVRAMColor(uint16_t vramColor, uint8_t* rgba)
 
 	if (r == 0 && g == 0 && b == 0)
 	{
-		rgba[3] = stp ? 255 : 0;
+		rgba[3] = stp ? 128 : 0;
 	}
 	else
 	{
 		rgba[3] = stp ? 128 : 255;
 	}
+	if (blendMode == PSX::BlendMode::ADDITIVE_TRANSLUCENT && rgba[3] != 0)
+		rgba[3] = 255;
 }
+

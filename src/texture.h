@@ -82,7 +82,7 @@ public:
 
 private:
 	void FillShapes(const std::vector<size_t>& colorIndexes);
-	bool CreateTexture();
+	bool CreateTexture(bool updateBlendMode =  false);
 	void ConvertPixels(const std::vector<size_t>& colorIndexes, unsigned indexesPerPixel);
 
 private:
@@ -113,7 +113,5 @@ namespace std
 
 QuadUV ConvertUV(const PixelBounds& bounds, const RawUV rawUV);
 RawUV ConvertUV(const QuadUV uvs, int texWidth, int texHeight);
-uint16_t ConvertVRAMColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a);
-void ConvertVRAMColor(uint16_t vramColor, uint8_t* rgba);
-
-
+uint16_t ConvertVRAMColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a, uint16_t blendMode);
+void ConvertVRAMColor(uint16_t vramColor, uint8_t * rgba, uint16_t blendMode);
