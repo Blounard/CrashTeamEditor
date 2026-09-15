@@ -11,6 +11,43 @@
 
 typedef std::unordered_set<size_t> Shape;
 
+struct RawUV
+{
+	uint8_t u0, v0, u1, v1, u2, v2, u3, v3;
+	RawUV() = default;
+	RawUV(const PSX::TextureLayout& layout);
+};
+
+struct PixelBounds
+{
+	uint8_t minU = 255, minV = 255;
+	uint8_t maxU = 0, maxV = 0;
+	void Update(const RawUV& uvs);
+};
+
+struct LayoutKey // 2 PSX::TextureLayout have the same LayoutKey if they use the same vram page and colors. Roughly correspond to materials
+{
+	uint16_t pageX;
+	uint16_t pageY;
+	uint16_t bpp;
+	uint16_t clutX;
+	uint16_t clutY;
+	uint16_t blendMode;
+	LayoutKey() = default;
+	LayoutKey(const PSX::TextureLayout& layout);
+	PSX::TextureLayout Serialize(QuadUV uvs, PixelBounds bounds) const;
+	bool operator==(const LayoutKey& other) const;
+};
+
+namespace std
+{
+	template<>
+	struct hash<LayoutKey>
+	{
+		size_t operator()(const LayoutKey& key) const;
+	};
+}
+
 class Texture
 {
 public:
@@ -65,5 +102,7 @@ private:
 };
 
 std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures);
+QuadUV ConvertUV(const PixelBounds& bounds, const RawUV rawUV);
+RawUV ConvertUV(const QuadUV uvs, int texWidth, int texHeight);
 uint16_t ConvertVRAMColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a);
 void ConvertVRAMColor(uint16_t vramColor, uint8_t * rgba);
