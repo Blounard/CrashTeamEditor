@@ -254,7 +254,7 @@ bool Texture::CreateTexture()
 	for (int i = 0; i < pxCount; i++)
 	{
 		int px = i * channels;
-		uint16_t color = alphaImage ? ConvertColor(image[px + 0], image[px + 1], image[px + 2], image[px + 3]) : ConvertColor(image[px + 0], image[px + 1], image[px + 2], 255);
+		uint16_t color = alphaImage ? ConvertVRAMColor(image[px + 0], image[px + 1], image[px + 2], image[px + 3]) : ConvertVRAMColor(image[px + 0], image[px + 1], image[px + 2], 255);
 		if (alphaImage && (image[px + 3] != 255)) { semiTransparentPx++; }
 		bool foundColor = false;
 		size_t clutIndex = m_clut.size();
@@ -278,21 +278,6 @@ bool Texture::CreateTexture()
 	FillShapes(colorIndexes);
 	stbi_image_free(image);
 	return true;
-}
-
-uint16_t Texture::ConvertColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a)
-{
-	if (a == 0) { return 0; }
-
-	a = a == 255 ? 0 : 1;
-	uint16_t color = a << 5;
-	color |= (((b * 249) + 1014) >> 11) & 0x1F;
-	color <<= 5;
-	color |= (((g * 249) + 1014) >> 11) & 0x1F;
-	color <<= 5;
-	color |= (((r * 249) + 1014) >> 11) & 0x1F;
-	if (color == 0) { color = 1 << 10; }
-	return color;
 }
 
 void Texture::ConvertPixels(const std::vector<size_t>& colorIndexes, unsigned indexesPerPixel)
@@ -470,4 +455,41 @@ std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures)
 	constexpr size_t buffer_2_Location = GetVRAMLocation(0, TEXPAGE_HEIGHT);
 	memcpy(pVrm, &vram[buffer_2_Location], buffer_2_size); pVrm += buffer_2_size;
 	return vrm;
+}
+
+uint16_t ConvertVRAMColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a)
+{
+	if (a == 0) { return 0; }
+
+	a = a == 255 ? 0 : 1;
+	uint16_t color = a << 5;
+	color |= (((b * 249) + 1014) >> 11) & 0x1F;
+	color <<= 5;
+	color |= (((g * 249) + 1014) >> 11) & 0x1F;
+	color <<= 5;
+	color |= (((r * 249) + 1014) >> 11) & 0x1F;
+	if (color == 1 << 15) { color = 1 << 15 | 1 << 10 | 1 << 5 | 1; } // Semi transparent black 32bit becomes semi transparent dark grey 16bit because semi transparent black 16bit doesn't exist
+	if (color == 0) { color = 1 << 15; } // Opaque black is encoded with stp = 1, unlike other colors.
+	return color;
+}
+
+void ConvertVRAMColor(uint16_t vramColor, uint8_t* rgba)
+{
+	uint8_t r = (vramColor >> 0) & 0x1F;
+	uint8_t g = (vramColor >> 5) & 0x1F;
+	uint8_t b = (vramColor >> 10) & 0x1F;
+	bool stp = (vramColor >> 15) != 0;
+
+	rgba[0] = (r << 3) | (r >> 2);
+	rgba[1] = (g << 3) | (g >> 2);
+	rgba[2] = (b << 3) | (b >> 2);
+
+	if (r == 0 && g == 0 && b == 0)
+	{
+		rgba[3] = stp ? 255 : 0;
+	}
+	else
+	{
+		rgba[3] = stp ? 128 : 255;
+	}
 }

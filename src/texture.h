@@ -50,7 +50,6 @@ private:
 	void FillShapes(const std::vector<size_t>& colorIndexes);
 	void ClearTexture();
 	bool CreateTexture();
-	uint16_t ConvertColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a);
 	void ConvertPixels(const std::vector<size_t>& colorIndexes, unsigned indexesPerPixel);
 
 private:
@@ -66,3 +65,5 @@ private:
 };
 
 std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures);
+uint16_t ConvertVRAMColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a);
+void ConvertVRAMColor(uint16_t vramColor, uint8_t * rgba);
