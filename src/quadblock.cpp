@@ -807,12 +807,18 @@ void Quadblock::SetSpeedImpact(int speed)
 	m_downforce = speed;
 }
 
+void Quadblock::SetFaceUVs(size_t faceIndex, const QuadUV& uvs)
+{
+	if (faceIndex < NUM_FACES_QUADBLOCK + 1)
+	{
+		m_uvs[faceIndex] = uvs;
+	}
+}
 
 void Quadblock::SetMaterial(size_t face, const std::string& material) 
 { 
 	m_materials[face] = material;
 }
-
 
 void Quadblock::Translate(float ratio, const Vec3& direction)
 {

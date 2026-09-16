@@ -27,6 +27,118 @@ AnimTexture::AnimTexture(const std::filesystem::path& path, const std::vector<st
 	if (!ReadAnimation(path)) { ClearAnimation(); }
 }
 
+AnimTexture::AnimTexture(const PSX::AnimTex& animTex, const std::string& animName, const std::filesystem::path& tempDir,
+	const std::array<std::vector<std::pair<std::string, QuadUV>>, NUM_FACES_QUADBLOCK>& faceFrames,
+	const std::unordered_map<std::string, Texture>& materialToTexture)
+{
+	std::filesystem::path animDir = tempDir / animName;
+	std::filesystem::create_directories(animDir);
+	std::filesystem::path tempObjPath = animDir / (animName + ".obj");
+	std::ofstream objFile(tempObjPath);
+
+	const size_t frameCount = faceFrames[0].size();
+
+	objFile << "mtllib " << animName << ".mtl\n";
+
+	for (size_t frameIdx = 0; frameIdx < frameCount; frameIdx++)
+	{
+		std::string objName = "Frame_" + std::to_string(frameIdx + 1);
+		float z = static_cast<float>(frameIdx);
+
+		// 9 vertices, normalized coordinates
+		objFile << "v 0.0 0.0 " << z << "\n";
+		objFile << "v 0.0 0.5 " << z << "\n";
+		objFile << "v 0.0 1.0 " << z << "\n";
+		objFile << "v 0.5 0.0 " << z << "\n";
+		objFile << "v 0.5 0.5 " << z << "\n";
+		objFile << "v 0.5 1.0 " << z << "\n";
+		objFile << "v 1.0 0.0 " << z << "\n";
+		objFile << "v 1.0 0.5 " << z << "\n";
+		objFile << "v 1.0 1.0 " << z << "\n";
+
+		// 3 normals, placeholders
+		objFile << "vn 0.0 1.0 0.0\n";
+		objFile << "vn 0.0 1.0 0.0\n";
+		objFile << "vn 0.0 1.0 0.0\n";
+
+		for (size_t faceIdx = 0; faceIdx < NUM_FACES_QUADBLOCK; faceIdx++)
+		{
+			const QuadUV& uvs = faceFrames[faceIdx][frameIdx].second;
+			objFile << "vt " << uvs[0].x << " " << (1.0f - uvs[0].y) << "\n";
+			objFile << "vt " << uvs[1].x << " " << (1.0f - uvs[1].y) << "\n"; // original, sounds good but there is an uv bug
+			objFile << "vt " << uvs[2].x << " " << (1.0f - uvs[2].y) << "\n";
+			objFile << "vt " << uvs[3].x << " " << (1.0f - uvs[3].y) << "\n";
+		}
+
+		objFile << "o " << objName << "\n";
+
+		int vOffset = static_cast<int>(frameIdx * 9) + 1;
+		int vtOffset = static_cast<int>(frameIdx * 16) + 1;
+		int vnOffset = static_cast<int>(frameIdx * 3) + 1;
+
+		// Face 0
+		objFile << "usemtl " << faceFrames[0][frameIdx].first << "\n";
+		objFile << "f " << (vOffset + 3) << "/" << (vtOffset + 2) << "/" << (vnOffset + 0) << " "
+			<< (vOffset + 4) << "/" << (vtOffset + 3) << "/" << (vnOffset + 0) << " "
+			<< (vOffset + 1) << "/" << (vtOffset + 1) << "/" << (vnOffset + 0) << " "
+			<< (vOffset + 0) << "/" << (vtOffset + 0) << "/" << (vnOffset + 0) << "\n";
+
+		// Face 1
+		objFile << "usemtl " << faceFrames[1][frameIdx].first << "\n";
+		objFile << "f " << (vOffset + 4) << "/" << (vtOffset + 6) << "/" << (vnOffset + 1) << " "
+			<< (vOffset + 5) << "/" << (vtOffset + 7) << "/" << (vnOffset + 1) << " "
+			<< (vOffset + 2) << "/" << (vtOffset + 5) << "/" << (vnOffset + 1) << " "
+			<< (vOffset + 1) << "/" << (vtOffset + 4) << "/" << (vnOffset + 1) << "\n";
+
+		// Face 2
+		objFile << "usemtl " << faceFrames[2][frameIdx].first << "\n";
+		objFile << "f " << (vOffset + 6) << "/" << (vtOffset + 10) << "/" << (vnOffset + 2) << " "
+			<< (vOffset + 7) << "/" << (vtOffset + 11) << "/" << (vnOffset + 2) << " "
+			<< (vOffset + 4) << "/" << (vtOffset + 9) << "/" << (vnOffset + 2) << " "
+			<< (vOffset + 3) << "/" << (vtOffset + 8) << "/" << (vnOffset + 2) << "\n";
+
+		// Face 3
+		objFile << "usemtl " << faceFrames[3][frameIdx].first << "\n";
+		objFile << "f " << (vOffset + 7) << "/" << (vtOffset + 14) << "/" << (vnOffset + 2) << " "
+			<< (vOffset + 8) << "/" << (vtOffset + 15) << "/" << (vnOffset + 2) << " "
+			<< (vOffset + 5) << "/" << (vtOffset + 13) << "/" << (vnOffset + 2) << " "
+			<< (vOffset + 4) << "/" << (vtOffset + 12) << "/" << (vnOffset + 2) << "\n";
+	}
+	objFile.close();
+
+	// Write MTL, copying each distinct material's already-created PNG locally alongside it
+	std::filesystem::path tempMtlPath = animDir / (animName + ".mtl");
+	std::ofstream mtlFile(tempMtlPath);
+	std::set<std::string> writtenMaterials;
+
+	for (const auto& frames : faceFrames)
+	{
+		for (const auto& [mat, uv] : frames)
+		{
+			if (writtenMaterials.count(mat) || mat == "default") { continue; }
+			writtenMaterials.insert(mat);
+
+			if (!materialToTexture.count(mat)) { continue; }
+
+			const std::filesystem::path& sourcePath = materialToTexture.at(mat).GetPath();
+			std::filesystem::path localPath = animDir / sourcePath.filename();
+			std::error_code ec;
+			std::filesystem::copy_file(sourcePath, localPath, std::filesystem::copy_options::overwrite_existing, ec);
+			if (ec) { printf("WARNING : Failed to copy texture '%s' for AnimTexture '%s': %s\n", sourcePath.string().c_str(), animName.c_str(), ec.message().c_str()); }
+
+			mtlFile << "newmtl " << mat << "\n";
+			mtlFile << "map_Kd " << sourcePath.filename().string() << "\n";
+		}
+	}
+	mtlFile.close();
+
+	m_path = tempObjPath;
+	m_name = animName;
+	if (!ReadAnimation(tempObjPath)) { ClearAnimation(); }
+	m_startAtFrame = static_cast<int>(animTex.startAtFrame);
+	m_duration = static_cast<int>(animTex.frameDuration);
+}
+
 bool AnimTexture::IsEmpty() const
 {
 	return m_frames.empty();

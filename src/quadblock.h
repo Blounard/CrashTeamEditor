@@ -164,6 +164,7 @@ public:
 	void SetFilter(bool filter);
 	void SetFilterColor(const Color& color);
 	void SetSpeedImpact(int speed);
+	void SetFaceUVs(size_t faceIndex, const QuadUV& uvs);
 	void Translate(float ratio, const Vec3& direction);
 	const BoundingBox& GetBoundingBox() const;
 	std::vector<Primitive> ToGeometry(bool filterTriangles = false, const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>* overrideUvs = nullptr, const std::array<std::filesystem::path, NUM_FACES_QUADBLOCK>* overrideTexturePaths = nullptr) const;

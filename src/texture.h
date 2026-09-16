@@ -58,6 +58,7 @@ public:
 	};
 	Texture() : m_width(0), m_height(0), m_imageX(0), m_imageY(0), m_clutX(0), m_clutY(0), m_blendMode(0), m_semiTransparent(false), m_placed(false) {};
 	Texture(const std::filesystem::path& path);
+	Texture(const LayoutKey& key, const PixelBounds& bounds, const std::vector<uint16_t>& vram, const std::string& newMatName, const std::filesystem::path& tempDir);
 	void UpdateTexture(const std::filesystem::path& path);
 	void ClearTexture();
 	Texture::BPP GetBPP() const;
@@ -105,6 +106,7 @@ private:
 };
 
 std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures);
+std::vector<uint16_t> ReadRawVRAM(std::filesystem::path vrmPath);
 QuadUV ConvertUV(const PixelBounds& bounds, const RawUV rawUV);
 RawUV ConvertUV(const QuadUV uvs, int texWidth, int texHeight);
 uint16_t ConvertVRAMColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a, uint16_t blendMode);

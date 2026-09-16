@@ -135,6 +135,8 @@ private:
 	std::vector<uint8_t> m_vrm;
 	Skybox m_skybox;
 
+	std::unordered_map<LayoutKey, std::string> m_materialCache; // Layout Key -> matName
+	std::unordered_map<LayoutKey, PixelBounds> m_textureToPixelBounds; // Map Layout key -> Pixels bounds of the texture.
 	std::map<std::string, std::vector<std::pair<size_t, size_t>>> m_materialToQuadFaces; // MaterialName -> List of (QuadId, FaceId)
 	std::unordered_map<std::string, Texture> m_materialToTexture;
 	MaterialProperty<std::string, MaterialType::TERRAIN> m_propTerrain;
