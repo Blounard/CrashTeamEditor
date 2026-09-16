@@ -1,7 +1,7 @@
 #include "ui.h"
 
 #include "renderer.h"
-#include "gui_render_settings.h"
+#include "settings.h"
 
 #include <imgui.h>
 #include <portable-file-dialogs.h>

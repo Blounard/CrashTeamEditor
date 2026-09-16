@@ -3,6 +3,7 @@
 #include "quadblock.h"
 #include "bsp.h"
 #include "geo.h"
+#include "settings.h"
 
 #include <vector>
 

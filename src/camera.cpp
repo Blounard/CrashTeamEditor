@@ -1,6 +1,6 @@
 #include "camera.h"
 
-#include "gui_render_settings.h"
+#include "settings.h"
 #include "utils.h"
 #include "geo.h"
 

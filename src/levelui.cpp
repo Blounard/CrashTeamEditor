@@ -6,7 +6,7 @@
 #include "quadblock.h"
 #include "vertex.h"
 #include "utils.h"
-#include "gui_render_settings.h"
+#include "settings.h"
 #include "mesh.h"
 #include "texture.h"
 #include "ui.h"
