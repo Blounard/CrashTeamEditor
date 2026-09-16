@@ -1007,7 +1007,15 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 	const size_t idVis = id / 32;
 	quadblock.id = static_cast<uint16_t>((32 * idVis) + (31 - (id % 32)));
 	quadblock.checkpointIndex = static_cast<uint8_t>(m_checkpointIndex);
-	quadblock.triNormalVecBitshift = static_cast<uint8_t>(std::round(std::log2(std::max(ComputeNormalVector(0, 2, 6).Length(), ComputeNormalVector(2, 8, 6).Length()) * 512.0f)));
+
+	std::vector<float> normalLengths;
+	for (std::array<size_t, 3> triFace : GetTriFacesIndexes())
+		normalLengths.push_back(ComputeNormalVector(triFace[0], triFace[1], triFace[2]).Length());
+	normalLengths.push_back(ComputeNormalVector(0, 2, 6).Length());
+	normalLengths.push_back(ComputeNormalVector(2, 8, 6).Length());
+	float maxNormalLength = *std::max_element(normalLengths.begin(), normalLengths.end());
+
+	quadblock.triNormalVecBitshift = static_cast<uint8_t>(std::round(std::log2(maxNormalLength * 512.0f)));
 
 	auto CalculateNormalDividend = [this](size_t id0, size_t id1, size_t id2, float scaler) -> int16_t
 		{
