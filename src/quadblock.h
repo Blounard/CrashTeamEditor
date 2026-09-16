@@ -135,6 +135,8 @@ public:
 	bool GetCheckpointStatus() const;
 	bool GetCheckpointPathable() const;
 	bool GetVisTreeTransparent() const;
+	uint32_t GetFaceRotateFlip(size_t face) const;
+	uint32_t GetFaceDrawMode(size_t face) const;
 	const QuadUV& GetQuadUV(size_t quad) const;
 	const std::filesystem::path& GetTexPath(size_t face) const;
 	const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>& GetUVs() const;
@@ -152,8 +154,8 @@ public:
 	void SetName(const std::string& name);
 	void SetTurboPadIndex(size_t index);
 	void SetHide(bool active);
-	void SetTextureID(size_t id, size_t quad);
-	void SetAnimTextureOffset(size_t relOffset, size_t levOffset, size_t quad);
+	void SetTextureID(int id, size_t quad);
+	void SetAnimTextureOffset(int offset, size_t quad);
 	bool IsQuadblock() const;
 	void SetTrigger(QuadblockTrigger trigger);
 	void SetTexPath(size_t face, const std::filesystem::path& path);
@@ -162,6 +164,7 @@ public:
 	void SetFilter(bool filter);
 	void SetFilterColor(const Color& color);
 	void SetSpeedImpact(int speed);
+	void SetFaceUVs(size_t faceIndex, const QuadUV& uvs);
 	void Translate(float ratio, const Vec3& direction);
 	const BoundingBox& GetBoundingBox() const;
 	std::vector<Primitive> ToGeometry(bool filterTriangles = false, const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>* overrideUvs = nullptr, const std::array<std::filesystem::path, NUM_FACES_QUADBLOCK>* overrideTexturePaths = nullptr) const;
@@ -213,8 +216,8 @@ private:
 	mutable size_t m_bspID;
 	std::vector<std::array<size_t, 3>> m_collTriFaces;
 	std::array<QuadUV, NUM_FACES_QUADBLOCK + 1> m_uvs; /* Last id is reserved for low tex */
-	std::array<size_t, NUM_FACES_QUADBLOCK + 1> m_textureIDs = { 0, 0, 0, 0, 0 };
-	std::array<size_t, NUM_FACES_QUADBLOCK + 1> m_animTexOffset = {0, 0, 0, 0, 0};
+	std::array<int, NUM_FACES_QUADBLOCK + 1> m_textureIDs = { -1, -1, -1, -1, -1 }; // -1 means no tex
+	std::array<int, NUM_FACES_QUADBLOCK + 1> m_animTexOffset = { -1, -1, -1, -1, -1 };
 	std::array<std::filesystem::path, NUM_FACES_QUADBLOCK + 1> m_texPaths;
 	size_t m_renderPrimitiveIndex = RENDER_INDEX_NONE;
 	UpdateFilterCallback m_filterCallback;

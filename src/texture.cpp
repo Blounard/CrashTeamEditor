@@ -1,7 +1,13 @@
 #include "texture.h"
 
 #define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#pragma warning(push)
+#pragma warning(disable: 4996) 
 #include <stb_image.h>
+#include <stb_image_write.h>
+#pragma warning(pop)
+#include <fstream>
 
 static constexpr size_t MIN_CLUT_WIDTH = 16;
 static constexpr size_t TEXPAGE_WIDTH = 64;
@@ -18,8 +24,87 @@ static size_t GetTexPage(size_t x, size_t y)
 Texture::Texture(const std::filesystem::path& path)
 {
 	m_path = path;
-	m_blendMode = PSX::BlendMode::HALF_TRANSPARENT;
-	if (!CreateTexture()) { ClearTexture(); }
+	m_placed = false;
+	if (!CreateTexture(true)) { ClearTexture(); }
+}
+
+Texture::Texture(const LayoutKey& key, const PixelBounds& bounds, const std::vector<uint16_t>& vram, const std::string& newMatName, const std::filesystem::path& tempDir)
+	: m_width(0), m_height(0), m_imageX(0), m_imageY(0), m_clutX(0), m_clutY(0), m_blendMode(key.blendMode), m_semiTransparent(false), m_placed(false)
+	// Constructor that create the PNG file from vram
+{
+	int bppMode = key.bpp;
+	int bppMult = (bppMode == 0) ? 4 : (bppMode == 1 ? 2 : 1);
+	int fullWidth = 64 * bppMult;
+	int fullHeight = 256;
+
+	int minU = bounds.minU;
+	int maxU = bounds.maxU + 1;
+	int minV = bounds.minV;
+	int maxV = bounds.maxV + 1;
+
+	// Boundary check and clamping
+	if (maxU > fullWidth || maxV > fullHeight) 
+	{
+		maxU = std::min(maxU, fullWidth);
+		maxV = std::min(maxV, fullHeight);
+	}
+
+	int croppedWidth = maxU - minU;
+	int croppedHeight = maxV - minV;
+
+	if (croppedWidth <= 0 || croppedHeight <= 0) return;
+
+	// CLUT Coordinate Mapping
+	size_t clutX = key.clutX * 16;
+	size_t clutY = key.clutY;
+	if (clutX < 512) clutX += 512;
+
+	size_t basePageX = key.pageX;
+	if (basePageX < 8) basePageX += 8;
+
+	size_t imageXReal = (basePageX % 16) * 64;
+	size_t imageY = key.pageY * 256;
+
+	// Extract VRAM to RGBA buffer
+	std::vector<uint8_t> rgba(croppedWidth * croppedHeight * 4);
+	for (int y = 0; y < croppedHeight; y++) {
+		int srcY = static_cast<int>(imageY) + minV + y;
+		size_t vramLine = srcY * 1024;
+
+		for (int x = 0; x < croppedWidth; x++) {
+			int srcU = minU + x;
+			uint16_t color = 0;
+
+			if (bppMode == 2) {
+				color = vram[vramLine + imageXReal + srcU];
+			}
+			else {
+				size_t hOffset = imageXReal + (srcU / bppMult);
+				uint16_t word = vram[vramLine + hOffset];
+				int bits = (bppMode == 0) ? 4 : 8;
+				int val = (word >> (bits * (srcU % bppMult))) & ((1 << bits) - 1);
+
+				size_t pIdx = clutY * 1024 + clutX + val;
+				color = (pIdx < vram.size()) ? vram[pIdx] : 0;
+			}
+			ConvertVRAMColor(color, &rgba[(y * croppedWidth + x) * 4], m_blendMode);
+		}
+	}
+
+	// Save to temporary file
+	m_path = tempDir / (newMatName + ".png");
+	if (stbi_write_png(m_path.string().c_str(), croppedWidth, croppedHeight, 4, rgba.data(), croppedWidth * 4)) 
+	{
+		m_imageX = imageXReal - 512;
+		m_imageY = imageY;
+		if (bppMode < 2) 
+		{
+			m_clutX = clutX - 512;
+			m_clutY = clutY;
+		}
+		if (!CreateTexture(false)) { ClearTexture(); }
+	}
+	else { printf("ERROR: Failed to write PNG for %s\n", newMatName.c_str()); ClearTexture(); }
 }
 
 void Texture::UpdateTexture(const std::filesystem::path& path)
@@ -28,7 +113,7 @@ void Texture::UpdateTexture(const std::filesystem::path& path)
 	ClearTexture();
 	m_path = path;
 	m_blendMode = blendMode;
-	if (!CreateTexture()) { ClearTexture(); }
+	if (!CreateTexture(false)) { ClearTexture(); }
 }
 
 Texture::BPP Texture::GetBPP() const
@@ -108,10 +193,16 @@ bool Texture::IsSemiTransparent() const
 	return m_semiTransparent;
 }
 
+bool Texture::IsPlaced() const
+{
+	return m_placed;
+}
+
 void Texture::SetImageCoords(size_t x, size_t y)
 {
 	m_imageX = x + 512;
 	m_imageY = y;
+	m_placed = true;
 }
 
 void Texture::SetCLUTCoords(size_t x, size_t y)
@@ -128,7 +219,16 @@ void Texture::SetBlendMode(uint16_t mode)
 PSX::TextureLayout Texture::Serialize(const QuadUV& uvs) const
 {
 	PSX::TextureLayout layout = {};
-	if (IsEmpty()) { return layout; }
+	if (IsEmpty())
+	{
+		printf("Warning : Trying to serialize an empty Texture\n");
+		return layout;
+	}
+	if (!IsPlaced())
+	{
+		printf("Warning : Trying to serialize a Texture not in VRAM\n");
+		return layout;
+	}
 
 	layout.texPage.blendMode = m_blendMode;
 	size_t bppMultiplier = 1;
@@ -153,19 +253,14 @@ PSX::TextureLayout Texture::Serialize(const QuadUV& uvs) const
 	layout.clut.x = static_cast<uint16_t>(m_clutX / MIN_CLUT_WIDTH);
 	layout.clut.y = static_cast<uint16_t>(m_clutY);
 
-	size_t x = (m_imageX % TEXPAGE_WIDTH) * bppMultiplier;
-	size_t y = m_imageY % TEXPAGE_HEIGHT;
-	const float width = static_cast<float>(GetWidth() - 1);
-	const float height = static_cast<float>(GetHeight() - 1);
-	size_t u0 = x + static_cast<size_t>(std::round(uvs[0].x * width));	size_t v0 = y + static_cast<size_t>(std::round(uvs[0].y * height));
-	size_t u1 = x + static_cast<size_t>(std::round(uvs[1].x * width));	size_t v1 = y + static_cast<size_t>(std::round(uvs[1].y * height));
-	size_t u2 = x + static_cast<size_t>(std::round(uvs[2].x * width));	size_t v2 = y + static_cast<size_t>(std::round(uvs[2].y * height));
-	size_t u3 = x + static_cast<size_t>(std::round(uvs[3].x * width));	size_t v3 = y + static_cast<size_t>(std::round(uvs[3].y * height));
+	uint8_t x = static_cast<uint8_t>((m_imageX % TEXPAGE_WIDTH) * bppMultiplier);
+	uint8_t y = static_cast<uint8_t>(m_imageY % TEXPAGE_HEIGHT);
 
-	layout.u0 = static_cast<uint8_t>(u0); layout.v0 = static_cast<uint8_t>(v0);
-	layout.u1 = static_cast<uint8_t>(u1); layout.v1 = static_cast<uint8_t>(v1);
-	layout.u2 = static_cast<uint8_t>(u2); layout.v2 = static_cast<uint8_t>(v2);
-	layout.u3 = static_cast<uint8_t>(u3); layout.v3 = static_cast<uint8_t>(v3);
+	RawUV rawUVs = ConvertUV(uvs, GetWidth(), GetHeight());
+	layout.u0 = rawUVs.u0 + x; layout.v0 = rawUVs.v0 + y;
+	layout.u1 = rawUVs.u1 + x; layout.v1 = rawUVs.v1 + y;
+	layout.u2 = rawUVs.u2 + x; layout.v2 = rawUVs.v2 + y;
+	layout.u3 = rawUVs.u3 + x; layout.v3 = rawUVs.v3 + y;
 	return layout;
 }
 
@@ -235,6 +330,7 @@ void Texture::ClearTexture()
 {
 	m_blendMode = 0;
 	m_width = m_height = 0;
+	m_placed = false;
 	m_imageX = m_imageY = 0;
 	m_clutX = m_clutY = 0;
 	m_semiTransparent = false;
@@ -242,33 +338,50 @@ void Texture::ClearTexture()
 	m_path.clear(); m_shapes.clear();
 }
 
-bool Texture::CreateTexture()
+bool Texture::CreateTexture(bool updateBlendMode)
 {
 	int channels;
 	stbi_uc* image = stbi_load(m_path.string().c_str(), &m_width, &m_height, &channels, 0);
-	if (image == nullptr) { return false; }
+	if (image == nullptr)
+	{
+		printf("ERROR : CAN'T LOAD IMAGE AT %s\n", m_path.string().c_str());
+		return false;
+	}
 	bool alphaImage = channels == 4;
 	int semiTransparentPx = 0;
 	std::vector<size_t> colorIndexes;
 	const int pxCount = m_width * m_height;
+	for (int i = 0; i < pxCount; i++) { if (alphaImage && (image[i * channels + 3] != 255)) { semiTransparentPx++; } }
+	m_semiTransparent = semiTransparentPx > 0;
+	if (updateBlendMode)
+	{
+		if (!m_semiTransparent)
+			m_blendMode = PSX::BlendMode::ADDITIVE_TRANSLUCENT;
+		else
+			m_blendMode = PSX::BlendMode::HALF_TRANSPARENT;
+	}
 	for (int i = 0; i < pxCount; i++)
 	{
 		int px = i * channels;
-		uint16_t color = alphaImage ? ConvertColor(image[px + 0], image[px + 1], image[px + 2], image[px + 3]) : ConvertColor(image[px + 0], image[px + 1], image[px + 2], 255);
-		if (alphaImage && (image[px + 3] != 255)) { semiTransparentPx++; }
+		uint16_t color = alphaImage ? ConvertVRAMColor(image[px + 0], image[px + 1], image[px + 2], image[px + 3], m_blendMode) : ConvertVRAMColor(image[px + 0], image[px + 1], image[px + 2], 255, m_blendMode);
 		bool foundColor = false;
 		size_t clutIndex = m_clut.size();
 		for (size_t j = 0; j < m_clut.size(); j++)
 		{
 			if (color == m_clut[j]) { clutIndex = j; foundColor = true; break; }
 		}
-		if (!foundColor) { m_clut.push_back(color); }
+		if (!foundColor) 
+		{ 
+			m_clut.push_back(color); 
+		}
 		colorIndexes.push_back(clutIndex);
 	}
-	m_semiTransparent = semiTransparentPx >= (pxCount / 2);
+	
+
 	Texture::BPP bpp = GetBPP();
 	if (GetVRAMWidth() > TEXPAGE_WIDTH || GetHeight() > TEXPAGE_HEIGHT)
 	{
+		printf("ERROR : TEXTURE TOO BIG\n");
 		stbi_image_free(image);
 		return false;
 	}
@@ -278,21 +391,6 @@ bool Texture::CreateTexture()
 	FillShapes(colorIndexes);
 	stbi_image_free(image);
 	return true;
-}
-
-uint16_t Texture::ConvertColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a)
-{
-	if (a == 0) { return 0; }
-
-	a = a == 255 ? 0 : 1;
-	uint16_t color = a << 5;
-	color |= (((b * 249) + 1014) >> 11) & 0x1F;
-	color <<= 5;
-	color |= (((g * 249) + 1014) >> 11) & 0x1F;
-	color <<= 5;
-	color |= (((r * 249) + 1014) >> 11) & 0x1F;
-	if (color == 0) { color = 1 << 10; }
-	return color;
 }
 
 void Texture::ConvertPixels(const std::vector<size_t>& colorIndexes, unsigned indexesPerPixel)
@@ -470,4 +568,240 @@ std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures)
 	constexpr size_t buffer_2_Location = GetVRAMLocation(0, TEXPAGE_HEIGHT);
 	memcpy(pVrm, &vram[buffer_2_Location], buffer_2_size); pVrm += buffer_2_size;
 	return vrm;
+}
+
+std::vector<uint16_t> ReadRawVRAM(std::filesystem::path vrmPath)
+{
+	std::vector<uint16_t> vram(1024 * 512, 0);
+
+	if (std::filesystem::exists(vrmPath))
+	{
+		std::ifstream vrmFile(vrmPath, std::ios::binary);
+
+		// Read the raw file into temporary memory
+		vrmFile.seekg(0, std::ios::end);
+		size_t vrmSize = vrmFile.tellg();
+		vrmFile.seekg(0, std::ios::beg);
+
+		std::vector<uint8_t> rawVrmData(vrmSize);
+		vrmFile.read(reinterpret_cast<char*>(rawVrmData.data()), vrmSize);
+		vrmFile.close();
+
+		const uint8_t* pVrm = rawVrmData.data();
+		uint32_t vrmMagic;
+		memcpy(&vrmMagic, pVrm, sizeof(uint32_t));
+		pVrm += sizeof(uint32_t);
+
+		// If magic is 0x20, we have a multi-block VRM (Standard for this level format)
+		if (vrmMagic == 0x20) {
+			for (int block = 0; block < 2; block++) {
+				PSX::VRMHeader blockHead;
+				memcpy(&blockHead, pVrm, sizeof(PSX::VRMHeader));
+				pVrm += sizeof(PSX::VRMHeader);
+
+				for (size_t y = 0; y < blockHead.height; y++) {
+					// Use the absolute coordinates provided in the VRM header
+					size_t vramIdx = (blockHead.y + y) * 1024 + blockHead.x;
+					size_t rowByteSize = blockHead.width * sizeof(uint16_t);
+
+					if (vramIdx + blockHead.width <= vram.size()) {
+						memcpy(&vram[vramIdx], pVrm, rowByteSize);
+					}
+					pVrm += rowByteSize;
+				}
+			}
+		}
+	}
+	return vram;
+}
+
+
+RawUV::RawUV(const PSX::TextureLayout& layout)
+{
+	u0 = layout.u0;
+	u1 = layout.u1;
+	u2 = layout.u2;
+	u3 = layout.u3;
+	v0 = layout.v0;
+	v1 = layout.v1;
+	v2 = layout.v2;
+	v3 = layout.v3;
+}
+
+void PixelBounds::Update(const RawUV& uvs)
+{
+	if (uvs.u0 < minU) minU = uvs.u0;
+	if (uvs.u1 < minU) minU = uvs.u1;
+	if (uvs.u2 < minU) minU = uvs.u2;
+	if (uvs.u3 < minU) minU = uvs.u3;
+
+	if (uvs.v0 < minV) minV = uvs.v0;
+	if (uvs.v1 < minV) minV = uvs.v1;
+	if (uvs.v2 < minV) minV = uvs.v2;
+	if (uvs.v3 < minV) minV = uvs.v3;
+
+	if (uvs.u0 > maxU) maxU = uvs.u0;
+	if (uvs.u1 > maxU) maxU = uvs.u1;
+	if (uvs.u2 > maxU) maxU = uvs.u2;
+	if (uvs.u3 > maxU) maxU = uvs.u3;
+
+	if (uvs.v0 > maxV) maxV = uvs.v0;
+	if (uvs.v1 > maxV) maxV = uvs.v1;
+	if (uvs.v2 > maxV) maxV = uvs.v2;
+	if (uvs.v3 > maxV) maxV = uvs.v3;
+}
+
+LayoutKey::LayoutKey(const PSX::TextureLayout& layout)
+{
+	pageX = layout.texPage.x;
+	pageY = layout.texPage.y;
+	bpp = layout.texPage.texpageColors;
+	clutX = layout.clut.x;
+	clutY = layout.clut.y;
+	blendMode = layout.texPage.blendMode;
+}
+
+PSX::TextureLayout LayoutKey::Serialize(QuadUV uvs, PixelBounds bounds) const
+{
+	PSX::TextureLayout layout = {};
+
+	layout.texPage.blendMode = blendMode;
+	layout.texPage.texpageColors = bpp;
+	layout.texPage.x = pageX;
+	layout.texPage.y = pageY;
+	layout.clut.x = clutX;
+	layout.clut.y = clutY;
+
+	RawUV rawUVs = ConvertUV(uvs, bounds.maxU - bounds.minU + 1, bounds.maxV - bounds.minV + 1);
+	uint8_t x = bounds.minU; uint8_t y = bounds.minV;
+	layout.u0 = rawUVs.u0 + x; layout.v0 = rawUVs.v0 + y;
+	layout.u1 = rawUVs.u1 + x; layout.v1 = rawUVs.v1 + y;
+	layout.u2 = rawUVs.u2 + x; layout.v2 = rawUVs.v2 + y;
+	layout.u3 = rawUVs.u3 + x; layout.v3 = rawUVs.v3 + y;
+
+	return layout;
+}
+
+bool LayoutKey::operator==(const LayoutKey& other) const
+{
+	return pageX == other.pageX &&
+		pageY == other.pageY &&
+		bpp == other.bpp &&
+		clutX == other.clutX &&
+		clutY == other.clutY &&
+		blendMode == other.blendMode;
+}
+
+size_t std::hash<LayoutKey>::operator()(const LayoutKey& key) const
+{
+	size_t h1 = std::hash<uint16_t>{}(key.pageX);
+	size_t h2 = std::hash<uint16_t>{}(key.pageY);
+	size_t h3 = std::hash<uint16_t>{}(key.bpp);
+	size_t h4 = std::hash<uint16_t>{}(key.clutX);
+	size_t h5 = std::hash<uint16_t>{}(key.clutY);
+	size_t h6 = std::hash<uint16_t>{}(key.blendMode);
+
+	return h1 ^ (h2 << 1) ^ (h3 << 2) ^ (h4 << 3) ^ (h5 << 4) ^ (h6 << 5);
+}
+
+QuadUV ConvertUV(const PixelBounds& bounds, const RawUV rawUV)
+{
+	float croppedWidth = 1.0f + static_cast<float>(bounds.maxU - bounds.minU);
+	float croppedHeight = 1.0f + static_cast<float>(bounds.maxV - bounds.minV);
+	uint8_t maxU = std::max(std::max(rawUV.u0, rawUV.u1), std::max(rawUV.u2, rawUV.u3));
+	uint8_t maxV = std::max(std::max(rawUV.v0, rawUV.v1), std::max(rawUV.v2, rawUV.v3));
+
+	auto toFloat = [&](const uint8_t raw, const uint8_t min, uint8_t max, float size) -> float
+		{
+			if (raw == max)
+				return (static_cast<float>(raw - min) + 1.0f) / size;
+			else
+				return (static_cast<float>(raw - min)) / size;
+		};
+	QuadUV uvs = {
+		Vec2(toFloat(rawUV.u0, bounds.minU, maxU, croppedWidth), toFloat(rawUV.v0, bounds.minV, maxV, croppedHeight)),
+		Vec2(toFloat(rawUV.u1, bounds.minU, maxU, croppedWidth), toFloat(rawUV.v1, bounds.minV, maxV, croppedHeight)),
+		Vec2(toFloat(rawUV.u2, bounds.minU, maxU, croppedWidth), toFloat(rawUV.v2, bounds.minV, maxV, croppedHeight)),
+		Vec2(toFloat(rawUV.u3, bounds.minU, maxU, croppedWidth), toFloat(rawUV.v3, bounds.minV, maxV, croppedHeight))
+	};
+	return uvs;
+}
+
+RawUV ConvertUV(const QuadUV uvs, int texWidth, int texHeight)
+{
+	const float width = static_cast<float>(texWidth);
+	const float height = static_cast<float>(texHeight);
+	size_t u0 = static_cast<size_t>(std::round(uvs[0].x * width));	size_t v0 = static_cast<size_t>(std::round(uvs[0].y * height));
+	size_t u1 = static_cast<size_t>(std::round(uvs[1].x * width));	size_t v1 = static_cast<size_t>(std::round(uvs[1].y * height));
+	size_t u2 = static_cast<size_t>(std::round(uvs[2].x * width));	size_t v2 = static_cast<size_t>(std::round(uvs[2].y * height));
+	size_t u3 = static_cast<size_t>(std::round(uvs[3].x * width));	size_t v3 = static_cast<size_t>(std::round(uvs[3].y * height));
+	size_t maxU = std::max({ u0, u1, u2, u3 });
+	size_t maxV = std::max({ v0, v1, v2, v3 });
+	if (maxU > 0)
+	{
+		if (u0 == maxU) u0 -= 1;
+		if (u1 == maxU) u1 -= 1;
+		if (u2 == maxU) u2 -= 1;
+		if (u3 == maxU) u3 -= 1;
+	}
+	if (maxV > 0)
+	{
+		if (v0 == maxV) v0 -= 1;
+		if (v1 == maxV) v1 -= 1;
+		if (v2 == maxV) v2 -= 1;
+		if (v3 == maxV) v3 -= 1;
+	}
+	RawUV rawUVs{};
+	rawUVs.u0 = static_cast<uint8_t>(u0); rawUVs.v0 = static_cast<uint8_t>(v0);
+	rawUVs.u1 = static_cast<uint8_t>(u1); rawUVs.v1 = static_cast<uint8_t>(v1);
+	rawUVs.u2 = static_cast<uint8_t>(u2); rawUVs.v2 = static_cast<uint8_t>(v2);
+	rawUVs.u3 = static_cast<uint8_t>(u3); rawUVs.v3 = static_cast<uint8_t>(v3);
+	return rawUVs;
+}
+
+uint16_t ConvertVRAMColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a, uint16_t blendMode)
+{
+	// Opaque black doesn't exist for HALF_TRANSPARENT (need to be converted to dark grey)
+	if (a == 0) { return 0; }
+
+	a = a == 255 ? 0 : 1;
+	uint16_t color = a << 5;
+	color |= (((b * 249) + 1014) >> 11) & 0x1F;
+	color <<= 5;
+	color |= (((g * 249) + 1014) >> 11) & 0x1F;
+	color <<= 5;
+	color |= (((r * 249) + 1014) >> 11) & 0x1F;
+	if (color == 0) // Opaque Black
+	{
+		if (blendMode != PSX::BlendMode::ADDITIVE_TRANSLUCENT)
+			color = 1 << 10 | 1 << 5 | 1; // Encoding to opaque dark grey because with other blend mode, full black is rendered as semi transparent.
+		else
+			color = 1 << 15; // True full black, need the stp bit to be equal to 1
+	}
+	return color;
+}
+
+void ConvertVRAMColor(uint16_t vramColor, uint8_t* rgba, uint16_t blendMode)
+{
+	// vram color ==  0 -> Full transparent.
+	// vram color ==  1 << 15 -> Opaque Black with ADDITIVE_TRANSLUCENT ; Semi Transparent Black with HALF_TRANSPARENT
+	uint8_t r = (vramColor >> 0) & 0x1F;
+	uint8_t g = (vramColor >> 5) & 0x1F;
+	uint8_t b = (vramColor >> 10) & 0x1F;
+	bool stp = (vramColor >> 15) != 0;
+
+	rgba[0] = (r << 3) | (r >> 2);
+	rgba[1] = (g << 3) | (g >> 2);
+	rgba[2] = (b << 3) | (b >> 2);
+
+	if (r == 0 && g == 0 && b == 0)
+	{
+		rgba[3] = stp ? 128 : 0;
+	}
+	else
+	{
+		rgba[3] = stp ? 128 : 255;
+	}
+	if (blendMode == PSX::BlendMode::ADDITIVE_TRANSLUCENT && rgba[3] != 0)
+		rgba[3] = 255;
 }

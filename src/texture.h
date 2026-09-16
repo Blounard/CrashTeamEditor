@@ -11,6 +11,44 @@
 
 typedef std::unordered_set<size_t> Shape;
 
+//Helper structs for reading texture from .lev/.vrm. Maybe move to psx_types.h ?
+struct RawUV
+{
+	uint8_t u0, v0, u1, v1, u2, v2, u3, v3;
+	RawUV() = default;
+	RawUV(const PSX::TextureLayout& layout);
+};
+
+struct PixelBounds
+{
+	uint8_t minU = 255, minV = 255;
+	uint8_t maxU = 0, maxV = 0;
+	void Update(const RawUV& uvs);
+};
+
+struct LayoutKey // 2 PSX::TextureLayout have the same LayoutKey if they use the same vram page and colors. Roughly correspond to materials
+{
+	uint16_t pageX;
+	uint16_t pageY;
+	uint16_t bpp;
+	uint16_t clutX;
+	uint16_t clutY;
+	uint16_t blendMode;
+	LayoutKey() = default;
+	LayoutKey(const PSX::TextureLayout& layout);
+	PSX::TextureLayout Serialize(QuadUV uvs, PixelBounds bounds) const;
+	bool operator==(const LayoutKey& other) const;
+};
+
+namespace std
+{
+	template<>
+	struct hash<LayoutKey>
+	{
+		size_t operator()(const LayoutKey& key) const;
+	};
+}
+
 class Texture
 {
 public:
@@ -18,9 +56,11 @@ public:
 	{
 		BPP_4, BPP_8, BPP_16
 	};
-	Texture() : m_width(0), m_height(0), m_imageX(0), m_imageY(0), m_clutX(0), m_clutY(0), m_blendMode(0), m_semiTransparent(false) {};
+	Texture() : m_width(0), m_height(0), m_imageX(0), m_imageY(0), m_clutX(0), m_clutY(0), m_blendMode(0), m_semiTransparent(false), m_placed(false) {};
 	Texture(const std::filesystem::path& path);
+	Texture(const LayoutKey& key, const PixelBounds& bounds, const std::vector<uint16_t>& vram, const std::string& newMatName, const std::filesystem::path& tempDir);
 	void UpdateTexture(const std::filesystem::path& path);
+	void ClearTexture();
 	Texture::BPP GetBPP() const;
 	int GetWidth() const;
 	int GetVRAMWidth() const;
@@ -35,6 +75,7 @@ public:
 	size_t GetCLUTX() const;
 	size_t GetCLUTY() const;
 	bool IsSemiTransparent() const;
+	bool IsPlaced() const;
 	void SetImageCoords(size_t x, size_t y);
 	void SetCLUTCoords(size_t x, size_t y);
 	void SetBlendMode(uint16_t mode);
@@ -48,14 +89,13 @@ public:
 
 private:
 	void FillShapes(const std::vector<size_t>& colorIndexes);
-	void ClearTexture();
-	bool CreateTexture();
-	uint16_t ConvertColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a);
+	bool CreateTexture(bool updateBlendMode = false);
 	void ConvertPixels(const std::vector<size_t>& colorIndexes, unsigned indexesPerPixel);
 
 private:
 	int m_width, m_height;
 	uint16_t m_blendMode;
+	bool m_placed;
 	size_t m_imageX, m_imageY;
 	size_t m_clutX, m_clutY;
 	bool m_semiTransparent;
@@ -66,3 +106,8 @@ private:
 };
 
 std::vector<uint8_t> PackVRM(std::vector<Texture*>& textures);
+std::vector<uint16_t> ReadRawVRAM(std::filesystem::path vrmPath);
+QuadUV ConvertUV(const PixelBounds& bounds, const RawUV rawUV);
+RawUV ConvertUV(const QuadUV uvs, int texWidth, int texHeight);
+uint16_t ConvertVRAMColor(unsigned char r, unsigned char g, unsigned char b, unsigned char a, uint16_t blendMode);
+void ConvertVRAMColor(uint16_t vramColor, uint8_t* rgba, uint16_t blendMode);
