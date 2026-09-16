@@ -1478,10 +1478,17 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 
 	constexpr size_t BITS_PER_SLOT = sizeof(uint32_t) * 8;
 	std::vector<std::tuple<std::vector<uint32_t>, size_t>> visibleNodes;
+	std::vector<std::vector<uint32_t>> uniqueVisNodes;
+	std::map<std::vector<uint32_t>, size_t> visNodesOffsetMap;
 	std::vector<std::tuple<std::vector<uint32_t>, size_t>> visibleQuads;
+	std::vector<std::vector<uint32_t>> uniqueVisQuads;
+	std::map<std::vector<uint32_t>, size_t> visQuadsOffsetMap;
 	std::vector<std::tuple<std::vector<uint32_t>, size_t>> visibleInstances;
+	std::vector<std::tuple<std::vector<uint32_t>, size_t>> visibleExtra;
 	size_t visNodeSize = static_cast<size_t>(std::ceil(static_cast<float>(bspNodes.size()) / static_cast<float>(BITS_PER_SLOT)));
 	size_t visQuadSize = static_cast<size_t>(std::ceil(static_cast<float>(m_quadblocks.size()) / static_cast<float>(BITS_PER_SLOT)));
+	size_t visExtraSize = 1;
+	std::vector<uint32_t> visibleExtraAll(visExtraSize, 0xFFFFFFFF);
 	std::vector<uint32_t> visibleNodeAll(visNodeSize, 0xFFFFFFFF);
 	for (const BSP* bsp : orderedBSPNodes)
 	{
@@ -1490,19 +1497,23 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 
 	std::vector<uint32_t> visibleQuadsAll(visQuadSize, 0xFFFFFFFF);
 	size_t quadIndex = 0;
+	for (const Quadblock* quad : orderedQuads)
+	{
+		if (quad->GetFlags() & QuadFlags::INVISIBLE_TRIGGER)
+		{
+			visibleQuadsAll[quadIndex / BITS_PER_SLOT] &= ~(1 << (quadIndex % BITS_PER_SLOT));
+		}
+		quadIndex++;
+	}
 	const bool validVisTree = !m_bspVis.IsEmpty();
 	const std::vector<const BSP*> bspLeaves = m_bsp.GetLeaves();
 	std::unordered_map<size_t, const BSP*> idToLeaf;
 	std::unordered_map<const BSP*, size_t> leafToMatrix;
 	for (const BSP* leaf : bspLeaves) { idToLeaf[leaf->GetId()] = leaf; }
 	for (size_t i = 0; i < bspLeaves.size(); i++) { leafToMatrix[bspLeaves[i]] = i; }
-	for (const Quadblock* quad : orderedQuads)
+	if (validVisTree)
 	{
-		if (quad->GetFlags() & (QuadFlags::INVISIBLE_TRIGGER))
-		{
-			visibleQuadsAll[quadIndex / BITS_PER_SLOT] &= ~(1 << (quadIndex % BITS_PER_SLOT));
-		}
-		if (validVisTree)
+		for (const Quadblock* quad : orderedQuads)
 		{
 			std::vector<uint32_t> visNodes(visNodeSize, 0x0);
 			const BSP* bspLeaf = idToLeaf[quad->GetBSPID()];
@@ -1519,25 +1530,57 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 					}
 				}
 			}
-			visibleNodes.push_back({visNodes, currOffset});
-			currOffset += visNodes.size() * sizeof(uint32_t);
+			if (visNodesOffsetMap.contains(visNodes))
+			{
+				visibleNodes.push_back({ visNodes, visNodesOffsetMap.at(visNodes) });
+			}
+			else
+			{
+				visNodesOffsetMap[visNodes] = currOffset;
+				visibleNodes.push_back({ visNodes, currOffset });
+				uniqueVisNodes.push_back(visNodes);
+				currOffset += visNodes.size() * sizeof(uint32_t);
+			}
 		}
-		quadIndex++;
+		for (const Quadblock* quad : orderedQuads)
+		{
+			std::vector<uint32_t> visQuads(visQuadSize, 0x0);
+			const BSP* bspLeaf = idToLeaf[quad->GetBSPID()];
+			const size_t matrixId = leafToMatrix[bspLeaf];
+			visQuads = visibleQuadsAll; //Saves space, doesn't seem to cost performances. Vanilla does store all visible quad from visible leaves at this point
+			if (visQuadsOffsetMap.contains(visQuads))
+			{
+				visibleQuads.push_back({ visQuads, visQuadsOffsetMap.at(visQuads) });
+			}
+			else
+			{
+				visQuadsOffsetMap[visQuads] = currOffset;
+				visibleQuads.push_back({ visQuads, currOffset });
+				uniqueVisQuads.push_back(visQuads);
+				currOffset += visQuads.size() * sizeof(uint32_t);
+			}
+		}
 	}
-
-	if (!validVisTree)
+	else // not valid vistree
 	{
-		visibleNodes.push_back({visibleNodeAll, currOffset});
+		visibleNodes.push_back({ visibleNodeAll, currOffset });
+		uniqueVisNodes.push_back(visibleNodeAll);
 		currOffset += visibleNodeAll.size() * sizeof(uint32_t);
-	}
 
-	visibleQuads.push_back({visibleQuadsAll, currOffset});
-	currOffset += visibleQuadsAll.size() * sizeof(uint32_t);
+		visibleQuads.push_back({ visibleQuadsAll, currOffset });
+		uniqueVisQuads.push_back(visibleQuadsAll);
+		currOffset += visibleQuadsAll.size() * sizeof(uint32_t);
+	}
 
 	std::vector<uint32_t> visibleInstancesDummy;
 	visibleInstancesDummy.push_back(0);
-	visibleInstances.push_back({visibleInstancesDummy, currOffset});
+	visibleInstances.push_back({ visibleInstancesDummy, currOffset });
 	currOffset += visibleInstancesDummy.size() * sizeof(uint32_t);
+
+
+	visibleExtra.push_back({ visibleExtraAll, currOffset });
+	currOffset += visibleExtraAll.size() * sizeof(uint32_t);
+
 
 	std::unordered_map<PSX::VisibleSet, size_t> visibleSetMap;
 	std::vector<PSX::VisibleSet> visibleSets;
@@ -1546,11 +1589,18 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	for (size_t quadCount = 0; quadCount < orderedQuads.size(); quadCount++)
 	{
 		PSX::VisibleSet set = {};
-		if (validVisTree) { set.offVisibleBSPNodes = static_cast<uint32_t>(std::get<size_t>(visibleNodes[quadCount])); }
-		else { set.offVisibleBSPNodes = static_cast<uint32_t>(std::get<size_t>(visibleNodes[0])); }
-		set.offVisibleQuadblocks = static_cast<uint32_t>(std::get<size_t>(visibleQuads[0]));
+		if (validVisTree)
+		{
+			set.offVisibleBSPNodes = static_cast<uint32_t>(std::get<size_t>(visibleNodes[quadCount]));
+			set.offVisibleQuadblocks = static_cast<uint32_t>(std::get<size_t>(visibleQuads[quadCount]));
+		}
+		else
+		{
+			set.offVisibleBSPNodes = static_cast<uint32_t>(std::get<size_t>(visibleNodes[0]));
+			set.offVisibleQuadblocks = static_cast<uint32_t>(std::get<size_t>(visibleQuads[0]));
+		}
 		set.offVisibleInstances = static_cast<uint32_t>(std::get<size_t>(visibleInstances[0]));
-		set.offVisibleExtra = 0;
+		set.offVisibleExtra = static_cast<uint32_t>(std::get<size_t>(visibleExtra[0]));
 
 		size_t visibleSetIndex = 0;
 		if (visibleSetMap.contains(set)) { visibleSetIndex = visibleSetMap.at(set); }
@@ -1564,7 +1614,6 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		PSX::Quadblock* serializedQuad = reinterpret_cast<PSX::Quadblock*>(serializedQuads[quadCount].data());
 		serializedQuad->offVisibleSet = static_cast<uint32_t>(offVisibleSet + sizeof(PSX::VisibleSet) * visibleSetIndex);
 	}
-
 	currOffset += visibleSets.size() * sizeof(PSX::VisibleSet);
 
 	const size_t offVertices = currOffset;
@@ -1749,6 +1798,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		pointerMap.push_back(CALCULATE_OFFSET(PSX::VisibleSet, offVisibleBSPNodes, offCurrVisibleSet));
 		pointerMap.push_back(CALCULATE_OFFSET(PSX::VisibleSet, offVisibleQuadblocks, offCurrVisibleSet));
 		pointerMap.push_back(CALCULATE_OFFSET(PSX::VisibleSet, offVisibleInstances, offCurrVisibleSet));
+		pointerMap.push_back(CALCULATE_OFFSET(PSX::VisibleSet, offVisibleExtra, offCurrVisibleSet));
 		offCurrVisibleSet += sizeof(PSX::VisibleSet);
 	}
 
@@ -1766,20 +1816,17 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	Write(file, texGroups.data(), texGroups.size() * sizeof(PSX::TextureGroup));
 	if (!animData.empty()) { Write(file, animData.data(), animData.size()); }
 	for (const std::vector<uint8_t>& serializedQuad : serializedQuads) { Write(file, serializedQuad.data(), serializedQuad.size()); }
-	for (const auto& tuple : visibleNodes)
-	{
-		const std::vector<uint32_t>& visibleNode = std::get<0>(tuple);
-		Write(file, visibleNode.data(), visibleNode.size() * sizeof(uint32_t));
-	}
-	for (const auto& tuple : visibleQuads)
-	{
-		const std::vector<uint32_t>& visibleQuad = std::get<0>(tuple);
-		Write(file, visibleQuad.data(), visibleQuad.size() * sizeof(uint32_t));
-	}
+	for (const auto& visNode : uniqueVisNodes) { Write(file, visNode.data(), visNode.size() * sizeof(uint32_t)); }
+	for (const auto& visQuad : uniqueVisQuads) { Write(file, visQuad.data(), visQuad.size() * sizeof(uint32_t)); }
 	for (const auto& tuple : visibleInstances)
 	{
 		const std::vector<uint32_t>& visibleInst = std::get<0>(tuple);
 		Write(file, visibleInst.data(), visibleInst.size() * sizeof(uint32_t));
+	}
+	for (const auto& tuple : visibleExtra)
+	{
+		const std::vector<uint32_t>& v = std::get<0>(tuple);
+		Write(file, v.data(), v.size() * sizeof(uint32_t));
 	}
 	Write(file, visibleSets.data(), visibleSets.size() * sizeof(PSX::VisibleSet));
 	for (const std::vector<uint8_t>& serializedVertex : serializedVertices) { Write(file, serializedVertex.data(), serializedVertex.size()); }
