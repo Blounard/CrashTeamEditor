@@ -360,7 +360,7 @@ void Level::RenderUI(Renderer& renderer)
 			ImGui::SetItemTooltip(levPath.c_str()); ImGui::SameLine();
 			if (ImGui::Button("...##levhotreload"))
 			{
-				auto selection = pfd::open_file("Lev File", m_parentPath.string(), {"Lev Files", "*.lev"}, pfd::opt::force_path).result();
+				auto selection = pfd::open_file("Lev File", m_parentPath.string(), { "Lev Files", "*.lev" }, pfd::opt::force_path).result();
 				if (!selection.empty()) { m_hotReloadLevPath = selection.front(); }
 			}
 
@@ -370,8 +370,18 @@ void Level::RenderUI(Renderer& renderer)
 			ImGui::SetItemTooltip(vrmPath.c_str()); ImGui::SameLine();
 			if (ImGui::Button("...##vrmhotreload"))
 			{
-				auto selection = pfd::open_file("Vrm File", m_parentPath.string(), {"Vrm Files", "*.vrm"}, pfd::opt::force_path).result();
+				auto selection = pfd::open_file("Vrm File", m_parentPath.string(), { "Vrm Files", "*.vrm" }, pfd::opt::force_path).result();
 				if (!selection.empty()) { m_hotReloadVRMPath = selection.front(); }
+			}
+			if (ImGui::TreeNode("Settings##hotreload"))
+			{
+				ImGui::InputFloat("Relic Sapphire time", &HotReloadSettings::relicSapphire);
+				ImGui::InputFloat("Relic Gold time", &HotReloadSettings::relicGold);
+				ImGui::InputFloat("Relic Platinum time", &HotReloadSettings::relicPlatinum);
+				ImGui::InputFloat("Crystal Challenge time", &HotReloadSettings::crystalTime);
+				ImGui::Checkbox("Intro Cutscene", &HotReloadSettings::introCutscene);
+				ImGui::Checkbox("Ghost", &HotReloadSettings::ghost);
+				ImGui::TreePop();
 			}
 
 			const std::string successMessage = "Successfully hot reloaded.";
