@@ -403,8 +403,6 @@ void init_crashteameditor(py::module_& m)
 			return verts;
 		})
 		.def("get_quad_uv", &Quadblock::GetQuadUV, py::arg("quad"), py::return_value_policy::copy)
-		.def("set_texture_id", &Quadblock::SetTextureID, py::arg("texture_id"), py::arg("quad"))
-		.def("set_anim_texture_offset", &Quadblock::SetAnimTextureOffset, py::arg("rel_offset"), py::arg("lev_offset"), py::arg("quad"))
 		.def("set_checkpoint_status", &Quadblock::SetCheckpointStatus)
 		.def("set_trigger", &Quadblock::SetTrigger)
 		.def("compute_normal_vector", &Quadblock::ComputeNormalVector, py::arg("id0"), py::arg("id1"), py::arg("id2"));
@@ -538,7 +536,7 @@ void init_crashteameditor(py::module_& m)
 	level
 		.def(py::init<>())
 		.def("load", &Level::Load, py::arg("filename"))
-		.def("save", &Level::Save, py::arg("path"))
+		.def("save", &Level::SaveLEV, py::arg("path"), py::arg("useRawTex"))
 		.def_property_readonly("is_loaded", &Level::IsLoaded)
 		.def("clear", &Level::Clear, py::arg("clear_errors") = true)
 		.def("reset_filter", &Level::ResetFilter)

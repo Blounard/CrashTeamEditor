@@ -3,6 +3,7 @@
 #include "utils.h"
 
 #include <vector>
+#include <array>
 #include <cstdint>
 #include <cmath>
 #include <string>
@@ -67,6 +68,10 @@ struct Vec2
 };
 
 typedef std::array<Vec2, 4> QuadUV;
+void Rotate90(QuadUV& uvs);
+void Flip(QuadUV& uvs);
+void RotateFlip(QuadUV& uvs, uint32_t rotateFlip);
+
 
 struct Vec3
 {

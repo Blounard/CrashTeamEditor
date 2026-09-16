@@ -19,6 +19,9 @@ class AnimTexture
 public:
 	AnimTexture() {};
 	AnimTexture(const std::filesystem::path& path, const std::vector<std::string>& usedNames);
+	AnimTexture(const PSX::AnimTex& animTex, const std::string& animName, const std::filesystem::path& tempDir,
+		const std::array<std::vector<std::pair<std::string, QuadUV>>, NUM_FACES_QUADBLOCK>& faceFrames,
+		const std::unordered_map<std::string, Texture>& materialToTexture);
 	bool IsEmpty() const;
 	bool IsTriblock() const;
 	const std::vector<AnimTextureFrame>& GetFrames() const;

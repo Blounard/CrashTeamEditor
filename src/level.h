@@ -42,8 +42,9 @@ class Level
 {
 public:
 	bool Load(const std::filesystem::path& filename);
-	bool Save(const std::filesystem::path& path);
+	bool SaveLEV(const std::filesystem::path& path, bool useRawTextures);
 	bool IsLoaded() const;
+	bool HasRawTexture() const; 
 	void Clear(bool clearErrors);
 	const std::string& GetName() const;
 	std::vector<Quadblock>& GetQuadblocks();
@@ -70,7 +71,6 @@ public:
 private:
 	void ManageTurbopad(Quadblock& quadblock);
 	bool LoadLEV(const std::filesystem::path& levFile);
-	bool SaveLEV(const std::filesystem::path& path);
 	bool LoadOBJ(const std::filesystem::path& objFile);
 	bool StartEmuIPC(const std::string& emulator);
 	bool HotReload(const std::string& levPath, const std::string& vrmPath, const std::string& emulator);
@@ -135,6 +135,9 @@ private:
 	std::vector<uint8_t> m_vrm;
 	Skybox m_skybox;
 
+	bool m_hasRawTexture;
+	std::unordered_map<LayoutKey, std::string> m_materialCache; // Layout Key -> matName
+	std::unordered_map<LayoutKey, PixelBounds> m_textureToPixelBounds; // Map Layout key -> Pixels bounds of the texture.
 	std::map<std::string, std::vector<std::pair<size_t, size_t>>> m_materialToQuadFaces; // MaterialName -> List of (QuadId, FaceId)
 	std::unordered_map<std::string, Texture> m_materialToTexture;
 	MaterialProperty<std::string, MaterialType::TERRAIN> m_propTerrain;
