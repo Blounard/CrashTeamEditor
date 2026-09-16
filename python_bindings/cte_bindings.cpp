@@ -537,6 +537,11 @@ void init_crashteameditor(py::module_& m)
 			}
 	, py::arg("quadblocks"));
 
+	py::class_<BitMatrix>(m, "VisTree")
+		.def(py::init<>())
+		.def("get", &BitMatrix::Get, py::arg("x"), py::arg("y"))
+		.def("set", &BitMatrix::Set, py::arg("val"), py::arg("x"), py::arg("y"));
+
 	py::class_<Level> level(m, "Level");
 	level
 		.def(py::init<>())
@@ -549,6 +554,7 @@ void init_crashteameditor(py::module_& m)
 		.def_property_readonly("name", &Level::GetName, py::return_value_policy::copy)
 		.def_property_readonly("quadblocks", &Level::GetQuadblocks, py::return_value_policy::reference_internal)
 		.def_property_readonly("bsp", &Level::GetBSP, py::return_value_policy::reference_internal)
+		.def_property_readonly("vistree", &Level::GetVisTree, py::return_value_policy::reference_internal)
 		.def_property_readonly("checkpoints", &Level::GetCheckpoints, py::return_value_policy::reference_internal)
 		.def_property_readonly("checkpoint_paths", &Level::GetCheckpointPaths, py::return_value_policy::reference_internal)
 		.def_property_readonly("model_level", &Level::GetLevelModel, py::return_value_policy::reference_internal)
@@ -563,6 +569,7 @@ void init_crashteameditor(py::module_& m)
 		.def("get_material_quadblock_indexes", &Level::GetMaterialQuadblockIndexes, py::arg("material"), py::return_value_policy::copy)
 		.def("load_preset", &Level::LoadPreset, py::arg("filename"))
 		.def("save_preset", &Level::SavePreset, py::arg("path"))
+		.def("generate_vistree", &Level::GenerateVisTreeLev)
 		.def("get_renderer_selected_data", [](Level& level) {
 			auto selection = level.GetRendererSelectedData();
 			const auto& quadblocks = std::get<0>(selection);

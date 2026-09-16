@@ -834,30 +834,49 @@ void Level::RenderUI(Renderer& renderer)
 
 			static std::string buttonMessage;
 			static ButtonUI generateBSPButton = ButtonUI();
+			static ButtonUI generateVisTreeButton = ButtonUI();
 			if (ImGui::TreeNode("Advanced"))
 			{
-				if (ImGui::InputInt("Max Quad Per Leaf", &m_maxQuadPerLeaf)) { m_maxQuadPerLeaf = std::max(m_maxQuadPerLeaf, 1); }
-				ImGui::SetItemTooltip("Lower values improve rendering performance, but increases file size and slows down vis tree generation.");
-				if (ImGui::InputFloat("Max Leaf Axis Length", &m_maxLeafAxisLength)) { m_maxLeafAxisLength = std::max(m_maxLeafAxisLength, 0.0f); }
-				ImGui::SetItemTooltip("Lower values improve rendering performance, but increases file size and slows down vis tree generation.");
-				if (ImGui::InputFloat("Near Clip Distance", &m_distanceNearClip)) { m_distanceNearClip = std::max(m_distanceNearClip, -1.0f); }
-				ImGui::SetItemTooltip("Minimum drawing distance. Higher values decrease performance and speed up the vis tree generation.");
-				if (ImGui::InputFloat("Far Clip Distance", &m_distanceFarClip)) { m_distanceFarClip = std::max(m_distanceFarClip, 0.0f); }
-				ImGui::SetItemTooltip("Maximum drawing distance. Lower values improve performance and speed up the vis tree generation.");
-				ImGui::Checkbox("Simple Vis Tree", &m_simpleVisTree);
-				ImGui::SetItemTooltip("The vis tree will be generated faster, but will be less precise");
-				ImGui::Checkbox("Generate Vis Tree", &m_genVisTree);
-				ImGui::SetItemTooltip("Generating the vis tree may take several minutes, but the gameplay will be more performant.");
+				if (ImGui::TreeNodeEx("BSP Settings", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					if (ImGui::InputInt("Max Quad Per Leaf", &BSPTreeSettings::maxQuadPerLeaf)) { BSPTreeSettings::maxQuadPerLeaf = std::max(BSPTreeSettings::maxQuadPerLeaf, 1); }
+					ImGui::SetItemTooltip("Lower values improve rendering performance, but increases file size and slows down vis tree generation.");
+					if (ImGui::InputFloat("Max Leaf Axis Length", &BSPTreeSettings::maxAxisDistance)) { BSPTreeSettings::maxAxisDistance = std::max(BSPTreeSettings::maxAxisDistance, 0.0f); }
+					ImGui::SetItemTooltip("Lower values improve rendering performance, but increases file size and slows down vis tree generation.");
+					ImGui::Checkbox("Separate Material", &BSPTreeSettings::separateMaterial);
+					ImGui::TreePop();
+				}
+				if (ImGui::TreeNodeEx("Vis Tree Settings", ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					if (ImGui::InputFloat("Near Clip Distance", &VisTreeSettings::nearClipDistance)) { VisTreeSettings::nearClipDistance = std::max(VisTreeSettings::nearClipDistance, -1.0f); }
+					ImGui::SetItemTooltip("Minimum drawing distance. Higher values decrease performance and speed up the vis tree generation.");
+					if (ImGui::InputFloat("Far Clip Distance", &VisTreeSettings::farClipDistance)) { VisTreeSettings::farClipDistance = std::max(VisTreeSettings::farClipDistance, 0.0f); }
+					ImGui::SetItemTooltip("Maximum drawing distance. Lower values improve performance and speed up the vis tree generation.");
+					ImGui::Checkbox("Self target Near Clip Distance", &VisTreeSettings::selfTargetNearClip);
+					ImGui::SetItemTooltip("Spread visibility depending on the distance to ray emmitor instead of ray target");
+					ImGui::Checkbox("Assume Commutative Rays", &VisTreeSettings::commutativeRays);
+					ImGui::SetItemTooltip("Speeds up VisTree generation by a factor of 2x to 3x with minimal loss of precision.");
+					ImGui::Checkbox("Center-Only Samples", &VisTreeSettings::centerOnlySamples);
+					ImGui::SetItemTooltip("Only casts rays from each quad center (skips corner samples). Much faster, but may miss narrow visibility paths.");
+					ImGui::TreePop();
+				}
 				ImGui::TreePop();
 			}
-			if (generateBSPButton.Show("Generate", buttonMessage, false))
+			if (generateBSPButton.Show("Generate BSP", buttonMessage, false))
 			{
 				if (GenerateBSP()) { buttonMessage = "Successfully generated the BSP tree."; }
 				else { buttonMessage = "Failed generating the BSP tree."; }
 			}
+			if (generateVisTreeButton.Show("Generate VisTree", buttonMessage, false))
+			{
+				if (GenerateVisTreeLev()) { buttonMessage = "Successfully generated the VisTree."; }
+				else { buttonMessage = "Failed generating the VisTree."; }
+			}
+			ImGui::SetItemTooltip("Generating the vis tree may take several minutes, but the gameplay will be more performant.");
 		}
 		ImGui::End();
 	}
+
 
 	if (Settings::w_ghost)
 	{

@@ -70,13 +70,7 @@ void Level::Clear(bool clearErrors)
 	m_animTextures.clear();
 	m_rendererQueryPoint = Vec3();
 	m_rendererSelectedQuadblockIndexes.clear();
-	m_genVisTree = false;
-	m_simpleVisTree = false;
 	m_bspVis.Clear();
-	m_maxQuadPerLeaf = 31;
-	m_maxLeafAxisLength = 64.0f;
-	m_distanceNearClip = -1.0f;
-	m_distanceFarClip = 1000.0f;
 	m_pythonConsole.clear();
 	m_saveScript = false;
 	m_vrm.clear();
@@ -108,6 +102,11 @@ std::vector<Quadblock>& Level::GetQuadblocks()
 BSP& Level::GetBSP()
 {
 	return m_bsp;
+}
+
+BitMatrix& Level::GetVisTree()
+{
+	return m_bspVis;
 }
 
 std::vector<Checkpoint>& Level::GetCheckpoints()
@@ -241,6 +240,16 @@ bool Level::ReOrderBSP()
 		quad.SetBSPID(bspIDOverride[quad.GetBSPID()]);
 	}
 	return true;
+}
+
+bool Level::GenerateVisTreeLev()
+{
+	if (m_bsp.IsValid())
+	{
+		m_bspVis = GenerateVisTree(m_quadblocks, &m_bsp);
+		return true;
+	}
+	return false;
 }
 
 bool Level::GenerateCheckpoints()
