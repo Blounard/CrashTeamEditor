@@ -536,7 +536,7 @@ void init_crashteameditor(py::module_& m)
 	level
 		.def(py::init<>())
 		.def("load", &Level::Load, py::arg("filename"))
-		.def("save", &Level::Save, py::arg("path"))
+		.def("save", &Level::SaveLEV, py::arg("path"), py::arg("useRawTex"))
 		.def_property_readonly("is_loaded", &Level::IsLoaded)
 		.def("clear", &Level::Clear, py::arg("clear_errors") = true)
 		.def("reset_filter", &Level::ResetFilter)

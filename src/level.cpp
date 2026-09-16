@@ -25,14 +25,14 @@ bool Level::Load(const std::filesystem::path& filename)
 	return false;
 }
 
-bool Level::Save(const std::filesystem::path& path)
-{
-	return SaveLEV(path);
-}
-
 bool Level::IsLoaded() const
 {
 	return m_loaded;
+}
+
+bool Level::HasRawTexture() const
+{
+	return m_hasRawTexture;
 }
 
 void Level::OpenHotReloadWindow()
@@ -90,6 +90,9 @@ void Level::Clear(bool clearErrors)
 	{
 		if (model) { model->Clear(model != m_models[LevelModels::LEVEL]); }
 	}
+	m_hasRawTexture = false;
+	m_materialCache.clear();
+	m_textureToPixelBounds.clear();
 }
 
 const std::string& Level::GetName() const
@@ -786,6 +789,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	std::vector<uint16_t> vram = ReadRawVRAM(vrmPath);
 	std::filesystem::path tempDir = levFile.parent_path() / (levFile.stem().string() + "_textures");
 	std::filesystem::create_directories(tempDir);
+	m_hasRawTexture = true;
 
 	// Load textures, AnimTex, and Quadblocks
 	std::map<size_t, std::array<uint32_t, NUM_FACES_QUADBLOCK>> quadblockFaceToAnimOffset; // Map: quadblock index -> Array animTexOffset per face
@@ -1126,7 +1130,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	return true;
 }
 
-bool Level::SaveLEV(const std::filesystem::path& path)
+bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 {
 	/*
 	*	Serialization order:
@@ -1185,8 +1189,21 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 	std::vector<uint8_t> animData;
 	std::vector<size_t> animPtrMapOffsets;
 	std::vector<PSX::TextureGroup> texGroups;
+	std::vector<PSX::AnimTex> animTexGroups;
 	std::unordered_map<PSX::TextureLayout, size_t> savedLayouts;
-	if (UpdateVRM())
+	std::vector<PSX::TextureLayout> modelLayouts;
+	std::unordered_map<PSX::TextureLayout, size_t> modelLayoutsIndexes;
+	std::unordered_map<std::string, LayoutKey> matToKey; // for useRawTex : material -> Layout Key
+	for (const auto& [key, matName] : m_materialCache)
+	{
+		if (matToKey.contains(matName))
+		{
+			printf("WARNING : Material Cache have several Key with the same matName\n");
+			continue;
+		}
+		matToKey[matName] = key;
+	}
+	if (useRawTextures || UpdateVRM())
 	{
 		for (Quadblock& quad : m_quadblocks)
 		{
@@ -1196,15 +1213,24 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 				if (m_materialToTexture.contains(quad.GetMaterial(i)))
 				{
 					Texture& texture = m_materialToTexture[quad.GetMaterial(i)];
-					if (texture.IsEmpty() || !texture.IsPlaced())
-					{
-						quad.SetTextureID(-1, i);
-						continue;
-					}
-						
+					if (!useRawTextures && (texture.IsEmpty() || !texture.IsPlaced())) { quad.SetTextureID(-1, i); continue; }
 					size_t textureID = 0;
 					const QuadUV& uvs = quad.GetQuadUV(i);
-					PSX::TextureLayout layout = texture.Serialize(uvs);
+					PSX::TextureLayout layout{};
+					if (useRawTextures)
+					{
+						if (matToKey.contains(quad.GetMaterial(i)))
+						{
+							LayoutKey& key = matToKey[quad.GetMaterial(i)];
+							PixelBounds& bounds = m_textureToPixelBounds[key];
+							layout = key.Serialize(quad.GetQuadUV(i), bounds);
+						}
+					}
+					else
+					{
+						layout = texture.Serialize(uvs);
+					}
+
 					if (savedLayouts.contains(layout)) { textureID = savedLayouts[layout]; }
 					else
 					{
@@ -1239,7 +1265,20 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 						Texture& texture = const_cast<Texture&>(animTextures[frame.textureIndexes[i]]);
 						size_t textureID = 0;
 						const QuadUV& uvs = frame.uvs[i];
-						PSX::TextureLayout layout = texture.Serialize(uvs);
+
+						PSX::TextureLayout layout{};
+						if (useRawTextures)
+						{
+							std::string texName = texture.GetPath().filename().replace_extension().string();
+							LayoutKey& key = matToKey[texName];
+							PixelBounds& bounds = m_textureToPixelBounds[key];
+							layout = key.Serialize(uvs, bounds);
+						}
+						else
+						{
+							layout = texture.Serialize(uvs);
+						}
+
 						if (savedLayouts.contains(layout)) { textureID = savedLayouts[layout]; }
 						else
 						{
@@ -1324,10 +1363,14 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 			animPtrMapOffsets.push_back(0);
 		}
 
-		m_hotReloadVRMPath = path / (m_name + ".vrm");
-		std::ofstream vrmFile(m_hotReloadVRMPath, std::ios::binary);
-		Write(vrmFile, m_vrm.data(), m_vrm.size());
-		vrmFile.close();
+		if (!useRawTextures)
+		{
+			m_hotReloadVRMPath = path / (m_name + ".vrm");
+			std::ofstream vrmFile(m_hotReloadVRMPath, std::ios::binary);
+			Write(vrmFile, m_vrm.data(), m_vrm.size());
+			vrmFile.close();
+		}
+
 	}
 	else
 	{
