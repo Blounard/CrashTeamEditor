@@ -4262,9 +4262,10 @@ bool Level::SaveOBJ(const std::filesystem::path& objFile)
 		};
 		static constexpr int QUAD_UV_REMAP[4] = { 0, 2, 3, 1 }; 
 
-		for (int f = 0; f < 4; f++)
+		for (int f = 0; f < NUM_FACES_QUADBLOCK; f++)
 		{
-			const QuadUV& faceUVs = qb.GetQuadUV(f);
+			QuadUV faceUVs = qb.GetQuadUV(f);
+			RotateFlip(faceUVs, qb.GetFaceRotateFlip(f));
 			std::vector<FaceVertex> face;
 			for (int v = 0; v < 4; v++)
 			{

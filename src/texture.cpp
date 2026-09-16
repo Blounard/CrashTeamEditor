@@ -29,7 +29,7 @@ Texture::Texture(const std::filesystem::path& path)
 
 
 Texture::Texture(const LayoutKey& key, const PixelBounds& bounds, const std::vector<uint16_t>& vram, const std::string& newMatName, const std::filesystem::path& tempDir, bool crop)
-	: m_width(0), m_height(0), m_imageX(0), m_imageY(0), m_clutX(0), m_clutY(0), m_blendMode(0), m_semiTransparent(false), m_placed(false)
+	: m_width(0), m_height(0), m_imageX(0), m_imageY(0), m_clutX(0), m_clutY(0), m_blendMode(key.blendMode), m_semiTransparent(false), m_placed(false)
 // Constructor that create the PNG file from vram
 {
 	int bppMode = key.bpp;
@@ -86,7 +86,7 @@ Texture::Texture(const LayoutKey& key, const PixelBounds& bounds, const std::vec
 				size_t pIdx = clutY * 1024 + clutX + val;
 				color = (pIdx < vram.size()) ? vram[pIdx] : 0;
 			}
-			ConvertVRAMColor(color, &rgba[(y * croppedWidth + x) * 4]);
+			ConvertVRAMColor(color, &rgba[(y * croppedWidth + x) * 4], m_blendMode);
 		}
 	}
 
@@ -100,7 +100,6 @@ Texture::Texture(const LayoutKey& key, const PixelBounds& bounds, const std::vec
 			m_clutX = clutX - 512;
 			m_clutY = clutY;
 		}
-		m_blendMode = key.blendMode;
 
 		// Load the PNG back into the class buffers (m_image, m_width, m_height, etc.)
 		if (!CreateTexture(false)) {
