@@ -195,16 +195,52 @@ bool Level::GenerateBSP()
 	std::vector<size_t> quadIndexes;
 	for (size_t i = 0; i < m_quadblocks.size(); i++) { quadIndexes.push_back(i); }
 	m_bsp.Clear();
-	m_bsp.SetQuadblockIndexes(quadIndexes);
-	m_bsp.Generate(m_quadblocks, m_maxQuadPerLeaf, m_maxLeafAxisLength);
+	m_bspVis.Clear();
+	ResetAllBSPID();
+	m_bsp.SetId(0);
+	m_bsp.SetQuadblockIndexes(quadIndexes, m_quadblocks);
+	m_bsp.ComputeBoundingBox(m_quadblocks);
+	m_bsp.Generate(m_quadblocks);
 	if (m_bsp.IsValid())
 	{
 		GenerateRenderBspData();
-		if (m_genVisTree) { m_bspVis = GenerateVisTree(m_quadblocks, &m_bsp, m_simpleVisTree, m_distanceNearClip, m_distanceFarClip); }
 		return true;
 	}
 	m_bsp.Clear();
 	return false;
+}
+
+bool Level::ReOrderBSP()
+{
+	ResetAllBSPID();
+	std::vector<BSP*> bspNodes = m_bsp.GetTree();
+	std::sort(bspNodes.begin(), bspNodes.end(),
+		[](const BSP* a, const BSP* b)
+		{
+			if (a->GetId() == b->GetId())
+				printf("ERROR : 2 BSP NODES SHARE THE SAME ID : %zu\n", b->GetId());
+			return a->GetId() < b->GetId();
+		});
+	std::unordered_map<size_t, size_t> bspIDOverride; // Map old ID -> New ID
+	for (const BSP* bsp : bspNodes)
+	{
+		size_t oldID = bsp->GetId();
+		size_t newID = bspIDOverride.size();
+		if (oldID != newID)
+		{
+			printf("INFO : BSP ID WAS CHANGED %zu -> %zu\n", oldID, newID);
+		}
+		bspIDOverride[oldID] = newID;
+	}
+	for (BSP* bsp : bspNodes)
+	{
+		bsp->SetId(bspIDOverride[bsp->GetId()]);
+	}
+	for (Quadblock& quad : m_quadblocks)
+	{
+		quad.SetBSPID(bspIDOverride[quad.GetBSPID()]);
+	}
+	return true;
 }
 
 bool Level::GenerateCheckpoints()
@@ -1043,21 +1079,17 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	}
 
 
+	// Load BSP
 	m_bsp.Clear();
 	file.seekg(offLev + std::streampos(meshInfo.offBSPNodes));
 	std::vector<BSP*> bspArray;
-	for (uint32_t i = 0; i < meshInfo.numBSPNodes; i++)
-	{
-		bspArray.push_back(new BSP());
-	}
-
+	for (uint32_t i = 0; i < meshInfo.numBSPNodes; i++) { bspArray.push_back(new BSP()); }
 	for (uint32_t i = 0; i < meshInfo.numBSPNodes; i++)
 	{
 		uint16_t flag;
 		std::streampos nodeStart = file.tellg();
 		Read(file, flag);
 		file.seekg(nodeStart);
-
 		if (flag & BSPFlags::LEAF)
 		{
 			PSX::BSPLeaf leaf = {};
@@ -1071,15 +1103,18 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 			bspArray[branch.id]->PopulateBranch(branch, bspArray, meshInfo.numBSPNodes);
 		}
 	}
-
 	if (!bspArray.empty())
 	{
 		m_bsp = *(bspArray[0]);
 		m_bsp.PopulateBranchQuadIndexes();
 		if (m_bsp.IsValid()) { GenerateRenderBspData(); }
-		else { m_bsp.Clear(); }
+		else { m_bsp.Clear(); printf("ERROR : Couldn't load BSP Tree : Empty leaves\n"); }
 	}
 	else { m_bsp.Clear(); }
+	std::set<size_t> validID;
+	std::vector<const BSP*> tree = static_cast<const BSP&>(m_bsp).GetTree();
+	for (const BSP* bsp : tree) { validID.insert(bsp->GetId()); }
+	for (BSP* bsp : bspArray) { if (!validID.contains(bsp->GetId())) { m_bsp.Clear(); printf("ERROR : Couldn't load BSP Tree : Missing IDs\n"); break ; } }
 
 	file.seekg(offLev + std::streampos(header.offCheckpointNodes));
 	for (uint32_t i = 0; i < header.numCheckpointNodes; i++)
@@ -1155,9 +1190,22 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	m_hotReloadLevPath = path / (m_name + ".lev");
 	std::ofstream file(m_hotReloadLevPath, std::ios::binary);
 
-	if (m_bsp.IsEmpty()) { GenerateBSP(); }
 
-	std::vector<const BSP*> bspNodes = m_bsp.GetTree();
+	if (m_bsp.IsEmpty()) { GenerateBSP(); }
+	ReOrderBSP();
+
+	std::vector<const BSP*> bspNodes = static_cast<const BSP&>(m_bsp).GetTree();
+	std::set<size_t> bspIds;
+	for (const BSP* bsp : bspNodes) { bspIds.insert(bsp->GetId()); }
+	size_t bspcounter = 0;
+	for (size_t bspid : bspIds)
+	{
+		if (bspcounter != bspid)
+		{
+			printf("BSP ID MISMATCH AT ID %zu\n", bspcounter);
+		}
+		bspcounter++;
+	}
 	std::vector<const BSP*> orderedBSPNodes(bspNodes.size());
 	for (const BSP* bsp : bspNodes) { orderedBSPNodes[bsp->GetId()] = bsp; }
 
@@ -1392,7 +1440,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	size_t bspSize = 0;
 	for (const BSP* bsp : orderedBSPNodes)
 	{
-		serializedBSPs.push_back(bsp->Serialize(currOffset));
+		serializedBSPs.push_back(bsp->Serialize(currOffset, m_quadblocks));
 		bspSize += serializedBSPs.back().size();
 		if (bsp->IsBranch()) { continue; }
 		const std::vector<size_t>& quadIndexes = bsp->GetQuadblockIndexes();
@@ -1401,8 +1449,9 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 			const Quadblock& quadblock = m_quadblocks[index];
 			std::vector<Vertex> quadVertices = quadblock.GetVertices();
 			std::vector<size_t> verticesIndexes;
-			for (const Vertex& vertex : quadVertices)
+			for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++)
 			{
+				const Vertex& vertex = quadVertices[i];
 				if (!vertexMap.contains(vertex))
 				{
 					size_t vertexIndex = orderedVertices.size();

@@ -508,29 +508,34 @@ void init_crashteameditor(py::module_& m)
 		.def("left_child", &BSP::GetLeftChildren, py::return_value_policy::reference_internal)
 		.def("right_child", &BSP::GetRightChildren, py::return_value_policy::reference_internal)
 		.def("parent", &BSP::GetParent, py::return_value_policy::reference_internal)
-		.def("tree", [](BSP& bsp) {
-			py::list nodes;
-			const std::vector<const BSP*> tree = bsp.GetTree();
-			py::object owner = py::cast(&bsp);
-			for (const BSP* node : tree)
-			{
-				nodes.append(py::cast(const_cast<BSP*>(node), py::return_value_policy::reference_internal, owner));
-			}
-			return nodes;
-		})
+		.def("tree", [](const BSP& bsp) {
+		py::list nodes;
+		const std::vector<const BSP*> tree = bsp.GetTree();
+		py::object owner = py::cast(&bsp);
+		for (const BSP* node : tree)
+		{
+			nodes.append(py::cast(const_cast<BSP*>(node), py::return_value_policy::reference_internal, owner));
+		}
+		return nodes;
+			})
 		.def("leaves", [](BSP& bsp) {
-			py::list nodes;
-			const std::vector<const BSP*> leaves = bsp.GetLeaves();
-			py::object owner = py::cast(&bsp);
-			for (const BSP* node : leaves)
-			{
-				nodes.append(py::cast(const_cast<BSP*>(node), py::return_value_policy::reference_internal, owner));
-			}
-			return nodes;
-		})
+		py::list nodes;
+		const std::vector<const BSP*> leaves = bsp.GetLeaves();
+		py::object owner = py::cast(&bsp);
+		for (const BSP* node : leaves)
+		{
+			nodes.append(py::cast(const_cast<BSP*>(node), py::return_value_policy::reference_internal, owner));
+		}
+		return nodes;
+			})
 		.def("set_quadblock_indexes", &BSP::SetQuadblockIndexes)
+		.def("split_leaf", &BSP::SplitLeafGeometry, py::arg("quadblocks"), py::arg("axis"), py::arg("midpoint"))
 		.def("clear", &BSP::Clear)
-		.def("generate", &BSP::Generate, py::arg("quadblocks"), py::arg("max_quads_per_leaf"), py::arg("max_axis_length"));
+		.def("generate", [](BSP& bsp, const std::vector<Quadblock>& quadblocks)
+			{
+				bsp.Generate(quadblocks);
+			}
+	, py::arg("quadblocks"));
 
 	py::class_<Level> level(m, "Level");
 	level

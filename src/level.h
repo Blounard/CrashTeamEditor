@@ -80,6 +80,7 @@ private:
 	bool UpdateVRM();
 	bool GenerateCheckpoints();
 	bool GenerateBSP();
+	bool ReOrderBSP();
 
 	void OpenHotReloadWindow();
 	void RenderUI(Renderer& renderer);
