@@ -18,6 +18,7 @@ static size_t GetTexPage(size_t x, size_t y)
 Texture::Texture(const std::filesystem::path& path)
 {
 	m_path = path;
+	m_placed = false;
 	if (!CreateTexture(true)) { ClearTexture(); }
 }
 
@@ -107,10 +108,16 @@ bool Texture::IsSemiTransparent() const
 	return m_semiTransparent;
 }
 
+bool Texture::IsPlaced() const
+{
+	return m_placed;
+}
+
 void Texture::SetImageCoords(size_t x, size_t y)
 {
 	m_imageX = x + 512;
 	m_imageY = y;
+	m_placed = true;
 }
 
 void Texture::SetCLUTCoords(size_t x, size_t y)
@@ -127,7 +134,16 @@ void Texture::SetBlendMode(uint16_t mode)
 PSX::TextureLayout Texture::Serialize(const QuadUV& uvs) const
 {
 	PSX::TextureLayout layout = {};
-	if (IsEmpty()) { return layout; }
+	if (IsEmpty())
+	{
+		printf("Warning : Trying to serialize an empty Texture\n");
+		return layout;
+	}
+	if (!IsPlaced())
+	{
+		printf("Warning : Trying to serialize a Texture not in VRAM\n");
+		return layout;
+	}
 
 	layout.texPage.blendMode = m_blendMode;
 	size_t bppMultiplier = 1;
@@ -229,6 +245,7 @@ void Texture::ClearTexture()
 {
 	m_blendMode = 0;
 	m_width = m_height = 0;
+	m_placed = false;
 	m_imageX = m_imageY = 0;
 	m_clutX = m_clutY = 0;
 	m_semiTransparent = false;

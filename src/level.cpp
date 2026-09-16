@@ -11,6 +11,7 @@
 
 #include <fstream>
 #include <unordered_set>
+#include <set>
 #include <map>
 #include <algorithm>
 
@@ -941,6 +942,12 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 				if (m_materialToTexture.contains(quad.GetMaterial(i)))
 				{
 					Texture& texture = m_materialToTexture[quad.GetMaterial(i)];
+					if (texture.IsEmpty() || !texture.IsPlaced())
+					{
+						quad.SetTextureID(-1, i);
+						continue;
+					}
+						
 					size_t textureID = 0;
 					const QuadUV& uvs = quad.GetQuadUV(i);
 					PSX::TextureLayout layout = texture.Serialize(uvs);
@@ -956,7 +963,7 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 						texGroup.mosaic = layout;
 						texGroups.push_back(texGroup);
 					}
-					quad.SetTextureID(textureID, i);
+					quad.SetTextureID(static_cast<int>(textureID), i);
 				}
 			}
 		}
@@ -1050,7 +1057,7 @@ bool Level::SaveLEV(const std::filesystem::path& path)
 					Quadblock& quadblock = m_quadblocks[index];
 					for (size_t j = 0; j < NUM_FACES_QUADBLOCK; j++)
 					{
-						quadblock.SetAnimTextureOffset(animOffsetPerQuadblock[i][j], offAnimData, j);
+						quadblock.SetAnimTextureOffset(static_cast<int>(animOffsetPerQuadblock[i][j] + offAnimData), j);
 					}
 				}
 			}
@@ -1830,8 +1837,21 @@ bool Level::UpdateVRM()
 {
 	std::vector<Texture*> textures;
 	std::vector<std::tuple<Texture*, Texture*>> copyTextureAttributes;
-	for (auto& [material, texture] : m_materialToTexture)
+	std::set<std::string> usedMaterials;
+
+	for (const Quadblock& quad : m_quadblocks) // Quad textures
 	{
+		if (quad.GetFlags() & QuadFlags::INVISIBLE_TRIGGER)
+			continue;
+		for (size_t face = 0; face < NUM_FACES_QUADBLOCK + 1; face++)
+			usedMaterials.insert(quad.GetMaterial(face));
+	}
+
+	for (std::string material : usedMaterials)
+	{
+		if (!m_materialToTexture.contains(material))
+			continue;
+		Texture& texture = m_materialToTexture[material];
 		bool foundEqual = false;
 		for (Texture* addedTexture : textures)
 		{
@@ -1852,9 +1872,9 @@ bool Level::UpdateVRM()
 		const std::vector<Texture>& animTextures = animTex.GetTextures();
 		for (const AnimTextureFrame& frame : animFrames)
 		{
+			bool foundEqual = false;
 			for (size_t f = 0; f < NUM_FACES_QUADBLOCK + 1; f++)
 			{
-				bool foundEqual = false;
 				Texture* texture = const_cast<Texture*>(&animTextures[frame.textureIndexes[f]]);
 				for (Texture* addedTexture : textures)
 				{

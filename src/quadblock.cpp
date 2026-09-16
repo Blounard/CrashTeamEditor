@@ -765,14 +765,14 @@ void Quadblock::SetHide(bool active)
 	m_hide = active;
 }
 
-void Quadblock::SetTextureID(size_t id, size_t quad)
+void Quadblock::SetTextureID(int id, size_t quad)
 {
 	m_textureIDs[quad] = id;
 }
 
-void Quadblock::SetAnimTextureOffset(size_t relOffset, size_t levOffset, size_t quad)
+void Quadblock::SetAnimTextureOffset(int offset, size_t quad)
 {
-	m_animTexOffset[quad] = relOffset + levOffset;
+	m_animTexOffset[quad] = offset;
 }
 
 void Quadblock::SetTrigger(QuadblockTrigger trigger)
@@ -993,21 +993,18 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 		quadblock.drawOrderLow |= packedFace << (8 + i * 5);
 	}
 	quadblock.drawOrderHigh = 0;
-	if (m_animated)
+	for (size_t i = 0; i < NUM_FACES_QUADBLOCK; i++)
 	{
-		quadblock.offMidTextures[0] = static_cast<uint32_t>(m_animTexOffset[0] | 1);
-		quadblock.offMidTextures[1] = static_cast<uint32_t>(m_animTexOffset[1] | 1);
-		quadblock.offMidTextures[2] = static_cast<uint32_t>(m_animTexOffset[2] | 1);
-		quadblock.offMidTextures[3] = static_cast<uint32_t>(m_animTexOffset[3] | 1);
-		quadblock.offLowTexture = static_cast<uint32_t>(offTextures + (m_textureIDs[4] * sizeof(PSX::TextureGroup)));
-	}
-	else
-	{
-		quadblock.offMidTextures[0] = static_cast<uint32_t>(offTextures + (m_textureIDs[0] * sizeof(PSX::TextureGroup)));
-		quadblock.offMidTextures[1] = static_cast<uint32_t>(offTextures + (m_textureIDs[1] * sizeof(PSX::TextureGroup)));
-		quadblock.offMidTextures[2] = static_cast<uint32_t>(offTextures + (m_textureIDs[2] * sizeof(PSX::TextureGroup)));
-		quadblock.offMidTextures[3] = static_cast<uint32_t>(offTextures + (m_textureIDs[3] * sizeof(PSX::TextureGroup)));
-		quadblock.offLowTexture = static_cast<uint32_t>(offTextures + (m_textureIDs[4] * sizeof(PSX::TextureGroup)));
+		if (m_animated)
+		{
+			if (m_animTexOffset[i] >= 0)
+				quadblock.offMidTextures[i] = static_cast<uint32_t>(m_animTexOffset[i]) | 1;
+		}
+		else
+		{
+			if (m_textureIDs[i] >= 0)
+				quadblock.offMidTextures[i] = static_cast<uint32_t>(offTextures + (m_textureIDs[i] * sizeof(PSX::TextureGroup)));
+		}	
 	}
 	quadblock.offLowTexture = static_cast<uint32_t>(offTextures + (m_textureIDs[4] * sizeof(PSX::TextureGroup)));
 	quadblock.bbox.min = ConvertVec3(m_bbox.min, FP_ONE_GEO);
@@ -1097,6 +1094,8 @@ void Quadblock::SetDefaultValues()
 	m_downforce = 0;
 	m_filterColor = GuiRenderSettings::defaultFilterColor;
 	m_renderPrimitiveIndex = RENDER_INDEX_NONE;
+	m_textureIDs = { -1, -1, -1, -1, -1 };
+	m_animTexOffset = { -1, -1, -1, -1, -1 };
 }
 
 Vec3 Quadblock::ComputeNormalVector(size_t id0, size_t id1, size_t id2) const
