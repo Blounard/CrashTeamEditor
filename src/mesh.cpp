@@ -5,7 +5,7 @@
 
 #include "mesh.h"
 #include "vertex.h"
-#include "gui_render_settings.h"
+#include "settings.h"
 #include "quadblock.h"
 #include "text3d.h"
 

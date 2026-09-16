@@ -1,6 +1,6 @@
 #include "quadblock.h"
 #include "utils.h"
-#include "gui_render_settings.h"
+#include "settings.h"
 
 #include <map>
 #include <unordered_map>

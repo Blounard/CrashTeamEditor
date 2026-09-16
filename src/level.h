@@ -13,6 +13,7 @@
 #include "model.h"
 #include "vistree.h"
 #include "skybox.h"
+#include "settings.h"
 
 #include <nlohmann/json.hpp>
 #include <vector>

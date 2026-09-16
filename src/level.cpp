@@ -4,7 +4,7 @@
 #include "utils.h"
 #include "geo.h"
 #include "process.h"
-#include "gui_render_settings.h"
+#include "settings.h"
 #include "renderer.h"
 #include "vistree.h"
 #include "text3d.h"
