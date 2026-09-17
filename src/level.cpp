@@ -452,6 +452,54 @@ bool Level::GenerateCheckpoints()
 	return true;
 }
 
+bool Level::GenerateOceanVertices()
+{
+	const int brightCyclesTime = WaterAnimSettings::brightWaveCycle;
+	const float baseBright = WaterAnimSettings::baseBrightness;
+	const float waveLength = std::max(WaterAnimSettings::waveLength, 1.0f);
+	const float waveK = 2.0f * MATH_PI / waveLength;
+
+	for (Quadblock& quad : m_quadblocks)
+	{
+		if (!quad.GetWater())
+			continue;
+		const std::vector<Vertex>& vertices = quad.GetVertices();
+		for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++)
+		{
+			Vec3 vPos = vertices[i].m_pos;
+			const float baseU = vPos.x * WaterAnimSettings::sizeTex;
+			const float baseV = vPos.z * WaterAnimSettings::sizeTex;
+			const float spaceWave = (std::cos(waveK * vPos.x) + std::cos(waveK * vPos.z)) / 2;
+
+			PSX::OceanVertex ov{};
+			for (int f = 0; f < NUM_FRAME_OVERT; f++)
+			{
+				const float frac = static_cast<float>(f) / NUM_FRAME_OVERT;
+
+				const float scrollU = WaterAnimSettings::ScrollULoops * 64.0f * frac;
+				const float scrollV = WaterAnimSettings::ScrollVLoops * 64.0f * frac;
+				const float waveU = WaterAnimSettings::waveAmplitude * spaceWave * std::sin(2.0f * MATH_PI * WaterAnimSettings::waveCyclesTimeU * frac);
+				const float waveV = WaterAnimSettings::waveAmplitude * spaceWave * std::sin(2.0f * MATH_PI * WaterAnimSettings::waveCyclesTimeV * frac);
+				const int u = static_cast<int>(std::round(baseU + scrollU + waveU));
+				const int v = static_cast<int>(std::round(baseV + scrollV + waveV));
+
+				const float brightTemporalPhase = 2.0f * MATH_PI * brightCyclesTime * frac;
+				const float waveBright = WaterAnimSettings::brightAmp * std::sin(brightTemporalPhase) * spaceWave;
+				const int b = static_cast<int>(std::round(baseBright + waveBright));
+
+				PSX::OceanVertexFrame frame{};
+				frame.u = static_cast<uint16_t>(((u % 64) + 64) % 64);
+				frame.v = static_cast<uint16_t>(((v % 64) + 64) % 64);
+				frame.brightness = static_cast<uint16_t>(Clamp(b, 0, 15));
+				ov.frames[f] = frame;
+			}
+			quad.SetOceanVertex(ov, i);
+		}
+	}
+	return true;
+}
+
+
 
 enum class PresetHeader : unsigned
 {

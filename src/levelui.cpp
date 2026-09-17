@@ -698,6 +698,52 @@ void Level::RenderUI(Renderer& renderer)
 				}
 				ImGui::TreePop();
 			}
+
+			if (ImGui::TreeNode("Water"))
+			{
+				if (ImGui::TreeNode("Settings##Water"))
+				{
+					ImGui::SeparatorText("Base UV");
+					ImGui::DragFloat("World Tex size", &WaterAnimSettings::sizeTex, 0.5f, 0.0f, 100.0f, "%.1f");
+					ImGui::SetItemTooltip("Size of the full texture in world units");
+
+					ImGui::SeparatorText("Scrolling UV");
+					ImGui::InputInt("U Cycle count##scroll", &WaterAnimSettings::ScrollULoops);
+					ImGui::InputInt("V Cycle count##scroll", &WaterAnimSettings::ScrollVLoops);
+
+					ImGui::SeparatorText("Waving UV");
+					ImGui::DragFloat("Wave Length##uv", &WaterAnimSettings::waveLength, 0.1f, 0.0f, 1000.0f, "%.1f");
+					ImGui::InputInt("U Cycle count##wave", &WaterAnimSettings::waveCyclesTimeU);
+					ImGui::InputInt("V Cycle count##wave", &WaterAnimSettings::waveCyclesTimeV);
+					ImGui::DragFloat("Wave Amplitude", &WaterAnimSettings::waveAmplitude, 0.1f, 0.0f, 64.0f, "%.1f pixels");
+
+					ImGui::SeparatorText("Brightness");
+					ImGui::DragFloat("Base Brightness", &WaterAnimSettings::baseBrightness, 0.1f, 0.0f, 15.0f, "%.1f");
+					ImGui::SetItemTooltip("Base brightness (range 0 to 15).");
+
+					if (ImGui::DragFloat("Brightness amplitude", &WaterAnimSettings::brightAmp, 0.1f, 0.0f, 15.0f, "%.1f"))
+					{
+						WaterAnimSettings::brightAmp = Clamp(WaterAnimSettings::brightAmp, 0.0f, 15.0f);
+					}
+					ImGui::SetItemTooltip("Base lighting brightness (range 0 to 15).");
+					ImGui::InputInt("Brightness Cycles Time", &WaterAnimSettings::brightWaveCycle);
+					ImGui::SetItemTooltip("Temporal cycles over loop (different from ripple cycles so waves and shimmer don't lock-step).");
+
+					ImGui::TreePop();
+				}
+
+				static std::string buttonMessage;
+				static ButtonUI generateWaterButton = ButtonUI();
+				if (generateWaterButton.Show("Generate Water Animations", buttonMessage, false))
+				{
+					if (GenerateOceanVertices()) { buttonMessage = "Successfully generated the ocean animations."; }
+					else { buttonMessage = "Failed to create water (this shouldn't be possible)."; }
+				}
+				ImGui::Separator();
+				ImGui::Text("Environment Texture");
+				m_envMapTex.RenderUI();
+				ImGui::TreePop();
+			}
 		}
 		ImGui::End();
 	}

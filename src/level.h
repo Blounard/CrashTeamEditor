@@ -83,6 +83,7 @@ private:
 	bool UpdateVRM();
 	bool GenerateCheckpoints();
 	bool ReOrderBSP();
+	bool GenerateOceanVertices();
 	
 	void OpenHotReloadWindow();
 	void RenderUI(Renderer& renderer);
