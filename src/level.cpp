@@ -1146,9 +1146,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 			{
 				leafIdToMatrix[bspLeaves[i]->GetId()] = i;
 			}
-			printf("leafIdToMatrixSize : %zu\n", leafIdToMatrix.size());
 			const size_t visNodeSize = (bspNodes.size() + 31) / 32;
-			printf("visNodeSize : %zu\n", visNodeSize);
 
 			auto decompressVisNodes = [&](std::streampos srcPos) -> std::vector<uint32_t>
 				{
