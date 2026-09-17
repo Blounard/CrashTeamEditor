@@ -1078,24 +1078,18 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 		quadblock.drawOrderLow |= packedFace << (8 + i * 5);
 		quadblock.drawOrderHigh[i] = static_cast<int8_t>(m_drawOrderHigh);
 	}
-	if (m_animated)
+	for (size_t i = 0; i < NUM_FACES_QUADBLOCK; i++)
 	{
-		for (size_t f = 0; f < NUM_FACES_QUADBLOCK; f++)
+		if (m_animated)
 		{
-			if (m_animTexOffset[f] >= 0)
-				quadblock.offMidTextures[f] = static_cast<uint32_t>(m_animTexOffset[f] | 1);
+			if (m_animTexOffset[i] >= 0)
+				quadblock.offMidTextures[i] = static_cast<uint32_t>(m_animTexOffset[i]) | 1;
 		}
-	}
-	else
-	{
-		if (m_textureIDs[0] >= 0)
-			quadblock.offMidTextures[0] = static_cast<uint32_t>(offTextures + (m_textureIDs[0] * sizeof(PSX::TextureGroup)));
-		if (m_textureIDs[1] >= 0)
-			quadblock.offMidTextures[1] = static_cast<uint32_t>(offTextures + (m_textureIDs[1] * sizeof(PSX::TextureGroup)));
-		if (m_textureIDs[2] >= 0)
-			quadblock.offMidTextures[2] = static_cast<uint32_t>(offTextures + (m_textureIDs[2] * sizeof(PSX::TextureGroup)));
-		if (m_textureIDs[3] >= 0)
-			quadblock.offMidTextures[3] = static_cast<uint32_t>(offTextures + (m_textureIDs[3] * sizeof(PSX::TextureGroup)));
+		else
+		{
+			if (m_textureIDs[i] >= 0)
+				quadblock.offMidTextures[i] = static_cast<uint32_t>(offTextures + (m_textureIDs[i] * sizeof(PSX::TextureGroup)));
+		}
 	}
 	if (m_textureIDs[4] >= 0)
 		quadblock.offLowTexture = static_cast<uint32_t>(offTextures + (m_textureIDs[4] * sizeof(PSX::TextureGroup)));
