@@ -42,7 +42,7 @@ namespace LevelModels
 class Level
 {
 public:
-	bool Load(const std::filesystem::path& filename);
+	bool Load(const std::filesystem::path& filename, bool isLevel);
 	bool SaveLEV(const std::filesystem::path& path, bool useRawTextures);
 	bool IsLoaded() const;
 	bool HasRawTexture() const; 
@@ -75,7 +75,7 @@ public:
 private:
 	void ManageTurbopad(Quadblock& quadblock);
 	bool LoadLEV(const std::filesystem::path& levFile);
-	bool LoadOBJ(const std::filesystem::path& objFile);
+	bool LoadOBJ(const std::filesystem::path& objFile, bool isLevel);
 	bool StartEmuIPC(const std::string& emulator);
 	bool HotReload(const std::string& levPath, const std::string& vrmPath, const std::string& emulator);
 	bool SaveGhostData(const std::string& emulator, const std::filesystem::path& path);

@@ -15,13 +15,13 @@
 #include <map>
 #include <algorithm>
 
-bool Level::Load(const std::filesystem::path& filename)
+bool Level::Load(const std::filesystem::path& filename, bool isLevel)
 {
 	Clear(true);
 	if (!filename.has_filename() || !filename.has_extension()) { return false; }
 	std::filesystem::path ext = filename.extension();
 	if (ext == ".lev") { return LoadLEV(filename); }
-	if (ext == ".obj") { return LoadOBJ(filename); }
+	if (ext == ".obj") { return LoadOBJ(filename, isLevel); }
 	return false;
 }
 
@@ -1947,7 +1947,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	return true;
 }
 
-bool Level::LoadOBJ(const std::filesystem::path& objFile)
+bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 {
 	std::string line;
 	std::ifstream file(objFile);
@@ -2227,7 +2227,7 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile)
 	}
 	m_loaded = ret;
 
-	if (m_loaded)
+	if (m_loaded && isLevel)
 	{
 		std::filesystem::path presetFolder = m_parentPath / (m_name + "_presets");
 		if (std::filesystem::is_directory(presetFolder))
@@ -2238,9 +2238,9 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile)
 				if (json.has_extension() && json.extension() == ".json") { LoadPreset(json); }
 			}
 		}
+		GenerateRenderLevData();
+		GenerateBSP();
 	}
-	GenerateRenderLevData();
-	GenerateBSP();
 	return ret;
 }
 
