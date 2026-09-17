@@ -1012,7 +1012,8 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 				quadblock.offMidTextures[i] = static_cast<uint32_t>(offTextures + (m_textureIDs[i] * sizeof(PSX::TextureGroup)));
 		}	
 	}
-	quadblock.offLowTexture = static_cast<uint32_t>(offTextures + (m_textureIDs[4] * sizeof(PSX::TextureGroup)));
+	if (m_textureIDs[4] >= 0) 
+		quadblock.offLowTexture = static_cast<uint32_t>(offTextures + (m_textureIDs[4] * sizeof(PSX::TextureGroup)));
 	quadblock.bbox.min = ConvertVec3(m_bbox.min, FP_ONE_GEO);
 	quadblock.bbox.max = ConvertVec3(m_bbox.max, FP_ONE_GEO);
 	quadblock.terrain = m_terrain;
