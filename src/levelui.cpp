@@ -273,18 +273,27 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 	}
 	else if constexpr (M == MaterialType::DRAW_FLAGS)
 	{
-		if (ImGui::TreeNode("Draw Flags"))
+		T& preview = GetPreview(material);
+		ImGui::Checkbox("Double Sided", &preview);
+		ImGui::SameLine();
+		static ButtonUI drawFlagsApplyButton = ButtonUI();
+		if (drawFlagsApplyButton.Show(("Apply##drawflags" + material).c_str(), "Draw flags successfully updated.", UnsavedChanges(material)))
 		{
-			T& preview = GetPreview(material);
-			ImGui::Checkbox("Double Sided", &preview);
-
-			static ButtonUI drawFlagsApplyButton = ButtonUI();
-			if (drawFlagsApplyButton.Show(("Apply##drawflags" + material).c_str(), "Draw flags successfully updated.", UnsavedChanges(material)))
-			{
-				Apply(material, quadFaces, quadblocks);
-				return true;
-			}
-			ImGui::TreePop();
+			Apply(material, quadFaces, quadblocks);
+			return true;
+		}
+	}
+	else if constexpr (M == MaterialType::DRAW_ORDER_HIGH)
+	{
+		T& preview = GetPreview(material);
+		ImGui::Text("Z depth bias:"); ImGui::SameLine();
+		if (ImGui::InputInt("##draworderHigh", &preview)) { preview = Clamp(preview, static_cast<int>(INT8_MIN), static_cast<int>(INT8_MAX)); }
+		ImGui::SameLine();
+		static ButtonUI drawOrderHighButton = ButtonUI();
+		if (drawOrderHighButton.Show(("Apply##draworderHigh" + material).c_str(), "Draw Order High successfully updated.", UnsavedChanges(material)))
+		{
+			Apply(material, quadFaces, quadblocks);
+			return true;
 		}
 	}
 	else if constexpr (M == MaterialType::CHECKPOINT)
@@ -364,6 +373,7 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 	}
 	return false;
 }
+
 
 void Level::RenderUI(Renderer& renderer)
 {
@@ -624,7 +634,13 @@ void Level::RenderUI(Renderer& renderer)
 
 					m_propTerrain.RenderUI(material, quadFaces, m_quadblocks);
 					m_propQuadFlags.RenderUI(material, quadFaces, m_quadblocks);
-					m_propDoubleSided.RenderUI(material, quadFaces, m_quadblocks);
+					if (ImGui::TreeNode("Draw Flags"))
+					{
+						m_propDoubleSided.RenderUI(material, quadFaces, m_quadblocks);
+						m_propDrawOrderHigh.RenderUI(material, quadFaces, m_quadblocks);
+						ImGui::TreePop();
+					}
+					
 					m_propCheckpoints.RenderUI(material, quadFaces, m_quadblocks);
 					m_propCheckpointPathable.RenderUI(material, quadFaces, m_quadblocks);
 					m_propVisTreeTransparent.RenderUI(material, quadFaces, m_quadblocks);
@@ -1518,6 +1534,9 @@ bool Quadblock::RenderUI(size_t checkpointCount, bool& resetBsp)
 		if (ImGui::TreeNode("Draw Flags"))
 		{
 			ImGui::Checkbox("Double Sided", &m_doubleSided);
+			ImGui::Text("Z depth bias:");
+			ImGui::SameLine();
+			if (ImGui::InputInt("##draworderHigh", &m_drawOrderHigh)) { m_drawOrderHigh = Clamp(m_drawOrderHigh, static_cast<int>(INT8_MIN), static_cast<int>(INT8_MAX)); }
 			const std::vector<std::string> s_rotateFlip = {"None", "Rotate 90", "Rotate 180", "Rotate -90", "Flip + Rotate 90", "Flip + Rotate 180", "Flip + Rotate -90", "Flip"};
 			const std::vector<std::string> s_faceDrawMode = {"Both", "Left", "Right", "None"};
 
