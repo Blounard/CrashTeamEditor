@@ -136,6 +136,8 @@ void BSP::PopulateLeaf(PSX::BSPLeaf& leaf, std::vector<BSP*>& bspArray, std::vec
 		if (i < quadblocks.size())
 		{
 			quadblocks[i].SetBSPID(m_id);
+			if (m_flags & BSPFlags::WATER)
+				quadblocks[i].SetWater(true);
 		}
 	}
 }
@@ -418,6 +420,34 @@ bool BSP::SplitLeafMaterial(const std::vector<Quadblock>& quadblocks)
 	return true;
 }
 
+bool BSP::SplitLeafWater(const std::vector<Quadblock>& quadblocks)
+{
+	//Split a leaf into a subtree, separating all quad by water.
+
+	if (IsBranch()) { return false; }
+
+	std::vector<size_t> left_quad_indexes;
+	std::vector<size_t> right_quad_indexes;
+	for (size_t idx : m_quadblockIndexes)
+	{
+		if (quadblocks[idx].GetWater())
+			left_quad_indexes.push_back(idx);
+		else
+			right_quad_indexes.push_back(idx);
+	}
+	if (left_quad_indexes.empty() || right_quad_indexes.empty())
+		return false;
+
+	m_node = BSPNode::BRANCH;
+	m_flags &= ~BSPFlags::LEAF;
+	m_axis = AxisSplit::NONE;
+
+	m_left = new BSP(BSPNode::LEAF, left_quad_indexes, this, quadblocks);
+	m_right = new BSP(BSPNode::LEAF, right_quad_indexes, this, quadblocks);
+
+	return true;
+}
+
 void BSP::MergeBranch()
 {
 	// Merge all children from a branch into a single leaf
@@ -521,6 +551,7 @@ void BSP::Generate(const std::vector<Quadblock>& quadblocks)
 		{
 			SplitLeafMaterial(quadblocks);
 		}
+		SplitLeafWater(quadblocks);
 	}
 }
 
@@ -565,6 +596,17 @@ bool BSP::IsInvisible(const std::vector<Quadblock>& quadblocks)
 			return false;
 	}
 	return true;
+}
+
+bool BSP::HasWater(const std::vector<Quadblock>& quadblocks) const
+{
+	// Check if all quads in the node are invisible
+	for (size_t quadID : m_quadblockIndexes)
+	{
+		if (quadID < quadblocks.size() && (quadblocks[quadID].GetWater()))
+			return true;
+	}
+	return false;
 }
 
 std::vector<uint8_t> BSP::SerializeBranch(const std::vector<Quadblock>& quadblocks) const
@@ -623,6 +665,10 @@ std::vector<uint8_t> BSP::SerializeLeaf(size_t offQuads, const std::vector<Quadb
 	PSX::BSPLeaf leaf = {};
 	std::vector<uint8_t> buffer(sizeof(leaf));
 	leaf.flag = m_flags;
+	if (HasWater(quadblocks))
+		leaf.flag |= BSPFlags::WATER;
+	else
+		leaf.flag &= ~BSPFlags::WATER;
 	leaf.id = static_cast<uint16_t>(m_id);
 	leaf.bbox.min = ConvertVec3(m_bbox.min, FP_ONE_GEO);
 	leaf.bbox.max = ConvertVec3(m_bbox.max, FP_ONE_GEO);
