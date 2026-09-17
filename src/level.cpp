@@ -3322,7 +3322,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	//printf(nameof(offVisMemBSPP1) " = %zx\n", offVisMemBSPP1);
 	currOffset += visMemBSPP1.size() * sizeof(uint32_t);
 
-	std::vector<uint32_t> visMemOceanP1(visQuadSize);
+	std::vector<uint32_t> visMemOceanP1(visExtraSize);
 	const size_t offvisMemOceanP1 = currOffset;
 	currOffset += visMemOceanP1.size() * sizeof(uint32_t);
 
@@ -3330,7 +3330,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	visMem.offNodes[0] = static_cast<uint32_t>(offVisMemNodesP1);
 	visMem.offQuads[0] = static_cast<uint32_t>(offVisMemQuadsP1);
 	visMem.offBSP[0] = static_cast<uint32_t>(offVisMemBSPP1);
-	visMem.offOcean[0] = static_cast<uint32_t>(offVisMemBSPP1);
+	visMem.offOcean[0] = static_cast<uint32_t>(offvisMemOceanP1);
 	const size_t offVisMem = currOffset;
 	currOffset += sizeof(visMem);
 
