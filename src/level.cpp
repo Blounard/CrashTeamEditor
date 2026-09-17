@@ -86,6 +86,8 @@ void Level::Clear(bool clearErrors)
 		if (model) { model->Clear(model != m_models[LevelModels::LEVEL]); }
 	}
 	m_hasRawTexture = false;
+	m_envMapTex.ClearTexture();
+	m_rawWaterLayout = {};
 	m_materialCache.clear();
 	m_textureToPixelBounds.clear();
 }
@@ -858,6 +860,17 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	std::filesystem::path tempDir = levFile.parent_path() / (levFile.stem().string() + "_textures");
 	std::filesystem::create_directories(tempDir);
 	m_hasRawTexture = true;
+
+	// WATER
+	if (header.offEnvironmentMap != 0)
+	{
+		file.seekg(offLev + std::streampos(header.offEnvironmentMap));
+		Read(file, m_rawWaterLayout);
+		LayoutKey waterkey(m_rawWaterLayout);
+		PixelBounds waterBound{};
+		waterBound.Update(RawUV(m_rawWaterLayout));
+		m_envMapTex = Texture(waterkey, waterBound, vram, "envMap", tempDir);
+	}
 
 	// Load textures, AnimTex, and Quadblocks
 	std::map<size_t, std::array<uint32_t, NUM_FACES_QUADBLOCK>> quadblockFaceToAnimOffset; // Map: quadblock index -> Array animTexOffset per face
