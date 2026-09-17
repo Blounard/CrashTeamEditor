@@ -512,6 +512,7 @@ Quadblock::Quadblock(const PSX::Quadblock& quadblock, const std::vector<PSX::Ver
 		uint32_t packedFace = (quadblock.drawOrderLow >> (8 + i * 5)) & 0b11111;
 		m_faceRotateFlip[i] = packedFace & 0b111;
 		m_faceDrawMode[i] = (packedFace >> 3) & 0b11;
+		if (quadblock.drawOrderHigh[i] != 0) { m_drawOrderHigh = static_cast<int>(quadblock.drawOrderHigh[i]); }
 	}
 	m_terrain = quadblock.terrain;
 	m_downforce = static_cast<int>(quadblock.speedImpact);
@@ -673,6 +674,11 @@ bool Quadblock::GetVisTreeTransparent() const
 	return m_visTreeTransparent;
 }
 
+int Quadblock::GetDrawOrderHigh() const
+{
+	return m_drawOrderHigh;
+}
+
 uint32_t Quadblock::GetFaceRotateFlip(size_t face) const
 {
 	return m_faceRotateFlip[face];
@@ -752,6 +758,11 @@ void Quadblock::SetCheckpointPathable(bool pathable)
 void Quadblock::SetVisTreeTransparent(bool transparent)
 {
 	m_visTreeTransparent = transparent;
+}
+
+void Quadblock::SetDrawOrderHigh(int drawOrderHigh)
+{
+	m_drawOrderHigh = drawOrderHigh;
 }
 
 void Quadblock::SetName(const std::string& name)
@@ -1001,8 +1012,8 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 	{
 		uint32_t packedFace = m_faceRotateFlip[i] | (m_faceDrawMode[i] << 3);
 		quadblock.drawOrderLow |= packedFace << (8 + i * 5);
+		quadblock.drawOrderHigh[i] = static_cast<int8_t>(m_drawOrderHigh);
 	}
-	quadblock.drawOrderHigh = 0;
 	for (size_t i = 0; i < NUM_FACES_QUADBLOCK; i++)
 	{
 		if (m_animated)
@@ -1113,6 +1124,7 @@ void Quadblock::SetDefaultValues()
 	m_checkpointPathable = true;
 	m_checkpointStatus = false;
 	m_visTreeTransparent = false;
+	m_drawOrderHigh = 0x0;
 	m_trigger = QuadblockTrigger::NONE;
 	m_turboPadIndex = TURBO_PAD_INDEX_NONE;
 	m_hide = false;

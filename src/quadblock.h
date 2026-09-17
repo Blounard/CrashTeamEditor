@@ -135,6 +135,7 @@ public:
 	bool GetCheckpointStatus() const;
 	bool GetCheckpointPathable() const;
 	bool GetVisTreeTransparent() const;
+	int GetDrawOrderHigh() const;
 	uint32_t GetFaceRotateFlip(size_t face) const;
 	uint32_t GetFaceDrawMode(size_t face) const;
 	const QuadUV& GetQuadUV(size_t quad) const;
@@ -151,6 +152,7 @@ public:
 	void SetCheckpointStatus(bool active);
 	void SetCheckpointPathable(bool pathable);
 	void SetVisTreeTransparent(bool transparent);
+	void SetDrawOrderHigh(int drawOrderHigh);
 	void SetName(const std::string& name);
 	void SetTurboPadIndex(size_t index);
 	void SetHide(bool active);
@@ -198,6 +200,7 @@ private:
 	bool m_checkpointPathable;
 	bool m_checkpointStatus;
 	bool m_visTreeTransparent;
+	int m_drawOrderHigh;
 	bool m_hide;
 	Vertex m_p[NUM_VERTICES_QUADBLOCK];
 	BoundingBox m_bbox;
