@@ -85,6 +85,26 @@ void from_json(const nlohmann::json& json, Stars& stars)
     if (json.contains("depth")) { stars.zDepth = json["depth"]; }
 }
 
+void to_json(nlohmann::json& json, const Weather& weather)
+{
+	json = {
+		{"velocity", weather.velocity},
+		{"colorTop", weather.colorTop},
+		{"colorBottom", weather.colorBottom},
+		{"fillMode", weather.fillMode},
+		{"OTindex", weather.OTindex}
+	};
+}
+
+void from_json(const nlohmann::json& json, Weather& weather)
+{
+	if (json.contains("velocity")) { weather.velocity = json["velocity"]; }
+	if (json.contains("colorTop")) { weather.colorTop = json["colorTop"]; }
+	if (json.contains("colorBottom")) { weather.colorBottom = json["colorBottom"]; }
+	if (json.contains("fillMode")) { weather.fillMode = json["fillMode"]; }
+	if (json.contains("OTindex")) { weather.OTindex = json["OTindex"]; }
+}
+
 void ReadBinaryFile(std::vector<uint8_t>& v, const std::filesystem::path& path)
 {
 	std::ifstream file(path, std::ios::binary);
