@@ -56,6 +56,7 @@ void Level::Clear(bool clearErrors)
 	m_clearColor = Color();
 	m_stars = {};
 	m_stars.zDepth = static_cast<uint16_t>(OT_SIZE) - 2;
+	m_weather = {};
 	m_name.clear();
 	m_hotReloadLevPath.clear();
 	m_hotReloadVRMPath.clear();
@@ -481,6 +482,7 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 			m_splitLines[0] = json["splitLines"][0];
 			m_splitLines[1] = json["splitLines"][1];
 		}
+		if (json.contains("weather")) { json["weather"].get_to(m_weather); }
 		if (json.contains("skyboxObjPath"))
 		{
 			std::string skyboxPath = json["skyboxObjPath"];
@@ -552,6 +554,16 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 					{
 						m_propSpeedImpact.SetPreview(material, json[material + "_speedImpact"]);
 						m_propSpeedImpact.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+					}
+					if (json.contains(material + "_weatherIntensity"))
+					{
+						m_propWeatherIntensity.SetPreview(material, json[material + "_weatherIntensity"]);
+						m_propWeatherIntensity.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+					}
+					if (json.contains(material + "_weatherVanishRate"))
+					{
+						m_propWeatherVanishRate.SetPreview(material, json[material + "_weatherVanishRate"]);
+						m_propWeatherVanishRate.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 					}
 					if (json.contains(material + "_checkpointPathable"))
 					{
@@ -644,6 +656,7 @@ bool Level::SavePreset(const std::filesystem::path& path)
 	levelJson["clearColor"] = m_clearColor;
 	levelJson["stars"] = m_stars;
 	levelJson["splitLines"] = { m_splitLines[0], m_splitLines[1] };
+	levelJson["weather"] = m_weather;
 	if (!m_skybox.m_objPath.empty()) { levelJson["skyboxObjPath"] = m_skybox.m_objPath.string(); }
 	SaveJSON(dirPath / "level.json", levelJson);
 
@@ -674,6 +687,8 @@ bool Level::SavePreset(const std::filesystem::path& path)
 			materialJson[key + "_trigger"] = m_propTurboPads.GetBackup(key);
 			materialJson[key + "_speedImpact"] = m_propSpeedImpact.GetBackup(key);
 			materialJson[key + "_drawOrderHigh"] = m_propDrawOrderHigh.GetBackup(key);
+			materialJson[key + "_weatherIntensity"] = m_propWeatherIntensity.GetBackup(key);
+			materialJson[key + "_weatherVanishRate"] = m_propWeatherVanishRate.GetBackup(key);
 		}
 		materialJson["materials"] = materials;
 		SaveJSON(dirPath / "material.json", materialJson);
@@ -807,6 +822,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	m_stars = ConvertStars(header.stars);
 	m_splitLines[0] = ConvertFP(header.splitLines[0], FP_ONE_GEO);
 	m_splitLines[1] = ConvertFP(header.splitLines[1], FP_ONE_GEO);
+	m_weather = ConvertWeather(header.weather);
 	for (size_t i = 0; i < m_spawn.size(); i++)
 	{
 		m_spawn[i].pos = ConvertPSXVec3(header.driverSpawn[i].pos, FP_ONE_GEO);
@@ -1858,6 +1874,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	header.stars = ConvertStars(m_stars);
 	header.splitLines[0] = ConvertFloat(m_splitLines[0], FP_ONE_GEO);
 	header.splitLines[1] = ConvertFloat(m_splitLines[1], FP_ONE_GEO);
+	header.weather = ConvertWeather(m_weather);
 	header.offExtra = static_cast<uint32_t>(offExtraHeader);
 	header.numCheckpointNodes = static_cast<uint32_t>(m_checkpoints.size());
 	header.offCheckpointNodes = static_cast<uint32_t>(offCheckpoints);
@@ -1988,6 +2005,8 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 	m_name = objFile.filename().replace_extension().string();
 	m_parentPath = objFile.parent_path();
 
+	m_hasRawTexture = false;
+
 	bool ret = true;
 	std::vector<Point> globalVertices;
 	std::vector<Vec2> uvs;
@@ -2028,6 +2047,8 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 				m_propDoubleSided.SetDefaultValue(material, false);
 				m_propCheckpoints.SetDefaultValue(material, false);
 				m_propTurboPads.SetDefaultValue(material, QuadblockTrigger::NONE);
+				m_propWeatherIntensity.SetDefaultValue(material, 0);
+				m_propWeatherVanishRate.SetDefaultValue(material, 0);
 				m_propCheckpointPathable.SetDefaultValue(material, true);
 				m_propVisTreeTransparent.SetDefaultValue(material, false);
 				m_propDrawOrderHigh.SetDefaultValue(material, static_cast<int>(0));
@@ -2037,6 +2058,8 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 				m_propCheckpoints.RegisterMaterial(this);
 				m_propTurboPads.RegisterMaterial(this);
 				m_propSpeedImpact.RegisterMaterial(this);
+				m_propWeatherIntensity.RegisterMaterial(this);
+				m_propWeatherVanishRate.RegisterMaterial(this);
 				m_propCheckpointPathable.RegisterMaterial(this);
 				m_propVisTreeTransparent.RegisterMaterial(this);
 				m_propDrawOrderHigh.RegisterMaterial(this);

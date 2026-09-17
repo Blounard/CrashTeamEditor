@@ -26,6 +26,9 @@ void from_json(const nlohmann::json& json, ColorGradient& spawn);
 void to_json(nlohmann::json& json, const Stars& stars);
 void from_json(const nlohmann::json& json, Stars& stars);
 
+void to_json(nlohmann::json& json, const Weather& weather);
+void from_json(const nlohmann::json& json, Weather& weather);
+
 void ReadBinaryFile(std::vector<uint8_t>& v, const std::filesystem::path& path);
 
 template<typename T> static inline void Read(std::ifstream& file, T& data)
