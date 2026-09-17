@@ -167,28 +167,28 @@ namespace PSX
 		uint32_t offInstances; // 0x10
 		uint32_t numModels; // 0x14
 		uint32_t offModels; // 0x18
-		uint32_t offUnk_0x1C; // 0x1C
-		uint32_t offUnk_0x20; // 0x20
-		uint32_t offModelInstances; // 0x24
-		uint32_t offUnk_0x28; // 0x28
+		uint32_t offUnk_0x1C; // 0x1C //ptr to a region of 160 0xff's
+		uint32_t offUnk_0x20; // 0x20 //ptr to a region of 68 0xff's
+		uint32_t offInstancePtrArray; // 0x24
+		uint32_t offUnk_0x28; // 0x28 //Pointer to a VisibleSet. Used when a quad doesn't have a valid VisibleSet pointer
 		uint32_t null_0x2C; // 0x2C
 		uint32_t null_0x30; // 0x30
 		uint32_t numWaterVertices; // 0x34
 		uint32_t offWaterVertices; // 0x38
 		uint32_t offIconsLookup; // 0x3C
 		uint32_t offIcons; // 0x40
-		uint32_t offEnvironmentMap; // 0x44
+		uint32_t offEnvironmentMap; // 0x44 // Texture layout pointer according to penta
 		PSX::ColorGradient skyGradient[NUM_GRADIENT]; // 0x48
 		PSX::Spawn driverSpawn[NUM_DRIVERS]; // 0x6C
-		uint32_t offUnk_0xCC; // 0xCC
-		uint32_t offUnk_0xD0; // 0xD0
+		uint32_t offUnk_0xCC; // 0xCC //ptr to a region of 60 0xff's
+		uint32_t offUnk_0xD0; // 0xD0 //ptr to a region of 44 0xff's
 		uint32_t offLowTexArray; // 0xD4
 		PSX::Color clear; // 0xD8
 		uint32_t config; // 0xDC
 		uint32_t offBuildStart; // 0xE0
 		uint32_t offBuildEnd; // 0xE4
 		uint32_t offBuildType; // 0xE8
-		uint8_t unk_0xEC[0x18]; // 0xEC
+		uint8_t unk_0xEC[0x18]; // 0xEC // 0x18 0x0's
 		PSX::Weather weather; // 0x104
 		uint32_t offExtra; // 0x134
 		uint32_t numSpawnType_2; // 0x138
@@ -197,16 +197,16 @@ namespace PSX
 		uint32_t offSpawnType_2_posRot; // 0x144
 		uint32_t numCheckpointNodes; // 0x148
 		uint32_t offCheckpointNodes; // 0x14C
-		uint8_t unk_0x150[0x10]; // 0x150
+		uint8_t unk_0x150[0x10]; // 0x150 // 0x10 0x0's
 		PSX::Color gradientClear[3]; // 0x160
-		uint32_t unk_0x16C; // 0x16C
-		uint32_t unk_0x170; // 0x170
+		uint32_t unk_0x16C; // 0x16C // 0x0
+		uint32_t unk_0x170; // 0x170 //ptr to a region of 4 0xff's
 		uint32_t numSCVertices; // 0x174
 		uint32_t offSCVertices; // 0x178
 		Stars stars; // 0x17C
 		int16_t splitLines[2]; // 0x184
 		uint32_t offLevNavTable; // 0x188
-		uint32_t unk_0x18C; // 0x18C
+		uint32_t jumpYSpeedCap; // 0x18C // JUMP Y SPEED CAP
 		uint32_t offVisMem; // 0x190
 		uint8_t footer[0x60]; // 0x194
 	};
@@ -248,6 +248,34 @@ namespace PSX
 		uint16_t flags; // 0x6
 		PSX::Color colorHi; // 0x8
 		PSX::Color colorLo; // 0xC
+	};
+
+	struct WaterVertex
+	{
+		uint32_t offVertex;  // pointer to Vertex
+		uint32_t offOceanVertex; //pointer to OceanVertex
+	};
+
+	struct OceanVertexFrame
+	{
+		uint16_t u : 6;  // 0..63
+		uint16_t v : 6;  // 0..63
+		uint16_t brightness : 4;  // 0..15
+
+		bool operator==(const OceanVertexFrame& other) const
+		{
+			return u == other.u && v == other.v && brightness == other.brightness;
+		}
+	};
+
+	struct OceanVertex
+	{
+		OceanVertexFrame frames[NUM_FRAME_OVERT];
+
+		bool operator==(const OceanVertex& other) const
+		{
+			return std::memcmp(frames, other.frames, sizeof(frames)) == 0;
+		}
 	};
 
 	struct Quadblock

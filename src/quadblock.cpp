@@ -616,6 +616,11 @@ uint16_t Quadblock::GetFlags() const
 	return m_flags;
 }
 
+bool Quadblock::GetWater() const
+{
+	return m_water;
+}
+
 QuadblockTrigger Quadblock::GetTrigger() const
 {
 	return m_trigger;
@@ -741,6 +746,11 @@ void Quadblock::SetFlag(uint16_t flag)
 	m_flags = flag;
 }
 
+void Quadblock::SetWater(bool isWater)
+{
+	m_water = isWater;
+}
+
 void Quadblock::SetCheckpoint(int index)
 {
 	m_checkpointIndex = index;
@@ -844,6 +854,16 @@ void Quadblock::SetFaceUVs(size_t faceIndex, const QuadUV& uvs)
 void Quadblock::SetMaterial(size_t face, const std::string& material)
 {
 	m_materials[face] = material;
+}
+
+void Quadblock::SetOceanVertex(PSX::OceanVertex overt, size_t vertId)
+{
+	m_oVert[vertId] = overt;
+}
+
+PSX::OceanVertex Quadblock::GetOceanVertex(size_t vertId) const
+{
+	return m_oVert[vertId];
 }
 
 void Quadblock::SetWeatherIntensity(int intensity)
@@ -1161,6 +1181,11 @@ void Quadblock::SetDefaultValues()
 	m_renderPrimitiveIndex = RENDER_INDEX_NONE;
 	m_textureIDs = { -1, -1, -1, -1, -1 };
 	m_animTexOffset = { -1, -1, -1, -1, -1 };
+	m_water = false;
+	for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++)
+	{
+		m_oVert[i] = PSX::OceanVertex{};
+	}
 }
 
 Vec3 Quadblock::ComputeNormalVector(size_t id0, size_t id1, size_t id2) const

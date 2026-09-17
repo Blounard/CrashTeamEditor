@@ -12,6 +12,7 @@ static constexpr size_t NUM_LEV_CONFIG_FLAGS = 3;
 static constexpr size_t GHOST_DATA_FILESIZE = 0x3E00;
 static constexpr size_t NUM_VERTICES_QUADBLOCK = 9;
 static constexpr size_t OT_SIZE = 1024;
+static constexpr size_t NUM_FRAME_OVERT = 28;
 
 struct LevConfigFlags
 {
