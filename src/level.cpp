@@ -1224,6 +1224,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		}
 	}
 
+	// Load checkpoints
 	file.seekg(offLev + std::streampos(header.offCheckpointNodes));
 	for (uint32_t i = 0; i < header.numCheckpointNodes; i++)
 	{
@@ -1233,6 +1234,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	}
 	UpdateRenderCheckpointData();
 
+	// Load Ghosts
 	m_tropyGhost.clear();
 	m_oxideGhost.clear();
 	if (header.offExtra > 0)
@@ -1241,29 +1243,20 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		PSX::LevelExtraHeader extraHeader = {};
 		Read(file, extraHeader);
 		// Read N. Tropy Ghost
-		if (extraHeader.count >= PSX::LevelExtra::N_TROPY_GHOST + 1 &&
-			extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST] > 0)
+		if (extraHeader.count >= PSX::LevelExtra::N_TROPY_GHOST + 1 && extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST] > 0)
 		{
 			file.seekg(offLev + std::streampos(extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST]));
-			size_t ghostSize = 0;
-			if (extraHeader.count > PSX::LevelExtra::N_OXIDE_GHOST && extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST] > 0)
-			{
-				ghostSize = extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST] - extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST];
-			}
-			else
-			{
-				ghostSize = header.offLevNavTable - extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST];
-			}
-			m_tropyGhost.resize(ghostSize);
-			file.read(reinterpret_cast<char*>(m_tropyGhost.data()), ghostSize);
+			m_tropyGhost.resize(GHOST_DATA_FILESIZE);
+			file.read(reinterpret_cast<char*>(m_tropyGhost.data()), GHOST_DATA_FILESIZE);
 		}
 		// Read N. Oxide Ghost
 		if (extraHeader.count >= PSX::LevelExtra::N_OXIDE_GHOST + 1 && extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST] > 0)
 		{
 			file.seekg(offLev + std::streampos(extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST]));
-			size_t ghostSize = header.offLevNavTable - extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST];
-			m_oxideGhost.resize(ghostSize);
-			file.read(reinterpret_cast<char*>(m_oxideGhost.data()), ghostSize);
+			m_oxideGhost.resize(GHOST_DATA_FILESIZE);
+			file.read(reinterpret_cast<char*>(m_oxideGhost.data()), GHOST_DATA_FILESIZE);
+		}
+	}
 		}
 	}
 
