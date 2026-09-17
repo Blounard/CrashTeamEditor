@@ -508,34 +508,44 @@ void init_crashteameditor(py::module_& m)
 		.def("left_child", &BSP::GetLeftChildren, py::return_value_policy::reference_internal)
 		.def("right_child", &BSP::GetRightChildren, py::return_value_policy::reference_internal)
 		.def("parent", &BSP::GetParent, py::return_value_policy::reference_internal)
-		.def("tree", [](BSP& bsp) {
-			py::list nodes;
-			const std::vector<const BSP*> tree = bsp.GetTree();
-			py::object owner = py::cast(&bsp);
-			for (const BSP* node : tree)
-			{
-				nodes.append(py::cast(const_cast<BSP*>(node), py::return_value_policy::reference_internal, owner));
-			}
-			return nodes;
-		})
+		.def("tree", [](const BSP& bsp) {
+		py::list nodes;
+		const std::vector<const BSP*> tree = bsp.GetTree();
+		py::object owner = py::cast(&bsp);
+		for (const BSP* node : tree)
+		{
+			nodes.append(py::cast(const_cast<BSP*>(node), py::return_value_policy::reference_internal, owner));
+		}
+		return nodes;
+			})
 		.def("leaves", [](BSP& bsp) {
-			py::list nodes;
-			const std::vector<const BSP*> leaves = bsp.GetLeaves();
-			py::object owner = py::cast(&bsp);
-			for (const BSP* node : leaves)
-			{
-				nodes.append(py::cast(const_cast<BSP*>(node), py::return_value_policy::reference_internal, owner));
-			}
-			return nodes;
-		})
+		py::list nodes;
+		const std::vector<const BSP*> leaves = bsp.GetLeaves();
+		py::object owner = py::cast(&bsp);
+		for (const BSP* node : leaves)
+		{
+			nodes.append(py::cast(const_cast<BSP*>(node), py::return_value_policy::reference_internal, owner));
+		}
+		return nodes;
+			})
 		.def("set_quadblock_indexes", &BSP::SetQuadblockIndexes)
+		.def("split_leaf", &BSP::SplitLeafGeometry, py::arg("quadblocks"), py::arg("axis"), py::arg("midpoint"))
 		.def("clear", &BSP::Clear)
-		.def("generate", &BSP::Generate, py::arg("quadblocks"), py::arg("max_quads_per_leaf"), py::arg("max_axis_length"));
+		.def("generate", [](BSP& bsp, const std::vector<Quadblock>& quadblocks)
+			{
+				bsp.Generate(quadblocks);
+			}
+	, py::arg("quadblocks"));
+
+	py::class_<BitMatrix>(m, "VisTree")
+		.def(py::init<>())
+		.def("get", &BitMatrix::Get, py::arg("x"), py::arg("y"))
+		.def("set", &BitMatrix::Set, py::arg("val"), py::arg("x"), py::arg("y"));
 
 	py::class_<Level> level(m, "Level");
 	level
 		.def(py::init<>())
-		.def("load", &Level::Load, py::arg("filename"))
+		.def("load", [](Level& self, const std::string& filename) {return self.Load(filename, true); }, py::arg("filename"))
 		.def("save", &Level::SaveLEV, py::arg("path"), py::arg("useRawTex"))
 		.def_property_readonly("is_loaded", &Level::IsLoaded)
 		.def("clear", &Level::Clear, py::arg("clear_errors") = true)
@@ -544,6 +554,7 @@ void init_crashteameditor(py::module_& m)
 		.def_property_readonly("name", &Level::GetName, py::return_value_policy::copy)
 		.def_property_readonly("quadblocks", &Level::GetQuadblocks, py::return_value_policy::reference_internal)
 		.def_property_readonly("bsp", &Level::GetBSP, py::return_value_policy::reference_internal)
+		.def_property_readonly("vistree", &Level::GetVisTree, py::return_value_policy::reference_internal)
 		.def_property_readonly("checkpoints", &Level::GetCheckpoints, py::return_value_policy::reference_internal)
 		.def_property_readonly("checkpoint_paths", &Level::GetCheckpointPaths, py::return_value_policy::reference_internal)
 		.def_property_readonly("model_level", &Level::GetLevelModel, py::return_value_policy::reference_internal)
@@ -558,6 +569,7 @@ void init_crashteameditor(py::module_& m)
 		.def("get_material_quadblock_indexes", &Level::GetMaterialQuadblockIndexes, py::arg("material"), py::return_value_policy::copy)
 		.def("load_preset", &Level::LoadPreset, py::arg("filename"))
 		.def("save_preset", &Level::SavePreset, py::arg("path"))
+		.def("generate_vistree", &Level::GenerateVisTreeLev)
 		.def("get_renderer_selected_data", [](Level& level) {
 			auto selection = level.GetRendererSelectedData();
 			const auto& quadblocks = std::get<0>(selection);

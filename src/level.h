@@ -42,7 +42,7 @@ namespace LevelModels
 class Level
 {
 public:
-	bool Load(const std::filesystem::path& filename);
+	bool Load(const std::filesystem::path& filename, bool isLevel);
 	bool SaveLEV(const std::filesystem::path& path, bool useRawTextures);
 	bool IsLoaded() const;
 	bool HasRawTexture() const; 
@@ -50,6 +50,7 @@ public:
 	const std::string& GetName() const;
 	std::vector<Quadblock>& GetQuadblocks();
 	BSP& GetBSP();
+	BitMatrix& GetVisTree();
 	std::vector<Checkpoint>& GetCheckpoints();
 	std::vector<Path>& GetCheckpointPaths();
 	const std::filesystem::path& GetParentPath() const;
@@ -63,6 +64,8 @@ public:
 	Model* GetSelectedModel();
 	Model* GetMultiSelectedModel();
 	Model* GetFilterModel();
+	bool GenerateBSP();
+	bool GenerateVisTreeLev();
 	bool LoadPreset(const std::filesystem::path& filename);
 	bool SavePreset(const std::filesystem::path& path);
 	void ResetFilter();
@@ -72,15 +75,15 @@ public:
 private:
 	void ManageTurbopad(Quadblock& quadblock);
 	bool LoadLEV(const std::filesystem::path& levFile);
-	bool LoadOBJ(const std::filesystem::path& objFile);
+	bool LoadOBJ(const std::filesystem::path& objFile, bool isLevel);
 	bool StartEmuIPC(const std::string& emulator);
 	bool HotReload(const std::string& levPath, const std::string& vrmPath, const std::string& emulator);
 	bool SaveGhostData(const std::string& emulator, const std::filesystem::path& path);
 	bool SetGhostData(const std::filesystem::path& path, bool tropy);
 	bool UpdateVRM();
 	bool GenerateCheckpoints();
-	bool GenerateBSP();
-
+	bool ReOrderBSP();
+	
 	void OpenHotReloadWindow();
 	void RenderUI(Renderer& renderer);
 
@@ -102,12 +105,6 @@ private:
 	bool m_showLogWindow;
 	bool m_showHotReloadWindow;
 	bool m_loaded;
-	bool m_simpleVisTree;
-	bool m_genVisTree;
-	int m_maxQuadPerLeaf;
-	float m_maxLeafAxisLength;
-	float m_distanceNearClip;
-	float m_distanceFarClip;
 
 	std::vector<std::tuple<std::string, std::string>> m_invalidQuadblocks;
 	std::string m_logMessage;

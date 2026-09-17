@@ -15,13 +15,13 @@
 #include <map>
 #include <algorithm>
 
-bool Level::Load(const std::filesystem::path& filename)
+bool Level::Load(const std::filesystem::path& filename, bool isLevel)
 {
 	Clear(true);
 	if (!filename.has_filename() || !filename.has_extension()) { return false; }
 	std::filesystem::path ext = filename.extension();
 	if (ext == ".lev") { return LoadLEV(filename); }
-	if (ext == ".obj") { return LoadOBJ(filename); }
+	if (ext == ".obj") { return LoadOBJ(filename, isLevel); }
 	return false;
 }
 
@@ -70,13 +70,7 @@ void Level::Clear(bool clearErrors)
 	m_animTextures.clear();
 	m_rendererQueryPoint = Vec3();
 	m_rendererSelectedQuadblockIndexes.clear();
-	m_genVisTree = false;
-	m_simpleVisTree = false;
 	m_bspVis.Clear();
-	m_maxQuadPerLeaf = 31;
-	m_maxLeafAxisLength = 64.0f;
-	m_distanceNearClip = -1.0f;
-	m_distanceFarClip = 1000.0f;
 	m_pythonConsole.clear();
 	m_saveScript = false;
 	m_vrm.clear();
@@ -108,6 +102,11 @@ std::vector<Quadblock>& Level::GetQuadblocks()
 BSP& Level::GetBSP()
 {
 	return m_bsp;
+}
+
+BitMatrix& Level::GetVisTree()
+{
+	return m_bspVis;
 }
 
 std::vector<Checkpoint>& Level::GetCheckpoints()
@@ -195,15 +194,61 @@ bool Level::GenerateBSP()
 	std::vector<size_t> quadIndexes;
 	for (size_t i = 0; i < m_quadblocks.size(); i++) { quadIndexes.push_back(i); }
 	m_bsp.Clear();
-	m_bsp.SetQuadblockIndexes(quadIndexes);
-	m_bsp.Generate(m_quadblocks, m_maxQuadPerLeaf, m_maxLeafAxisLength);
+	m_bspVis.Clear();
+	ResetAllBSPID();
+	m_bsp.SetId(0);
+	m_bsp.SetQuadblockIndexes(quadIndexes, m_quadblocks);
+	m_bsp.ComputeBoundingBox(m_quadblocks);
+	m_bsp.Generate(m_quadblocks);
 	if (m_bsp.IsValid())
 	{
 		GenerateRenderBspData();
-		if (m_genVisTree) { m_bspVis = GenerateVisTree(m_quadblocks, &m_bsp, m_simpleVisTree, m_distanceNearClip, m_distanceFarClip); }
 		return true;
 	}
 	m_bsp.Clear();
+	return false;
+}
+
+bool Level::ReOrderBSP()
+{
+	ResetAllBSPID();
+	std::vector<BSP*> bspNodes = m_bsp.GetTree();
+	std::sort(bspNodes.begin(), bspNodes.end(),
+		[](const BSP* a, const BSP* b)
+		{
+			if (a->GetId() == b->GetId())
+				printf("ERROR : 2 BSP NODES SHARE THE SAME ID : %zu\n", b->GetId());
+			return a->GetId() < b->GetId();
+		});
+	std::unordered_map<size_t, size_t> bspIDOverride; // Map old ID -> New ID
+	for (const BSP* bsp : bspNodes)
+	{
+		size_t oldID = bsp->GetId();
+		size_t newID = bspIDOverride.size();
+		if (oldID != newID)
+		{
+			printf("INFO : BSP ID WAS CHANGED %zu -> %zu\n", oldID, newID);
+		}
+		bspIDOverride[oldID] = newID;
+	}
+	for (BSP* bsp : bspNodes)
+	{
+		bsp->SetId(bspIDOverride[bsp->GetId()]);
+	}
+	for (Quadblock& quad : m_quadblocks)
+	{
+		quad.SetBSPID(bspIDOverride[quad.GetBSPID()]);
+	}
+	return true;
+}
+
+bool Level::GenerateVisTreeLev()
+{
+	if (m_bsp.IsValid())
+	{
+		m_bspVis = GenerateVisTree(m_quadblocks, &m_bsp);
+		return true;
+	}
 	return false;
 }
 
@@ -1043,21 +1088,17 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	}
 
 
+	// Load BSP
 	m_bsp.Clear();
 	file.seekg(offLev + std::streampos(meshInfo.offBSPNodes));
 	std::vector<BSP*> bspArray;
-	for (uint32_t i = 0; i < meshInfo.numBSPNodes; i++)
-	{
-		bspArray.push_back(new BSP());
-	}
-
+	for (uint32_t i = 0; i < meshInfo.numBSPNodes; i++) { bspArray.push_back(new BSP()); }
 	for (uint32_t i = 0; i < meshInfo.numBSPNodes; i++)
 	{
 		uint16_t flag;
 		std::streampos nodeStart = file.tellg();
 		Read(file, flag);
 		file.seekg(nodeStart);
-
 		if (flag & BSPFlags::LEAF)
 		{
 			PSX::BSPLeaf leaf = {};
@@ -1071,15 +1112,117 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 			bspArray[branch.id]->PopulateBranch(branch, bspArray, meshInfo.numBSPNodes);
 		}
 	}
-
 	if (!bspArray.empty())
 	{
 		m_bsp = *(bspArray[0]);
 		m_bsp.PopulateBranchQuadIndexes();
 		if (m_bsp.IsValid()) { GenerateRenderBspData(); }
-		else { m_bsp.Clear(); }
+		else { m_bsp.Clear(); printf("ERROR : Couldn't load BSP Tree : Empty leaves\n"); }
 	}
 	else { m_bsp.Clear(); }
+	std::set<size_t> validID;
+	std::vector<const BSP*> tree = static_cast<const BSP&>(m_bsp).GetTree();
+	for (const BSP* bsp : tree) { validID.insert(bsp->GetId()); }
+	for (BSP* bsp : bspArray) { if (!validID.contains(bsp->GetId())) { m_bsp.Clear(); printf("ERROR : Couldn't load BSP Tree : Missing IDs\n"); break ; } }
+
+
+	m_bspVis.Clear();
+	// Load VisTree
+	if (header.offVisMem != 0)
+	{
+		file.seekg(offLev + static_cast<std::streamoff>(header.offVisMem));
+		PSX::VisualMem visMem = {};
+		Read(file, visMem);
+
+		if (visMem.offNodes[0] != 0)
+		{
+			std::vector<const BSP*> bspLeaves = m_bsp.GetLeaves();
+			std::vector<const BSP*> bspNodes = static_cast<const BSP&>(m_bsp).GetTree();
+
+			m_bspVis = BitMatrix(bspLeaves.size(), bspLeaves.size());
+
+			std::map<size_t, size_t> leafIdToMatrix;
+			for (size_t i = 0; i < bspLeaves.size(); i++)
+			{
+				leafIdToMatrix[bspLeaves[i]->GetId()] = i;
+			}
+			printf("leafIdToMatrixSize : %zu\n", leafIdToMatrix.size());
+			const size_t visNodeSize = (bspNodes.size() + 31) / 32;
+			printf("visNodeSize : %zu\n", visNodeSize);
+
+			auto decompressVisNodes = [&](std::streampos srcPos) -> std::vector<uint32_t>
+				{
+					std::vector<uint8_t> dst(visNodeSize * sizeof(uint32_t), 0);
+					file.seekg(srcPos);
+					size_t dstIdx = 0;
+					while (dstIdx < dst.size())
+					{
+						int8_t c;
+						Read(file, c);
+						if (c == 0) { break; }
+						if (c < 0)
+						{
+							int count = (-c) + 1;
+							uint8_t val;
+							Read(file, val);
+							for (int i = 0; i < count && dstIdx < dst.size(); i++)
+								dst[dstIdx++] = val;
+						}
+						else
+						{
+							int count = c;
+							for (int i = 0; i < count && dstIdx < dst.size(); i++)
+							{
+								uint8_t val;
+								Read(file, val);
+								dst[dstIdx++] = val;
+							}
+						}
+					}
+					std::vector<uint32_t> result(visNodeSize);
+					std::memcpy(result.data(), dst.data(), dst.size());
+					return result;
+				};
+
+			for (size_t q = 0; q < m_quadblocks.size(); q++)
+			{
+				uint32_t offVisibleSet = quadblocksVisibleSetOff[q];
+				if (offVisibleSet == 0) { continue; }
+				PSX::VisibleSet visSet = {};
+				file.seekg(offLev + static_cast<std::streamoff>(offVisibleSet));
+				Read(file, visSet);
+				if (visSet.offVisibleBSPNodes == 0) { continue; }
+				size_t leafID = m_quadblocks[q].GetBSPID() & ~BSPID::LEAF;
+				if (!leafIdToMatrix.contains(leafID)) { continue; }
+				size_t visTreeID = leafIdToMatrix[leafID];
+
+				bool compressed = visSet.offVisibleBSPNodes & 1;
+				uint32_t actualOff = visSet.offVisibleBSPNodes & ~3u;
+				std::streampos srcPos = offLev + static_cast<std::streamoff>(actualOff);
+
+				std::vector<uint32_t> visNodes;
+				if (compressed)
+				{
+					visNodes = decompressVisNodes(srcPos);
+				}
+				else
+				{
+					file.seekg(srcPos);
+					visNodes.resize(visNodeSize);
+					for (size_t i = 0; i < visNodeSize; i++) { Read(file, visNodes[i]); }
+				}
+
+				for (size_t i = 0; i < bspLeaves.size(); i++)
+				{
+					size_t destBspId = bspLeaves[i]->GetId();
+					if (destBspId / 32 >= visNodes.size()) { continue; }
+					uint32_t word = visNodes[destBspId / 32];
+					uint32_t bit = 1u << (31 - (destBspId % 32));
+					if (word & bit) { m_bspVis.Set(true, visTreeID, i); }
+				}
+			}
+		}
+	}
 
 	file.seekg(offLev + std::streampos(header.offCheckpointNodes));
 	for (uint32_t i = 0; i < header.numCheckpointNodes; i++)
@@ -1155,9 +1298,22 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	m_hotReloadLevPath = path / (m_name + ".lev");
 	std::ofstream file(m_hotReloadLevPath, std::ios::binary);
 
-	if (m_bsp.IsEmpty()) { GenerateBSP(); }
 
-	std::vector<const BSP*> bspNodes = m_bsp.GetTree();
+	if (m_bsp.IsEmpty()) { GenerateBSP(); }
+	ReOrderBSP();
+
+	std::vector<const BSP*> bspNodes = static_cast<const BSP&>(m_bsp).GetTree();
+	std::set<size_t> bspIds;
+	for (const BSP* bsp : bspNodes) { bspIds.insert(bsp->GetId()); }
+	size_t bspcounter = 0;
+	for (size_t bspid : bspIds)
+	{
+		if (bspcounter != bspid)
+		{
+			printf("BSP ID MISMATCH AT ID %zu\n", bspcounter);
+		}
+		bspcounter++;
+	}
 	std::vector<const BSP*> orderedBSPNodes(bspNodes.size());
 	for (const BSP* bsp : bspNodes) { orderedBSPNodes[bsp->GetId()] = bsp; }
 
@@ -1392,7 +1548,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	size_t bspSize = 0;
 	for (const BSP* bsp : orderedBSPNodes)
 	{
-		serializedBSPs.push_back(bsp->Serialize(currOffset));
+		serializedBSPs.push_back(bsp->Serialize(currOffset, m_quadblocks));
 		bspSize += serializedBSPs.back().size();
 		if (bsp->IsBranch()) { continue; }
 		const std::vector<size_t>& quadIndexes = bsp->GetQuadblockIndexes();
@@ -1401,8 +1557,9 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 			const Quadblock& quadblock = m_quadblocks[index];
 			std::vector<Vertex> quadVertices = quadblock.GetVertices();
 			std::vector<size_t> verticesIndexes;
-			for (const Vertex& vertex : quadVertices)
+			for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++)
 			{
+				const Vertex& vertex = quadVertices[i];
 				if (!vertexMap.contains(vertex))
 				{
 					size_t vertexIndex = orderedVertices.size();
@@ -1420,10 +1577,17 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 
 	constexpr size_t BITS_PER_SLOT = sizeof(uint32_t) * 8;
 	std::vector<std::tuple<std::vector<uint32_t>, size_t>> visibleNodes;
+	std::vector<std::vector<uint32_t>> uniqueVisNodes;
+	std::map<std::vector<uint32_t>, size_t> visNodesOffsetMap;
 	std::vector<std::tuple<std::vector<uint32_t>, size_t>> visibleQuads;
+	std::vector<std::vector<uint32_t>> uniqueVisQuads;
+	std::map<std::vector<uint32_t>, size_t> visQuadsOffsetMap;
 	std::vector<std::tuple<std::vector<uint32_t>, size_t>> visibleInstances;
+	std::vector<std::tuple<std::vector<uint32_t>, size_t>> visibleExtra;
 	size_t visNodeSize = static_cast<size_t>(std::ceil(static_cast<float>(bspNodes.size()) / static_cast<float>(BITS_PER_SLOT)));
 	size_t visQuadSize = static_cast<size_t>(std::ceil(static_cast<float>(m_quadblocks.size()) / static_cast<float>(BITS_PER_SLOT)));
+	size_t visExtraSize = 1;
+	std::vector<uint32_t> visibleExtraAll(visExtraSize, 0xFFFFFFFF);
 	std::vector<uint32_t> visibleNodeAll(visNodeSize, 0xFFFFFFFF);
 	for (const BSP* bsp : orderedBSPNodes)
 	{
@@ -1432,19 +1596,23 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 
 	std::vector<uint32_t> visibleQuadsAll(visQuadSize, 0xFFFFFFFF);
 	size_t quadIndex = 0;
-	const bool validVisTree = m_genVisTree && !m_bspVis.IsEmpty();
+	for (const Quadblock* quad : orderedQuads)
+	{
+		if (quad->GetFlags() & QuadFlags::INVISIBLE_TRIGGER)
+		{
+			visibleQuadsAll[quadIndex / BITS_PER_SLOT] &= ~(1 << (quadIndex % BITS_PER_SLOT));
+		}
+		quadIndex++;
+	}
+	const bool validVisTree = !m_bspVis.IsEmpty();
 	const std::vector<const BSP*> bspLeaves = m_bsp.GetLeaves();
 	std::unordered_map<size_t, const BSP*> idToLeaf;
 	std::unordered_map<const BSP*, size_t> leafToMatrix;
 	for (const BSP* leaf : bspLeaves) { idToLeaf[leaf->GetId()] = leaf; }
 	for (size_t i = 0; i < bspLeaves.size(); i++) { leafToMatrix[bspLeaves[i]] = i; }
-	for (const Quadblock* quad : orderedQuads)
+	if (validVisTree)
 	{
-		if (quad->GetFlags() & (QuadFlags::INVISIBLE_TRIGGER))
-		{
-			visibleQuadsAll[quadIndex / BITS_PER_SLOT] &= ~(1 << (quadIndex % BITS_PER_SLOT));
-		}
-		if (validVisTree)
+		for (const Quadblock* quad : orderedQuads)
 		{
 			std::vector<uint32_t> visNodes(visNodeSize, 0x0);
 			const BSP* bspLeaf = idToLeaf[quad->GetBSPID()];
@@ -1461,25 +1629,57 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 					}
 				}
 			}
-			visibleNodes.push_back({visNodes, currOffset});
-			currOffset += visNodes.size() * sizeof(uint32_t);
+			if (visNodesOffsetMap.contains(visNodes))
+			{
+				visibleNodes.push_back({ visNodes, visNodesOffsetMap.at(visNodes) });
+			}
+			else
+			{
+				visNodesOffsetMap[visNodes] = currOffset;
+				visibleNodes.push_back({ visNodes, currOffset });
+				uniqueVisNodes.push_back(visNodes);
+				currOffset += visNodes.size() * sizeof(uint32_t);
+			}
 		}
-		quadIndex++;
+		for (const Quadblock* quad : orderedQuads)
+		{
+			std::vector<uint32_t> visQuads(visQuadSize, 0x0);
+			const BSP* bspLeaf = idToLeaf[quad->GetBSPID()];
+			const size_t matrixId = leafToMatrix[bspLeaf];
+			visQuads = visibleQuadsAll; //Saves space, doesn't seem to cost performances. Vanilla does store all visible quad from visible leaves at this point
+			if (visQuadsOffsetMap.contains(visQuads))
+			{
+				visibleQuads.push_back({ visQuads, visQuadsOffsetMap.at(visQuads) });
+			}
+			else
+			{
+				visQuadsOffsetMap[visQuads] = currOffset;
+				visibleQuads.push_back({ visQuads, currOffset });
+				uniqueVisQuads.push_back(visQuads);
+				currOffset += visQuads.size() * sizeof(uint32_t);
+			}
+		}
 	}
-
-	if (!validVisTree)
+	else // not valid vistree
 	{
-		visibleNodes.push_back({visibleNodeAll, currOffset});
+		visibleNodes.push_back({ visibleNodeAll, currOffset });
+		uniqueVisNodes.push_back(visibleNodeAll);
 		currOffset += visibleNodeAll.size() * sizeof(uint32_t);
-	}
 
-	visibleQuads.push_back({visibleQuadsAll, currOffset});
-	currOffset += visibleQuadsAll.size() * sizeof(uint32_t);
+		visibleQuads.push_back({ visibleQuadsAll, currOffset });
+		uniqueVisQuads.push_back(visibleQuadsAll);
+		currOffset += visibleQuadsAll.size() * sizeof(uint32_t);
+	}
 
 	std::vector<uint32_t> visibleInstancesDummy;
 	visibleInstancesDummy.push_back(0);
-	visibleInstances.push_back({visibleInstancesDummy, currOffset});
+	visibleInstances.push_back({ visibleInstancesDummy, currOffset });
 	currOffset += visibleInstancesDummy.size() * sizeof(uint32_t);
+
+
+	visibleExtra.push_back({ visibleExtraAll, currOffset });
+	currOffset += visibleExtraAll.size() * sizeof(uint32_t);
+
 
 	std::unordered_map<PSX::VisibleSet, size_t> visibleSetMap;
 	std::vector<PSX::VisibleSet> visibleSets;
@@ -1488,11 +1688,18 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	for (size_t quadCount = 0; quadCount < orderedQuads.size(); quadCount++)
 	{
 		PSX::VisibleSet set = {};
-		if (validVisTree) { set.offVisibleBSPNodes = static_cast<uint32_t>(std::get<size_t>(visibleNodes[quadCount])); }
-		else { set.offVisibleBSPNodes = static_cast<uint32_t>(std::get<size_t>(visibleNodes[0])); }
-		set.offVisibleQuadblocks = static_cast<uint32_t>(std::get<size_t>(visibleQuads[0]));
+		if (validVisTree)
+		{
+			set.offVisibleBSPNodes = static_cast<uint32_t>(std::get<size_t>(visibleNodes[quadCount]));
+			set.offVisibleQuadblocks = static_cast<uint32_t>(std::get<size_t>(visibleQuads[quadCount]));
+		}
+		else
+		{
+			set.offVisibleBSPNodes = static_cast<uint32_t>(std::get<size_t>(visibleNodes[0]));
+			set.offVisibleQuadblocks = static_cast<uint32_t>(std::get<size_t>(visibleQuads[0]));
+		}
 		set.offVisibleInstances = static_cast<uint32_t>(std::get<size_t>(visibleInstances[0]));
-		set.offVisibleExtra = 0;
+		set.offVisibleExtra = static_cast<uint32_t>(std::get<size_t>(visibleExtra[0]));
 
 		size_t visibleSetIndex = 0;
 		if (visibleSetMap.contains(set)) { visibleSetIndex = visibleSetMap.at(set); }
@@ -1506,7 +1713,6 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		PSX::Quadblock* serializedQuad = reinterpret_cast<PSX::Quadblock*>(serializedQuads[quadCount].data());
 		serializedQuad->offVisibleSet = static_cast<uint32_t>(offVisibleSet + sizeof(PSX::VisibleSet) * visibleSetIndex);
 	}
-
 	currOffset += visibleSets.size() * sizeof(PSX::VisibleSet);
 
 	const size_t offVertices = currOffset;
@@ -1691,6 +1897,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		pointerMap.push_back(CALCULATE_OFFSET(PSX::VisibleSet, offVisibleBSPNodes, offCurrVisibleSet));
 		pointerMap.push_back(CALCULATE_OFFSET(PSX::VisibleSet, offVisibleQuadblocks, offCurrVisibleSet));
 		pointerMap.push_back(CALCULATE_OFFSET(PSX::VisibleSet, offVisibleInstances, offCurrVisibleSet));
+		pointerMap.push_back(CALCULATE_OFFSET(PSX::VisibleSet, offVisibleExtra, offCurrVisibleSet));
 		offCurrVisibleSet += sizeof(PSX::VisibleSet);
 	}
 
@@ -1708,20 +1915,17 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	Write(file, texGroups.data(), texGroups.size() * sizeof(PSX::TextureGroup));
 	if (!animData.empty()) { Write(file, animData.data(), animData.size()); }
 	for (const std::vector<uint8_t>& serializedQuad : serializedQuads) { Write(file, serializedQuad.data(), serializedQuad.size()); }
-	for (const auto& tuple : visibleNodes)
-	{
-		const std::vector<uint32_t>& visibleNode = std::get<0>(tuple);
-		Write(file, visibleNode.data(), visibleNode.size() * sizeof(uint32_t));
-	}
-	for (const auto& tuple : visibleQuads)
-	{
-		const std::vector<uint32_t>& visibleQuad = std::get<0>(tuple);
-		Write(file, visibleQuad.data(), visibleQuad.size() * sizeof(uint32_t));
-	}
+	for (const auto& visNode : uniqueVisNodes) { Write(file, visNode.data(), visNode.size() * sizeof(uint32_t)); }
+	for (const auto& visQuad : uniqueVisQuads) { Write(file, visQuad.data(), visQuad.size() * sizeof(uint32_t)); }
 	for (const auto& tuple : visibleInstances)
 	{
 		const std::vector<uint32_t>& visibleInst = std::get<0>(tuple);
 		Write(file, visibleInst.data(), visibleInst.size() * sizeof(uint32_t));
+	}
+	for (const auto& tuple : visibleExtra)
+	{
+		const std::vector<uint32_t>& v = std::get<0>(tuple);
+		Write(file, v.data(), v.size() * sizeof(uint32_t));
 	}
 	Write(file, visibleSets.data(), visibleSets.size() * sizeof(PSX::VisibleSet));
 	for (const std::vector<uint8_t>& serializedVertex : serializedVertices) { Write(file, serializedVertex.data(), serializedVertex.size()); }
@@ -1743,7 +1947,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	return true;
 }
 
-bool Level::LoadOBJ(const std::filesystem::path& objFile)
+bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 {
 	std::string line;
 	std::ifstream file(objFile);
@@ -2023,7 +2227,7 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile)
 	}
 	m_loaded = ret;
 
-	if (m_loaded)
+	if (m_loaded && isLevel)
 	{
 		std::filesystem::path presetFolder = m_parentPath / (m_name + "_presets");
 		if (std::filesystem::is_directory(presetFolder))
@@ -2034,9 +2238,9 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile)
 				if (json.has_extension() && json.extension() == ".json") { LoadPreset(json); }
 			}
 		}
+		GenerateRenderLevData();
+		GenerateBSP();
 	}
-	GenerateRenderLevData();
-	GenerateBSP();
 	return ret;
 }
 
@@ -2495,7 +2699,7 @@ void Level::GenerateRenderSelectedBlockData(const Quadblock& quadblock, const Ve
 		Mesh::RenderFlags::DrawWireframe | Mesh::RenderFlags::DrawBackfaces | Mesh::RenderFlags::ForceDrawOnTop | Mesh::RenderFlags::DrawLinesAA | Mesh::RenderFlags::DontOverrideRenderFlags | Mesh::RenderFlags::QuadblockLod,
 		Mesh::ShaderFlags::Blinky);
 
-	if (GuiRenderSettings::showVisTree)
+	if (GuiRenderSettings::showVisTree && !m_bspVis.IsEmpty())
 	{
 		std::vector<const BSP*> bspLeaves = m_bsp.GetLeaves();
 		size_t myBSPIndex = 0;
@@ -2509,7 +2713,7 @@ void Level::GenerateRenderSelectedBlockData(const Quadblock& quadblock, const Ve
 		for (size_t bsp_index = 0; bsp_index < bspLeaves.size(); bsp_index++)
 		{
 			const BSP& bsp = *bspLeaves[bsp_index];
-			if (m_bspVis.Get(bsp_index, myBSPIndex))
+			if (m_bspVis.Get(myBSPIndex, bsp_index))
 			{
 				const std::vector<size_t> qbIndeces = bsp.GetQuadblockIndexes();
 				for (size_t qbInd : qbIndeces)
