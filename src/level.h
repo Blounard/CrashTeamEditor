@@ -153,6 +153,7 @@ private:
 	MaterialProperty<bool, MaterialType::CHECKPOINT_PATHABLE> m_propCheckpointPathable;
 	MaterialProperty<bool, MaterialType::VISTREE_TRANSPARENT> m_propVisTreeTransparent;
 	MaterialProperty<int, MaterialType::DRAW_ORDER_HIGH> m_propDrawOrderHigh;
+	MaterialProperty<bool, MaterialType::WATER> m_propWater;
 
 	std::array<Model*, LevelModels::COUNT> m_models;
 

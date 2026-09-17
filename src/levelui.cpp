@@ -397,6 +397,19 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 			return true;
 		}
 	}
+	else if constexpr (M == MaterialType::WATER)
+	{
+		T& preview = GetPreview(material);
+		ImGui::Checkbox("Water", &preview);
+		ImGui::SameLine();
+
+		static ButtonUI waterApplyButton = ButtonUI();
+		if (waterApplyButton.Show(("Apply##water" + material).c_str(), "Water successfully updated.", UnsavedChanges(material)))
+		{
+			Apply(material, quadFaces, quadblocks);
+			return true;
+		}
+		}
 	return false;
 }
 
@@ -720,6 +733,7 @@ void Level::RenderUI(Renderer& renderer)
 					
 					m_propCheckpoints.RenderUI(material, quadFaces, m_quadblocks);
 					m_propCheckpointPathable.RenderUI(material, quadFaces, m_quadblocks);
+					m_propWater.RenderUI(material, quadFaces, m_quadblocks);
 					m_propVisTreeTransparent.RenderUI(material, quadFaces, m_quadblocks);
 					if (m_propTurboPads.RenderUI(material, quadFaces, m_quadblocks))
 					{
@@ -1657,6 +1671,7 @@ bool Quadblock::RenderUI(size_t checkpointCount, bool& resetBsp)
 		ImGui::Text("Checkpoint Index: ");
 		ImGui::SameLine();
 		if (ImGui::InputInt("##cp", &m_checkpointIndex)) { m_checkpointIndex = Clamp(m_checkpointIndex, -1, static_cast<int>(checkpointCount)); }
+		ImGui::Checkbox("Water", &m_water);
 		ImGui::Checkbox("VisTree Transparency", &m_visTreeTransparent);
 		ImGui::Text("Trigger:");
 		if (ImGui::RadioButton("None", m_trigger == QuadblockTrigger::NONE))

@@ -582,6 +582,11 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 						m_propDrawOrderHigh.SetPreview(material, json[material + "_drawOrderHigh"]);
 						m_propDrawOrderHigh.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 					}
+					if (json.contains(material + "_water"))
+					{
+						m_propWater.SetPreview(material, json[material + "_water"]);
+						m_propWater.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+					}
 				}
 			}
 		}
@@ -689,6 +694,7 @@ bool Level::SavePreset(const std::filesystem::path& path)
 			materialJson[key + "_trigger"] = m_propTurboPads.GetBackup(key);
 			materialJson[key + "_speedImpact"] = m_propSpeedImpact.GetBackup(key);
 			materialJson[key + "_drawOrderHigh"] = m_propDrawOrderHigh.GetBackup(key);
+			materialJson[key + "_water"] = m_propWater.GetBackup(key);
 			materialJson[key + "_weatherIntensity"] = m_propWeatherIntensity.GetBackup(key);
 			materialJson[key + "_weatherVanishRate"] = m_propWeatherVanishRate.GetBackup(key);
 		}
@@ -2065,6 +2071,7 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 				m_propCheckpointPathable.SetDefaultValue(material, true);
 				m_propVisTreeTransparent.SetDefaultValue(material, false);
 				m_propDrawOrderHigh.SetDefaultValue(material, static_cast<int>(0));
+				m_propWater.SetDefaultValue(material, false);
 				m_propTerrain.RegisterMaterial(this);
 				m_propQuadFlags.RegisterMaterial(this);
 				m_propDoubleSided.RegisterMaterial(this);
@@ -2076,6 +2083,7 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 				m_propCheckpointPathable.RegisterMaterial(this);
 				m_propVisTreeTransparent.RegisterMaterial(this);
 				m_propDrawOrderHigh.RegisterMaterial(this);
+				m_propWater.RegisterMaterial(this);
 			}
 
 			try
