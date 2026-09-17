@@ -2699,7 +2699,7 @@ void Level::GenerateRenderSelectedBlockData(const Quadblock& quadblock, const Ve
 		Mesh::RenderFlags::DrawWireframe | Mesh::RenderFlags::DrawBackfaces | Mesh::RenderFlags::ForceDrawOnTop | Mesh::RenderFlags::DrawLinesAA | Mesh::RenderFlags::DontOverrideRenderFlags | Mesh::RenderFlags::QuadblockLod,
 		Mesh::ShaderFlags::Blinky);
 
-	if (GuiRenderSettings::showVisTree)
+	if (GuiRenderSettings::showVisTree && !m_bspVis.IsEmpty())
 	{
 		std::vector<const BSP*> bspLeaves = m_bsp.GetLeaves();
 		size_t myBSPIndex = 0;
