@@ -1125,6 +1125,105 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	for (const BSP* bsp : tree) { validID.insert(bsp->GetId()); }
 	for (BSP* bsp : bspArray) { if (!validID.contains(bsp->GetId())) { m_bsp.Clear(); printf("ERROR : Couldn't load BSP Tree : Missing IDs\n"); break ; } }
 
+
+	m_bspVis.Clear();
+	// Load VisTree
+	if (header.offVisMem != 0)
+	{
+		file.seekg(offLev + static_cast<std::streamoff>(header.offVisMem));
+		PSX::VisualMem visMem = {};
+		Read(file, visMem);
+
+		if (visMem.offNodes[0] != 0)
+		{
+			std::vector<const BSP*> bspLeaves = m_bsp.GetLeaves();
+			std::vector<const BSP*> bspNodes = static_cast<const BSP&>(m_bsp).GetTree();
+
+			m_bspVis = BitMatrix(bspLeaves.size(), bspLeaves.size());
+
+			std::map<size_t, size_t> leafIdToMatrix;
+			for (size_t i = 0; i < bspLeaves.size(); i++)
+			{
+				leafIdToMatrix[bspLeaves[i]->GetId()] = i;
+			}
+			printf("leafIdToMatrixSize : %zu\n", leafIdToMatrix.size());
+			const size_t visNodeSize = (bspNodes.size() + 31) / 32;
+			printf("visNodeSize : %zu\n", visNodeSize);
+
+			auto decompressVisNodes = [&](std::streampos srcPos) -> std::vector<uint32_t>
+				{
+					std::vector<uint8_t> dst(visNodeSize * sizeof(uint32_t), 0);
+					file.seekg(srcPos);
+					size_t dstIdx = 0;
+					while (dstIdx < dst.size())
+					{
+						int8_t c;
+						Read(file, c);
+						if (c == 0) { break; }
+						if (c < 0)
+						{
+							int count = (-c) + 1;
+							uint8_t val;
+							Read(file, val);
+							for (int i = 0; i < count && dstIdx < dst.size(); i++)
+								dst[dstIdx++] = val;
+						}
+						else
+						{
+							int count = c;
+							for (int i = 0; i < count && dstIdx < dst.size(); i++)
+							{
+								uint8_t val;
+								Read(file, val);
+								dst[dstIdx++] = val;
+							}
+						}
+					}
+					std::vector<uint32_t> result(visNodeSize);
+					std::memcpy(result.data(), dst.data(), dst.size());
+					return result;
+				};
+
+			for (size_t q = 0; q < m_quadblocks.size(); q++)
+			{
+				uint32_t offVisibleSet = quadblocksVisibleSetOff[q];
+				if (offVisibleSet == 0) { continue; }
+				PSX::VisibleSet visSet = {};
+				file.seekg(offLev + static_cast<std::streamoff>(offVisibleSet));
+				Read(file, visSet);
+				if (visSet.offVisibleBSPNodes == 0) { continue; }
+				size_t leafID = m_quadblocks[q].GetBSPID() & ~BSPID::LEAF;
+				if (!leafIdToMatrix.contains(leafID)) { continue; }
+				size_t visTreeID = leafIdToMatrix[leafID];
+
+				bool compressed = visSet.offVisibleBSPNodes & 1;
+				uint32_t actualOff = visSet.offVisibleBSPNodes & ~3u;
+				std::streampos srcPos = offLev + static_cast<std::streamoff>(actualOff);
+
+				std::vector<uint32_t> visNodes;
+				if (compressed)
+				{
+					visNodes = decompressVisNodes(srcPos);
+				}
+				else
+				{
+					file.seekg(srcPos);
+					visNodes.resize(visNodeSize);
+					for (size_t i = 0; i < visNodeSize; i++) { Read(file, visNodes[i]); }
+				}
+
+				for (size_t i = 0; i < bspLeaves.size(); i++)
+				{
+					size_t destBspId = bspLeaves[i]->GetId();
+					if (destBspId / 32 >= visNodes.size()) { continue; }
+					uint32_t word = visNodes[destBspId / 32];
+					uint32_t bit = 1u << (31 - (destBspId % 32));
+					if (word & bit) { m_bspVis.Set(true, visTreeID, i); }
+				}
+			}
+		}
+	}
+
 	file.seekg(offLev + std::streampos(header.offCheckpointNodes));
 	for (uint32_t i = 0; i < header.numCheckpointNodes; i++)
 	{
@@ -2614,7 +2713,7 @@ void Level::GenerateRenderSelectedBlockData(const Quadblock& quadblock, const Ve
 		for (size_t bsp_index = 0; bsp_index < bspLeaves.size(); bsp_index++)
 		{
 			const BSP& bsp = *bspLeaves[bsp_index];
-			if (m_bspVis.Get(bsp_index, myBSPIndex))
+			if (m_bspVis.Get(myBSPIndex, bsp_index))
 			{
 				const std::vector<size_t> qbIndeces = bsp.GetQuadblockIndexes();
 				for (size_t qbInd : qbIndeces)

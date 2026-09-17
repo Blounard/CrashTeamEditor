@@ -131,6 +131,13 @@ void BSP::PopulateLeaf(PSX::BSPLeaf& leaf, std::vector<BSP*>& bspArray, std::vec
 		uint32_t relative_offset = leaf.offQuads - offQuadblocks;
 		m_quadblockIndexes.push_back(i + relative_offset / sizeof(PSX::Quadblock));
 	}
+	for (size_t i : m_quadblockIndexes)
+	{
+		if (i < quadblocks.size())
+		{
+			quadblocks[i].SetBSPID(m_id);
+		}
+	}
 }
 
 
