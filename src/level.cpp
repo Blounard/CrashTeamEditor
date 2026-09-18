@@ -81,6 +81,10 @@ void Level::Clear(bool clearErrors)
 	m_splitLines[0] = 0.0;
 	m_splitLines[1] = 0.0;
 	m_jumpYSpeedCap = 0;
+	for (int i = 0; i < 3; i++)
+	{
+		m_botPaths[i].Clear();
+	}
 	for (Model* model : m_models)
 	{
 		if (model) { model->Clear(model != m_models[LevelModels::LEVEL]); }
@@ -177,6 +181,11 @@ Model* Level::GetCheckpointModel()
 	return m_models[LevelModels::CHECKPOINT];
 }
 
+Model* Level::GetBotModel()
+{
+	return m_models[LevelModels::BOT];
+}
+
 Model* Level::GetSelectedModel()
 {
 	return m_models[LevelModels::SELECTED];
@@ -253,6 +262,76 @@ bool Level::GenerateVisTreeLev()
 		return true;
 	}
 	return false;
+}
+
+void Level::GenerateBotPathChangeCode()
+{
+	constexpr float DIST_NEXT_NODE = 10.0f;
+	auto findTargetNode = [](const std::vector<BotNode>& targetNodes, const Vec3& pos) -> int
+		{
+			size_t nodeCount = targetNodes.size();
+			// Find closest first
+			int   targetIndex = 0;
+			float bestDist = std::numeric_limits<float>::max();
+			for (int i = 0; i < static_cast<int>(targetNodes.size()); i++)
+			{
+				const float dist = (targetNodes[i].GetPos() - pos).LengthSquared();
+				if (dist < bestDist)
+				{
+					bestDist = dist;
+					targetIndex = i;
+				}
+			}
+			// Take a node some distance after
+			float dist = 0.0f;
+			int k = 0;
+			while (dist < DIST_NEXT_NODE && k < 15)
+			{
+				dist += (targetNodes[(targetIndex + 1) % nodeCount].GetPos() - targetNodes[targetIndex].GetPos()).Length();
+				targetIndex = (targetIndex + 1) % nodeCount;
+				k++;
+			}
+			return targetIndex;
+		};
+
+	for (int i = 0; i < 3; i++)
+	{
+		if (!m_botPaths[i].IsValid()) return;
+	}
+	const std::vector<BotNode>& leftNodes = m_botPaths[0].GetNodes();
+	const std::vector<BotNode>& middleNodes = m_botPaths[1].GetNodes();
+	const std::vector<BotNode>& rightNodes = m_botPaths[2].GetNodes();
+
+	for (int i = 0; i < static_cast<int>(leftNodes.size()); i++)
+	{
+		BotNode& node = m_botPaths[0].GetNode(i);
+		const int closestMid = findTargetNode(middleNodes, node.GetPos());
+		node.SetPathChange(1);
+		node.SetPathChangeIndex(closestMid);
+	}
+
+	for (int i = 0; i < static_cast<int>(rightNodes.size()); i++)
+	{
+		BotNode& node = m_botPaths[2].GetNode(i);
+		const int closestMid = findTargetNode(middleNodes, node.GetPos());
+		node.SetPathChange(1);
+		node.SetPathChangeIndex(closestMid);
+	}
+
+	for (int i = 0; i < static_cast<int>(middleNodes.size()); i++)
+	{
+		BotNode& node = m_botPaths[1].GetNode(i);
+		if (i % 2 == 0)
+		{
+			node.SetPathChange(0);
+			node.SetPathChangeIndex(findTargetNode(leftNodes, node.GetPos()));
+		}
+		else
+		{
+			node.SetPathChange(2);
+			node.SetPathChangeIndex(findTargetNode(rightNodes, node.GetPos()));
+		}
+	}
 }
 
 bool Level::GenerateCheckpoints()
@@ -1449,6 +1528,36 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		}
 	}
 
+	// Load BotNodes
+	if (header.offLevNavTable != 0)
+	{
+		file.seekg(offLev + std::streampos(header.offLevNavTable));
+		PSX::levAINavTable navTable{};
+		Read(file, navTable);
+		for (int i = 0; i < 3; i++)
+		{
+			if (navTable.offAIPathArray[i] != 0)
+			{
+				file.seekg(offLev + std::streampos(navTable.offAIPathArray[i]));
+				PSX::NavHeader navHeader{};
+				Read(file, navHeader);
+
+				std::vector<PSX::NavFrame> nodes;
+				PSX::NavFrame startLine{};
+				Read(file, startLine);
+				nodes.push_back(startLine);
+				for (int j = 0; j < navHeader.numPoints; j++)
+				{
+					PSX::NavFrame navFrame{};
+					Read(file, navFrame);
+					nodes.push_back(navFrame);
+				}
+				m_botPaths[i] = BotPath(navHeader, nodes);
+			}
+		}
+		UpdateRenderBotData();
+	}
+
 	m_loaded = true;
 	file.close();
 	GenerateRenderLevData();
@@ -2015,10 +2124,25 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	currOffset += sizeof(extraHeader);
 
 	constexpr size_t BOT_PATH_COUNT = 3;
-	std::vector<PSX::NavHeader> navHeaders(BOT_PATH_COUNT);
+	PSX::levAINavTable navTable{};
+	std::vector<std::vector<uint8_t>> serializedBotPaths;
 
-	const size_t offNavHeaders = currOffset;
-	currOffset += navHeaders.size() * sizeof(PSX::NavHeader);
+	const size_t offNavTable = currOffset;
+	currOffset += sizeof(navTable);
+
+	for (int i = 0; i < BOT_PATH_COUNT; i++)
+	{
+		if (m_botPaths[i].IsValid())
+		{
+			navTable.offAIPathArray[i] = static_cast<uint32_t>(currOffset);
+			serializedBotPaths.push_back(m_botPaths[i].Serialize());
+			currOffset += serializedBotPaths.back().size();
+		}
+		else
+		{
+			navTable.offAIPathArray[i] = 0;
+		}
+	}
 
 	std::vector<uint32_t> visMemNodesP1(visNodeSize);
 	const size_t offVisMemNodesP1 = currOffset;
@@ -2082,7 +2206,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	header.numCheckpointNodes = static_cast<uint32_t>(m_checkpoints.size());
 	header.offCheckpointNodes = static_cast<uint32_t>(offCheckpoints);
 	header.offVisMem = static_cast<uint32_t>(offVisMem);
-	header.offLevNavTable = static_cast<uint32_t>(offNavHeaders);
+	header.offLevNavTable = static_cast<uint32_t>(offNavTable);
 	header.offWaterVertices = static_cast<uint32_t>(offWaterVertices);
 	header.numWaterVertices = static_cast<uint32_t>(waterVertices.size());
 	header.offEnvironmentMap = static_cast<uint32_t>(offEnvMapLayout);
@@ -2167,6 +2291,12 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		pointerMap.push_back(static_cast<uint32_t>(offset));
 	}
 
+	for (size_t i = 0; i < 3; i++)
+	{
+		if (m_botPaths[i].IsValid())
+			pointerMap.push_back(CALCULATE_OFFSET(PSX::levAINavTable, offAIPathArray[i], offNavTable));
+	}
+
 	for (size_t i = 0; i < waterVertices.size(); i++)
 	{
 		pointerMap.push_back(CALCULATE_OFFSET(PSX::WaterVertex, offVertex, offWaterVertices + i * sizeof(PSX::WaterVertex)));
@@ -2203,7 +2333,8 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	if (!m_tropyGhost.empty()) { Write(file, m_tropyGhost.data(), m_tropyGhost.size()); }
 	if (!m_oxideGhost.empty()) { Write(file, m_oxideGhost.data(), m_oxideGhost.size()); }
 	Write(file, &extraHeader, sizeof(extraHeader));
-	Write(file, navHeaders.data(), navHeaders.size() * sizeof(PSX::NavHeader));
+	Write(file, &navTable, sizeof(navTable));
+	for (const std::vector<uint8_t>& serializedBotPath : serializedBotPaths) { Write(file, serializedBotPath.data(), serializedBotPath.size()); }
 	Write(file, visMemNodesP1.data(), visMemNodesP1.size() * sizeof(uint32_t));
 	Write(file, visMemQuadsP1.data(), visMemQuadsP1.size() * sizeof(uint32_t));
 	Write(file, visMemBSPP1.data(), visMemBSPP1.size() * sizeof(uint32_t));
@@ -2768,6 +2899,9 @@ void Level::InitModels(Renderer& renderer)
 
 	m_models[LevelModels::SKYBOX] = m_models[LevelModels::LEVEL]->AddModel();
 	m_models[LevelModels::SKYBOX]->SetRenderCondition([]() { return GuiRenderSettings::showSkybox; });
+
+	m_models[LevelModels::BOT] = m_models[LevelModels::LEVEL]->AddModel();
+	m_models[LevelModels::BOT]->SetRenderCondition([]() { return GuiRenderSettings::showBots; });
 }
 
 void Level::GenerateRenderLevData()
@@ -2939,6 +3073,58 @@ void Level::UpdateRenderCheckpointData()
 	}
 
 	checkpointModel->GetMesh().SetGeometry(checkTriangles, Mesh::RenderFlags::DrawBackfaces | Mesh::RenderFlags::DontOverrideRenderFlags);
+}
+
+void Level::UpdateRenderBotData()
+{
+	Model* botModel = m_models[LevelModels::BOT];
+	if (!botModel) { return; }
+	botModel->ClearModels();
+
+	// Check if any path has nodes at all
+	bool anyNodes = false;
+	for (const BotPath& path : m_botPaths)
+		if (path.GetNodeCount() > 0) { anyNodes = true; break; }
+
+	if (!anyNodes)
+	{
+		botModel->GetMesh().Clear();
+		return;
+	}
+
+	constexpr float labelHeightOffset = 1.5f;
+	std::vector<Primitive> botTriangles;
+
+	for (int pathIndex = 0; pathIndex < 3; pathIndex++)
+	{
+		const BotPath& path = m_botPaths[pathIndex];
+		const Color& c = BotPathSettings::pathColor[pathIndex];
+
+		for (size_t nodeIndex = 0; nodeIndex < path.GetNodeCount(); nodeIndex++)
+		{
+			const BotNode& node = path.GetNode(nodeIndex);
+			const Vec3& pos = node.GetPos();
+
+			Vertex v = Vertex(Point(pos.x, pos.y, pos.z, c.r, c.g, c.b));
+			const std::vector<Primitive> tris = v.ToGeometry();
+			botTriangles.insert(botTriangles.end(), tris.begin(), tris.end());
+
+			Model* label = botModel->AddModel();
+			label->GetMesh().SetGeometry(
+				std::to_string(nodeIndex),
+				Text3D::Align::CENTER,
+				Color(c.r, c.g, c.b, 255u)
+			);
+			Vec3 labelPos = pos;
+			labelPos.y += labelHeightOffset;
+			label->SetPosition(labelPos);
+		}
+	}
+
+	botModel->GetMesh().SetGeometry(
+		botTriangles,
+		Mesh::RenderFlags::DrawBackfaces | Mesh::RenderFlags::DontOverrideRenderFlags
+	);
 }
 
 void Level::GenerateRenderStartpointData()

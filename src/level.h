@@ -5,6 +5,7 @@
 #include "checkpoint.h"
 #include "lev.h"
 #include "bsp.h"
+#include "bots.h"
 #include "path.h"
 #include "material.h"
 #include "texture.h"
@@ -36,7 +37,8 @@ namespace LevelModels
 	static constexpr size_t MULTI_SELECTED = 5;
 	static constexpr size_t FILTER = 6;
 	static constexpr size_t SKYBOX = 7;
-	static constexpr size_t COUNT = 8;
+	static constexpr size_t BOT = 8;
+	static constexpr size_t COUNT = 9;
 };
 
 class Level
@@ -61,16 +63,19 @@ public:
 	Model* GetBspModel();
 	Model* GetSpawnModel();
 	Model* GetCheckpointModel();
+	Model* GetBotModel();
 	Model* GetSelectedModel();
 	Model* GetMultiSelectedModel();
 	Model* GetFilterModel();
 	bool GenerateBSP();
 	bool GenerateVisTreeLev();
+	void GenerateBotPathChangeCode();
 	bool LoadPreset(const std::filesystem::path& filename);
 	bool SavePreset(const std::filesystem::path& path);
 	void ResetFilter();
 	void ResetRendererSelection();
 	void UpdateRenderCheckpointData();
+	void UpdateRenderBotData();
 
 private:
 	void ManageTurbopad(Quadblock& quadblock);
@@ -135,6 +140,7 @@ private:
 	BitMatrix m_bspVis;
 	std::vector<uint8_t> m_vrm;
 	Skybox m_skybox;
+	BotPath m_botPaths[3];
 	Texture m_envMapTex;
 
 	bool m_hasRawTexture;
