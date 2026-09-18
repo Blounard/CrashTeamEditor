@@ -1178,6 +1178,38 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	}
 
 
+	if (header.offWaterVertices != 0)
+	{
+		file.seekg(offLev + std::streampos(header.offWaterVertices));
+		for (uint32_t i = 0; i < header.numWaterVertices; i++)
+		{
+			PSX::WaterVertex wv;
+			Read(file, wv);
+			std::streampos currentPos = file.tellg();
+
+			if (wv.offVertex == 0 || wv.offOceanVertex == 0)
+			{
+				printf("ERROR : WaterVertex with nullptr at vertex number %d\n", i);
+				continue;
+			}
+			file.seekg(offLev + std::streampos(wv.offVertex));
+			PSX::Vertex v;
+			Read(file, v);
+
+			file.seekg(offLev + std::streampos(wv.offOceanVertex));
+			PSX::OceanVertex ov;
+			Read(file, ov);
+
+			for (std::tuple<size_t, size_t>& tuple : vertToQuad[wv.offVertex])
+			{
+				size_t quadID = std::get<0>(tuple);
+				size_t vertID = std::get<1>(tuple);
+				m_quadblocks[quadID].SetOceanVertex(ov, vertID);
+			}
+			file.seekg(currentPos);
+		}
+	}
+
 	// Load BSP
 	m_bsp.Clear();
 	file.seekg(offLev + std::streampos(meshInfo.offBSPNodes));
