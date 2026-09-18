@@ -1031,8 +1031,10 @@ bool Level::GenerateMinimap()
 		uint8_t g = color;
 		uint8_t b = color;
 		uint8_t a;
-		if (color == 0 || color == 255)
+		if (color == 255)
 			a = 255;
+		else if (color == 0)
+			a = 0;
 		else
 			a = 128;
 		rgba[i * 4 + 0] = r;
@@ -1597,6 +1599,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				LayoutKey mapKey(icon.texLayout);
 				PixelBounds bounds{};
 				bounds.Update(RawUV(icon.texLayout));
+				mapKey.blendMode = PSX::BlendMode::ADDITIVE; // Blend mode is not used for rendering minimaps, additive alwyas used ? (or a minimap specific one).
 				minimapTop = Texture(mapKey, bounds, vram, "minimap_top", tempDir, true);
 
 			}
@@ -1605,6 +1608,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				LayoutKey mapKey(icon.texLayout);
 				PixelBounds bounds{};
 				bounds.Update(RawUV(icon.texLayout));
+				mapKey.blendMode = PSX::BlendMode::ADDITIVE;
 				minimapBottom = Texture(mapKey, bounds, vram, "minimap_bottom", tempDir, true);
 			}
 		}
