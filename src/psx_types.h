@@ -423,6 +423,30 @@ struct std::hash<PSX::VisibleSet>
 	}
 };
 
+template<>
+struct std::hash<PSX::OceanVertex>
+{
+	inline std::size_t operator()(const PSX::OceanVertex& key) const noexcept
+	{
+		std::size_t seed = 0;
+		for (size_t i = 0; i < NUM_FRAME_OVERT; i++)
+		{
+			HashCombine(seed, key.frames[i]);
+		}
+		return seed;
+	}
+};
+template<>
+struct std::hash<PSX::OceanVertexFrame>
+{
+	inline std::size_t operator()(const PSX::OceanVertexFrame& key) const noexcept
+	{
+		uint16_t packed;
+		std::memcpy(&packed, &key, sizeof(packed));
+		return std::hash<uint16_t>{}(packed);
+	}
+};
+
 static constexpr int16_t FP_ONE = 0x1000;
 static constexpr int16_t FP_ONE_GEO = 64;
 static constexpr int16_t FP_ONE_CP = 8;
