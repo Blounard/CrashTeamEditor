@@ -665,6 +665,16 @@ void Level::RenderUI(Renderer& renderer)
 				ImGui::TreePop();
 			}
 
+			if (ImGui::TreeNode("Jump vertical Speed Cap"))
+			{
+				ImGui::Text("Jump Vertical Speed Cap");
+				ImGui::SameLine();
+				if (ImGui::InputInt("##jysc", &m_jumpYSpeedCap))
+					m_jumpYSpeedCap = Clamp(m_jumpYSpeedCap, 0, 80);
+				ImGui::SetItemTooltip("Set the maximum vertical speed you can have from jumping\n");
+				ImGui::TreePop();
+			}
+
 			if (ImGui::TreeNode("Reflection Surface Height"))
 			{
 				ImGui::Text("Reflection 1:"); 
