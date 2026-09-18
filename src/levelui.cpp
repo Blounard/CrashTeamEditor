@@ -669,6 +669,26 @@ void Level::RenderUI(Renderer& renderer)
 	{
 		if (ImGui::Begin("Spawn", &Settings::w_spawn))
 		{
+			static std::string spawnButtonMessage;
+			static ButtonUI generateSpawnButton = ButtonUI();
+			static float spawnRowSpacing = 3.5f;
+			static float spawnColSpacing = 3.0f;
+			static float centerOffset = 0.0f;
+
+			ImGui::SetNextItemWidth(200.0f);
+			ImGui::DragFloat("Row Spacing##spawnRowSpace", &spawnRowSpacing, 0.1f, 0.1f, 30.0f, "%.1f");
+			ImGui::SetNextItemWidth(200.0f);
+			ImGui::DragFloat("Column Spacing##spawnColSpace", &spawnColSpacing, 0.1f, 0.1f, 30.0f, "%.1f");
+			ImGui::SetNextItemWidth(200.0f);
+			ImGui::DragFloat("Center Offset##spawnColSpace", &centerOffset, 0.1f, -30.0f, 30.0f, "%.1f");
+
+			if (generateSpawnButton.Show("Generate from checkpoint", spawnButtonMessage, false))
+			{
+				if (GenerateSpawn(spawnColSpacing, spawnRowSpacing, centerOffset)) { spawnButtonMessage = "Successfully generated the spawn positions."; }
+				else { spawnButtonMessage = "Failed generating the spawn position."; }
+				GenerateRenderStartpointData();
+			}
+
 			for (size_t i = 0; i < NUM_DRIVERS; i++)
 			{
 				if (ImGui::TreeNode(("Driver " + std::to_string(i)).c_str()))
