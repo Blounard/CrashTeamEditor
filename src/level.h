@@ -83,6 +83,7 @@ private:
 	bool UpdateVRM();
 	bool GenerateCheckpoints();
 	bool ReOrderBSP();
+	bool GenerateOceanVertices();
 	
 	void OpenHotReloadWindow();
 	void RenderUI(Renderer& renderer);
@@ -133,10 +134,13 @@ private:
 	BitMatrix m_bspVis;
 	std::vector<uint8_t> m_vrm;
 	Skybox m_skybox;
+	Texture m_envMapTex;
 
 	bool m_hasRawTexture;
 	std::unordered_map<LayoutKey, std::string> m_materialCache; // Layout Key -> matName
 	std::unordered_map<LayoutKey, PixelBounds> m_textureToPixelBounds; // Map Layout key -> Pixels bounds of the texture.
+	PSX::TextureLayout m_rawWaterLayout;
+
 	std::map<std::string, std::vector<std::pair<size_t, size_t>>> m_materialToQuadFaces; // MaterialName -> List of (QuadId, FaceId)
 	std::unordered_map<std::string, Texture> m_materialToTexture;
 	MaterialProperty<std::string, MaterialType::TERRAIN> m_propTerrain;
@@ -150,6 +154,7 @@ private:
 	MaterialProperty<bool, MaterialType::CHECKPOINT_PATHABLE> m_propCheckpointPathable;
 	MaterialProperty<bool, MaterialType::VISTREE_TRANSPARENT> m_propVisTreeTransparent;
 	MaterialProperty<int, MaterialType::DRAW_ORDER_HIGH> m_propDrawOrderHigh;
+	MaterialProperty<bool, MaterialType::WATER> m_propWater;
 
 	std::array<Model*, LevelModels::COUNT> m_models;
 
