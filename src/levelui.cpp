@@ -967,10 +967,12 @@ void Level::RenderUI(Renderer& renderer)
 				m_checkpointPaths.push_back(Path(m_checkpointPaths.size()));
 			}
 			ImGui::SameLine();
+			ImGui::BeginDisabled(m_checkpointPaths.empty());
 			if (ImGui::Button("Delete Path"))
 			{
 				m_checkpointPaths.pop_back();
 			}
+			ImGui::EndDisabled();
 
 			bool ready = !m_checkpointPaths.empty();
 			for (const Path& path : m_checkpointPaths)
@@ -979,9 +981,13 @@ void Level::RenderUI(Renderer& renderer)
 			}
 			ImGui::BeginDisabled(!ready);
 			static ButtonUI generateButton;
-			if (generateButton.Show("Generate", "Checkpoints successfully generated.", false))
+			static std::string generateCkptMessage;
+			if (generateButton.Show("Generate", generateCkptMessage, false))
 			{
-				GenerateCheckpoints();
+				if (GenerateCheckpoints())
+					generateCkptMessage = "Checkpoints successfully generated.";
+				else
+					generateCkptMessage = "Warning : Checkpoints couldn't be generated properly. Check log window.";
 			}
 			ImGui::EndDisabled();
 			ImGui::TreePop();

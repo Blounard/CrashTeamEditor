@@ -261,15 +261,32 @@ bool Level::GenerateCheckpoints()
 
 	for (const Path& path : m_checkpointPaths) { if (!path.IsReady()) { return false; } }
 
+	ResetFilter();
+	for (size_t i = 0; i < m_quadblocks.size(); i++)
+	{
+		m_quadblocks[i].SetCheckpoint(-1);
+	}
 	size_t checkpointIndex = 0;
 	std::vector<size_t> linkNodeIndexes;
 	std::vector<std::vector<Checkpoint>> pathCheckpoints;
+	bool anyOverlap = false;
+	int pathId = 0;
 	for (Path& path : m_checkpointPaths)
 	{
-		pathCheckpoints.push_back(path.GeneratePath(checkpointIndex, m_quadblocks));
+		bool overlap = false;
+		pathCheckpoints.push_back(path.GeneratePath(checkpointIndex, m_quadblocks, overlap));
 		checkpointIndex += pathCheckpoints.back().size();
 		linkNodeIndexes.push_back(path.GetStart());
 		linkNodeIndexes.push_back(path.GetEnd());
+		anyOverlap = anyOverlap || overlap;
+		if (overlap)
+		{
+			m_showLogWindow = true;
+			m_logMessage += "\n\nWarning : Path " + std::to_string(pathId) + " is touching a previous path.";
+			m_logMessage += "\nMake sure that all your path are not sharing any quadblocks.";
+			m_logMessage += "\nIf 2 paths touch each other, make sure to specify the Quadblock Ignore List to detach both path.";
+		}
+		pathId++;
 	}
 	m_checkpoints.clear();
 	for (const std::vector<Checkpoint>& checkpoints : pathCheckpoints)
@@ -305,6 +322,20 @@ bool Level::GenerateCheckpoints()
 		}
 	}
 
+	for (Path& path : m_checkpointPaths)
+	{
+		const Checkpoint& middleStart = m_checkpoints[path.GetStart()];
+		const Checkpoint& middleEnd = m_checkpoints[path.GetEnd()];
+
+		Path* sides[2] = { path.GetLeft(), path.GetRight() };
+		for (Path* side : sides)
+		{
+			if (!side) { continue; }
+			m_checkpoints[side->GetStart()].UpdateDown(middleStart.GetDown());
+			m_checkpoints[side->GetEnd()].UpdateUp(middleEnd.GetUp());
+		}
+	}
+
 	// Cap the number of checkpoints to 255
 	const size_t MAX_CHECKPOINTS = 255;
 	if (m_checkpoints.size() > MAX_CHECKPOINTS)
@@ -332,7 +363,7 @@ bool Level::GenerateCheckpoints()
 			{
 				float distToNext = (m_checkpoints[downIndex].GetPos() - cp.GetPos()).Length();
 				currentDistances[i] = distToNext;
-				distToNextMap.insert({distToNext, i});
+				distToNextMap.insert({ distToNext, i });
 			}
 		}
 
@@ -367,7 +398,7 @@ bool Level::GenerateCheckpoints()
 				float newDist = oldDist + removedDist;
 
 				auto range = distToNextMap.equal_range(oldDist);
-				for (auto mapIt = range.first; mapIt != range.second; ++mapIt)
+				for (auto& mapIt = range.first; mapIt != range.second; ++mapIt)
 				{
 					if (mapIt->second == upIndex)
 					{
@@ -377,7 +408,7 @@ bool Level::GenerateCheckpoints()
 				}
 
 				currentDistances[upIndex] = newDist;
-				distToNextMap.insert({newDist, upIndex});
+				distToNextMap.insert({ newDist, upIndex });
 			}
 
 			++it;
@@ -449,8 +480,9 @@ bool Level::GenerateCheckpoints()
 	}
 
 	UpdateRenderCheckpointData();
-	return true;
+	return !anyOverlap;
 }
+
 
 bool Level::GenerateOceanVertices()
 {
