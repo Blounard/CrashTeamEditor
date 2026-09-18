@@ -460,6 +460,7 @@ void init_crashteameditor(py::module_& m)
 	py::bind_vector<std::vector<Quadblock>>(m, "QuadblockList");
 	py::bind_vector<std::vector<Checkpoint>>(m, "CheckpointList");
 	py::bind_vector<std::vector<Path>>(m, "PathList");
+	py::bind_vector<std::vector<BotNode>>(m, "BotNodeList");
 	py::bind_vector<std::vector<size_t>>(m, "IndexList");
 
 	py::enum_<BSPNode> bspNode(m, "BSPNode");
@@ -543,6 +544,15 @@ void init_crashteameditor(py::module_& m)
 		.def(py::init<>())
 		.def("get", &BitMatrix::Get, py::arg("x"), py::arg("y"))
 		.def("set", &BitMatrix::Set, py::arg("val"), py::arg("x"), py::arg("y"));
+
+	py::class_<BotNode>(m, "BotNode")
+		.def(py::init<>())
+		.def_property("rot", &BotNode::GetRot, &BotNode::SetRot)
+		.def_property("pos", &BotNode::GetPos, &BotNode::SetPos)
+		//.def_property("flags",&BotNode::GetFlags,&BotNode::SetFlags) // TODO BotFlags Python
+		.def_property("checkpoint", &BotNode::GetCheckpoint, &BotNode::SetCheckpoint)
+		.def_property("path_change", &BotNode::GetPathChange, &BotNode::SetPathChange)
+		.def_property("path_change_index", &BotNode::GetPathChangeIndex, &BotNode::SetPathChangeIndex);
 
 	py::class_<Level> level(m, "Level");
 	level
