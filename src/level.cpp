@@ -201,6 +201,53 @@ Model* Level::GetFilterModel()
 	return m_models[LevelModels::FILTER];
 }
 
+bool Level::GenerateSpawn(float colSpacing, float rowSpacing, float centerOffset)
+{
+	if (m_checkpoints.size() < 2)
+		return false;
+
+	Vec3 up = { 0.0f, 1.0f, 0.0f };
+	Vec3 cp0 = m_checkpoints[0].GetPos();
+	Vec3 cp1 = m_checkpoints[1].GetPos();
+	Vec3 center = m_checkpoints[m_checkpoints[0].GetDown()].GetPos();
+	Vec3 forward = cp1 - cp0;
+	forward.y = 0;
+	float yaw = -std::atan2(forward.z, forward.x) * (180.0f / MATH_PI);
+	yaw = std::fmod(yaw, 360.0f);
+	forward.Normalize();
+	Vec3 right = forward.Cross(up);
+
+	int lastCkpt = m_checkpoints[0].GetDown();
+	int prevCkpt = m_checkpoints[lastCkpt].GetDown();
+	std::vector<size_t> quadindexes;
+	for (size_t j = 0; j < m_quadblocks.size(); j++)
+	{
+		Quadblock& quad = m_quadblocks[j];
+		if (quad.GetCheckpoint() != lastCkpt && quad.GetCheckpoint() != prevCkpt)
+			continue;
+		quadindexes.push_back(j);
+	}
+
+	for (int row = 0; row < 2; row++)
+	{
+		for (int col = 0; col < 4; col++)
+		{
+			int index = row * 4 + col;
+			float lateralOffset = (col - 1.5f) * colSpacing;
+			float forwardOffset = (0.5f - row) * rowSpacing;
+			Vec3 pos = center + right * lateralOffset + forward * forwardOffset + forward * centerOffset;
+			Vec3 rot(0.0f, yaw, 0.0f);
+
+			if (-1 == SnapToClosestQuad(m_quadblocks, quadindexes, pos, rot, Vec3(0.0f, 1.0f, 0.0f), -10.0f, 10.0f))
+				return false;
+
+			m_spawn[index].pos = pos;
+			m_spawn[index].rot = rot;
+		}
+	}
+	return true;
+}
+
 bool Level::GenerateBSP()
 {
 	std::vector<size_t> quadIndexes;

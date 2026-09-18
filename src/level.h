@@ -67,6 +67,7 @@ public:
 	Model* GetSelectedModel();
 	Model* GetMultiSelectedModel();
 	Model* GetFilterModel();
+	bool GenerateSpawn(float colSpacing, float rowSpacing, float centerOffset);
 	bool GenerateBSP();
 	bool GenerateVisTreeLev();
 	void GenerateBotPathChangeCode();
