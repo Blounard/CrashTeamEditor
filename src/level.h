@@ -55,6 +55,7 @@ public:
 	BitMatrix& GetVisTree();
 	std::vector<Checkpoint>& GetCheckpoints();
 	std::vector<Path>& GetCheckpointPaths();
+	std::vector<BotNode>& GetBotPath(int i);
 	const std::filesystem::path& GetParentPath() const;
 	std::vector<std::string> GetMaterialNames() const;
 	std::vector<size_t> GetMaterialQuadblockIndexes(const std::string& material) const;

@@ -126,6 +126,11 @@ std::vector<Path>& Level::GetCheckpointPaths()
 	return m_checkpointPaths;
 }
 
+std::vector<BotNode>& Level::GetBotPath(int i)
+{
+	return m_botPaths[i].GetNodes();
+}
+
 const std::filesystem::path& Level::GetParentPath() const
 {
 	return m_parentPath;
