@@ -3,7 +3,7 @@
 #include "geo.h"
 #include "psx_types.h"
 #include "quadblock.h"
-//#include "instance.h"
+#include "instance.h"
 #include <filesystem>
 #include <string>
 #include <cstdint>
@@ -70,7 +70,7 @@ public:
     BotNode() = default;
     BotNode(const PSX::NavFrame& frame);
 
-    std::vector<uint8_t> Serialize(const Vec3& nextPos) const;
+    std::vector<uint8_t> Serialize(const Vec3& nextPos, std::vector<Instance>& instances) const;
     void RenderUI(int index, bool& deleteRequested);
 
     const Vec3& GetPos() const { return m_pos; }
@@ -129,7 +129,7 @@ public:
     bool LoadFromOBJ(const std::filesystem::path& path, std::vector<Quadblock>& quadblocks);
     bool GeneratePath(std::vector<Vec3>& nodesPos, const std::vector<Quadblock>& quadblocks, int pathID);
 
-    std::vector<uint8_t> Serialize() const;
+    std::vector<uint8_t> Serialize(std::vector<Instance>& instances) const;
     void RenderUI(int pathIndex);
 
     const std::vector<BotNode>& GetNodes() const { return m_nodes; }

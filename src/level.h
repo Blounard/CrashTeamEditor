@@ -15,6 +15,7 @@
 #include "vistree.h"
 #include "minimap.h"
 #include "skybox.h"
+#include "instance.h"
 #include "settings.h"
 
 #include <nlohmann/json.hpp>
@@ -72,6 +73,7 @@ public:
 	Model* GetSelectedModel();
 	Model* GetMultiSelectedModel();
 	Model* GetFilterModel();
+	Model* GetInstancesModel();
 	bool GenerateSpawn(float colSpacing, float rowSpacing, float centerOffset);
 	bool GenerateBSP();
 	bool GenerateVisTreeLev();
@@ -82,6 +84,7 @@ public:
 	void ResetRendererSelection();
 	void UpdateRenderCheckpointData();
 	void UpdateRenderBotData();
+	void GenerateRenderLevData();
 
 private:
 	void ManageTurbopad(Quadblock& quadblock);
@@ -92,6 +95,9 @@ private:
 	bool SaveGhostData(const std::string& emulator, const std::filesystem::path& path);
 	bool SetGhostData(const std::filesystem::path& path, bool tropy);
 	bool UpdateVRM();
+	bool EmplaceInstanceBSP();
+	bool GenerateInstanceRow(int checkpointIndex, size_t instanceIndex, int numInstances, float spacing, bool deleteAfter);
+	std::string GenerateUniqueInstanceName(const std::string& name) const;
 	bool GenerateCheckpoints();
 	bool ReOrderBSP();
 	bool GenerateOceanVertices();
@@ -100,10 +106,10 @@ private:
 	void RenderUI(Renderer& renderer);
 
 	void InitModels(Renderer& renderer);
-	void GenerateRenderLevData();
 	void UpdateAnimationRenderData();
 	void UpdateFilterRenderData(const Quadblock& qb);
 	void GenerateRenderBspData();
+	void GenerateRenderInstanceData();
 	void GenerateRenderStartpointData();
 	void GenerateRenderMinimapBoundsData();
 	void GenerateRenderSkyboxData();
@@ -176,4 +182,11 @@ private:
 	Vec3 m_rendererQueryPoint;
 	std::vector<size_t> m_rendererSelectedQuadblockIndexes;
 	size_t m_lastAnimTextureCount;
+
+	std::unordered_map<size_t, InstanceModel> m_instanceModels; //Not using vector, so model can be deleted without affecting instance's model key.
+	std::vector<Instance> m_instances;
+	std::vector<std::vector<Vec3>> m_spawntypes;
+	std::vector<std::vector<Spawn>> m_spawntypesPosRot;
+	int m_openInstanceIndex = -1;
+	int m_closeInstanceIndex = -1;
 };

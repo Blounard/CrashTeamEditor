@@ -23,6 +23,7 @@
 #include <fstream>
 #include <sstream>
 #include <cstdint>
+#include <algorithm>
 
 class ButtonUI
 {
@@ -87,6 +88,40 @@ static bool UIFlagCheckbox(T& var, const T flag, const std::string& title)
 		return true;
 	}
 	return false;
+}
+
+
+static bool ModelIdWidget(const char* label, ModelId* id)
+{
+	int16_t raw = static_cast<int16_t>(*id);
+	ImGui::SetNextItemWidth(180.0f);
+	bool changed = ImGui::InputScalar(label, ImGuiDataType_S16, &raw);
+	if (changed)
+		*id = static_cast<ModelId>(raw);
+
+	ImGui::SameLine();
+
+	auto it = ModelIdLabels.find(*id);
+	const char* currentLabel = (it != ModelIdLabels.end()) ? it->second : "Unknown";
+
+	ImGui::SetNextItemWidth(180.0f);
+	if (ImGui::BeginCombo("##ModelIdCombo", currentLabel))
+	{
+		for (const auto& [entryId, entryLabel] : ModelIdLabels)
+		{
+			bool isSelected = (entryId == *id);
+			if (ImGui::Selectable(entryLabel, isSelected))
+			{
+				*id = entryId;
+				changed = true;
+			}
+			if (isSelected)
+				ImGui::SetItemDefaultFocus();
+		}
+		ImGui::EndCombo();
+	}
+
+	return changed;
 }
 
 void BoundingBox::RenderUI() const
@@ -241,7 +276,7 @@ void BotNode::RenderUI(int index, bool& deleteRequested)
 		ImGui::DragFloat("Pitch", &m_rot.x, 0.5f, -180.0f, 180.0f, "%.1f deg");
 		ImGui::DragFloat("Roll", &m_rot.z, 0.5f, -180.0f, 180.0f, "%.1f deg");
 
-		// Flags — one checkbox per named flag bit
+		// Flags â€” one checkbox per named flag bit
 		ImGui::SeparatorText("Flags");
 		ImGui::Checkbox("Turbo Pad (High)", &m_flags.turboPad);
 		ImGui::Checkbox("Skidmarks Front", &m_flags.skidmarkFront);
@@ -256,7 +291,7 @@ void BotNode::RenderUI(int index, bool& deleteRequested)
 		ImGui::Checkbox("Sink Kart", &m_flags.sink);
 		ImGui::Checkbox("Low Grav", &m_flags.lowGrav);
 
-		// Terrain dropdown — built from TerrainType::LABELS, sorted by value
+		// Terrain dropdown â€” built from TerrainType::LABELS, sorted by value
 		ImGui::SeparatorText("Terrain");
 		// Build a sorted list once, reuse across frames
 		static std::vector<std::pair<std::string, uint8_t>> terrainList;
@@ -364,6 +399,318 @@ void BotPath::RenderUI(int pathIndex)
 
 		ImGui::TreePop();
 	}
+}
+
+
+bool Instance::RenderUI(bool& shouldDelete, bool& shouldDuplicate, int index, const std::unordered_map<size_t, InstanceModel>& modelInstances, Vec3& queryPoint, std::vector<Quadblock>& quadblocks)
+{
+	bool modelChanged = false;
+
+	std::string headerLabel = m_name.empty() ? ("Instance " + std::to_string(index + 1)) : m_name;
+	if (ImGui::CollapsingHeader((headerLabel + "###instHeader").c_str()))
+	{
+		// Model selection dropdown
+		if (ImGui::BeginCombo("Model", modelInstances.contains(m_modelKey) ? modelInstances.at(m_modelKey).GetName().c_str() : "Invalid"))
+		{
+			for (const auto& [key, model] : modelInstances)
+			{
+				bool isSelected = (m_modelKey == key);
+				if (ImGui::Selectable(model.GetName().c_str(), isSelected))
+				{
+					m_modelKey = key;
+					modelChanged = true;
+				}
+				if (isSelected)
+				{
+					ImGui::SetItemDefaultFocus();
+				}
+			}
+			ImGui::EndCombo();
+		}
+
+		// Instance name
+		char nameBuffer[64] = {};
+		m_name.copy(nameBuffer, sizeof(nameBuffer) - 1);
+		if (ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer)))
+		{
+			m_name = std::string(nameBuffer, strnlen(nameBuffer, sizeof(nameBuffer)));
+		}
+
+		// Model ID selector (behavior selector)
+		{
+			ModelId prevModelID = m_modelID;
+
+			ModelIdWidget("Model ID", &m_modelID);
+
+			// Auto-set hitbox when model ID changes to a crate or wumpa fruit
+			if (m_modelID != prevModelID)
+			{
+				if (m_modelID == ModelId::WUMPA_FRUIT)
+				{
+					m_hitbox.enabled = true;
+					m_hitbox.preset = InstanceHitbox::PICKUP;
+					m_hitbox.yOffset = 0.0f;
+				}
+				else if (m_modelID == ModelId::EXPLOSIVE_CRATE || m_modelID == ModelId::FRUIT_CRATE ||
+				         m_modelID == ModelId::RANDOM_CRATE || m_modelID == ModelId::TIME_CRATE_1 ||
+				         m_modelID == ModelId::TIME_CRATE_2 || m_modelID == ModelId::TIME_CRATE_3)
+				{
+					m_hitbox.enabled = true;
+					m_hitbox.preset = InstanceHitbox::PICKUP;
+					m_hitbox.yOffset = 0.71875f;
+				}
+			}
+		}
+
+		ImGui::Text("Pos:");
+		ImGui::SameLine();
+		ImGui::DragFloat3("##pos", m_pos.Data(), 0.5f);
+		ImGui::SameLine();
+		if (ImGui::Button(("Set from selection##Instance")))
+		{
+			m_pos = queryPoint;
+		}
+
+		ImGui::Text("Rot:"); 
+		ImGui::SameLine();
+		if (ImGui::DragFloat3("##rot", m_rot.Data(), 1.0f, -360.0f, 360.0f))
+		{
+			m_rot.x = Clamp(m_rot.x, -360.0f, 360.0f);
+			m_rot.y = Clamp(m_rot.y, -360.0f, 360.0f);
+			m_rot.z = Clamp(m_rot.z, -360.0f, 360.0f);
+		};
+		ImGui::SameLine();
+		if (ImGui::Button(("Snap to ground##Instance")))
+		{
+			std::vector<size_t> quadindexes;
+			for (size_t j = 0; j < quadblocks.size(); j++)
+			{
+				if (quadblocks[j].GetFlags() & QuadFlags::GROUND)
+					quadindexes.push_back(j);
+			}
+			SnapToClosestQuad(quadblocks, quadindexes, m_pos, m_rot, Vec3(0.0f, 1.0f, 0.0f), -1.0f, 1.0f);
+		}
+
+		ImGui::Text("Scale:");
+		ImGui::SameLine();
+		ImGui::InputFloat3("##scale", m_scale.Data());
+		// Flags as checkboxes (retractable, retracted by default)
+		if (ImGui::TreeNode("Flags"))
+		{
+			static const std::pair<const char*, InstanceFlag> flagInfos[] = {
+				{"Draw Instance",        InstanceFlag::DRAW_INSTANCE},
+				{"Animation: Loop",      InstanceFlag::ANIM_LOOP},
+				{"Animation: Stop End",  InstanceFlag::ANIM_STOP_AT_END},
+				{"Hide Model",           InstanceFlag::HIDE_MODEL},
+				{"Pixel LOD",            InstanceFlag::PIXEL_LOD},
+				{"Screenspace",          InstanceFlag::SCREENSPACE_INSTANCE},
+				{"Billboard",            InstanceFlag::CUSTOM_MATRIX},
+				{"Draw Transparent",     InstanceFlag::DRAW_TRANSPARENT},
+				{"Use Instance Color",   InstanceFlag::USE_SPECULAR_LIGHT},
+				{"Reflection",           InstanceFlag::REFLECTION_FUNC23},
+				{"Depth Fade",           InstanceFlag::DEPTH_FADE},
+				{"Visible In Gameplay",  InstanceFlag::VISIBLE_DURING_GAMEPLAY},
+				{"Owner Pushbuf Gate",   InstanceFlag::OWNER_PUSHBUFFER_GATE},
+				{"Draw Huge",            InstanceFlag::DRAW_HUGE},
+				{"Hide Before Pause",    InstanceFlag::INVISIBLE_BEFORE_PAUSE},
+				{"Hide During Pause",    InstanceFlag::INVISIBLE_DURING_PAUSE},
+			};
+			for (const auto& [label, bit] : flagInfos)
+			{
+				uint32_t val = static_cast<uint32_t>(bit);
+				bool checked = (m_flags & val) != 0;
+				if (ImGui::Checkbox(label, &checked))
+				{
+					if (checked)
+						m_flags |= val;
+					else
+						m_flags &= ~val;
+				}
+			}
+			ImGui::TreePop();
+		}
+
+		float colorModelData[3] = { m_color.Red(), m_color.Green(), m_color.Blue() };
+		if (ImGui::ColorEdit3("##modelColor", colorModelData))
+		{
+			m_color = Color(static_cast<float>(colorModelData[0]), colorModelData[1], colorModelData[2]);
+		}
+
+		ImGui::InputScalar("Unk24", ImGuiDataType_U32, &m_unk24);
+		ImGui::InputScalar("Unk28", ImGuiDataType_U32, &m_unk28);
+
+		// BSP collision hitbox settings
+		ImGui::Checkbox("BSP Collision Hitbox", &m_hitbox.enabled);
+		ImGui::SetItemTooltip("Emit a collision hitbox into every BSP leaf overlapping this instance.\nRequired for the instance to be collidable/triggerable in-game.");
+		if (m_hitbox.enabled)
+		{
+			static const char* presetNames[] = { "Pickup", "Solid Wall", "Static Decoration", "Custom" };
+			if (ImGui::Combo("Hitbox Type", &m_hitbox.preset, presetNames, 4))
+			{
+				switch (m_hitbox.preset)
+				{
+				case InstanceHitbox::PICKUP: m_hitbox.flags = 0x000004C0; m_hitbox.halfExtent = 1.1875f; m_hitbox.yOffset = 0.71875f; break;
+				case InstanceHitbox::SOLID_WALL: m_hitbox.flags = 0x026500A0; m_hitbox.halfExtent = 1.1875f; break;
+				case InstanceHitbox::STATIC_DECORATION: m_hitbox.flags = 0x000000C0; m_hitbox.halfExtent = 1.1875f; break;
+				}
+			}
+			ImGui::SetItemTooltip("Pickup: trigger-only, vanilla crate radius.\nSolid Wall: blocks the kart.\nStatic Decoration: small solid collider.\nCustom: edit the raw flags yourself.");
+
+			float halfExtent = m_hitbox.halfExtent;
+			if (ImGui::InputFloat("Half Extent", &m_hitbox.halfExtent))
+			{
+				// Note : trying to not clamp, and use 16384 for the squared value if above cap.
+				// 
+				// halfExtent^2 serialized must fit in int16, so cap at sqrt(2**15)/64
+				// m_hitbox.halfExtent = Clamp(halfExtent, 0.0f, 2.828125f);
+			}
+			ImGui::SetItemTooltip("Hitbox radius around the instance position (vanilla crates use 1.18).\nMax 2.82 since the squared value must fit in 16 bits.");
+
+			ImGui::InputFloat("Hitbox Y Offset", &m_hitbox.yOffset);
+		
+			
+			ImGui::SetItemTooltip("Raises the hitbox center above the instance position.\nVanilla crates use ~0.71 so karts overlap at chest height.");
+
+			ImGui::BeginDisabled(m_hitbox.preset != InstanceHitbox::CUSTOM);
+			ImGui::InputScalar("Hitbox Flags", ImGuiDataType_U32, &m_hitbox.flags, nullptr, nullptr, "%08X", ImGuiInputTextFlags_CharsHexadecimal);
+			ImGui::EndDisabled();
+			ImGui::SetItemTooltip("Raw hitbox flags (editable with Custom type).\nBit 0x80: set = trigger-only (pass through), clear = solid collision.");
+		}
+
+		// Delete and Duplicate buttons
+		if (ImGui::Button("Duplicate Instance"))
+		{
+			shouldDuplicate = true;
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Delete Instance"))
+		{
+			shouldDelete = true;
+		}
+	}
+
+	return modelChanged;
+}
+
+bool InstanceModelHeader::RenderUI()
+{
+	bool toDel = false;
+	if (ImGui::TreeNodeEx((void*)this, ImGuiTreeNodeFlags_None, m_name.c_str()))
+	{
+		ImGui::InputText("Name", &m_name, 0x10);
+		ImGui::SetNextItemWidth(200.0f);
+		ImGui::DragFloat("Max visible distance##", &m_maxDistLOD, 0.5f, -1.0f, 1000.0f, "%.1f");
+		ImGui::InputScalar("Flags", ImGuiDataType_U16, &m_flags, nullptr, nullptr, "%04X", ImGuiInputTextFlags_CharsHexadecimal);
+		ImGui::Checkbox("Hardcoded scale", &m_hasScale);
+		ImGui::BeginDisabled(!m_hasScale);
+		ImGui::Text("Scale:"); ImGui::SameLine();
+		ImGui::InputFloat3("##scale", m_scale.Data());
+		ImGui::EndDisabled();
+		ImGui::Checkbox("Start Banner Waving", &m_bannerWave);
+		ImGui::Text(("Triangle count: " + std::to_string(m_animations[0].frames[0].size())).c_str());
+		if (m_isAnimated)
+			ImGui::Text(("is animated : yes"));
+		else
+			ImGui::Text(("is animated : no"));
+
+		ImGui::Text(("AnimGroup: " + std::to_string(m_animations.size())).c_str());
+		for (size_t i = 0 ; i < m_animations.size(); i++)
+		{
+			ModelAnimation& anim = m_animations[i];
+			ImGui::Text(("Group: " + std::to_string(i) + ", Frames: " + std::to_string(anim.frames.size())).c_str());
+		}
+
+		if (ImGui::Button("Delete LOD"))
+		{
+			toDel = true;
+		}
+
+		ImGui::Text("\n");
+		ImGui::TreePop();
+	}
+	return toDel;
+}
+
+bool InstanceModel::RenderUI(std::unordered_map<std::string, Texture>& materialToTexture)
+{
+	bool toDel = false;
+	if (ImGui::TreeNodeEx((void*)this, ImGuiTreeNodeFlags_None, m_name.c_str()))
+	{
+		ImGui::InputText("Name", &m_name, 0x10);
+		ModelIdWidget("Model ID", &m_id);
+
+		ImGui::SeparatorText("List of LOD");
+		std::vector<size_t> headerToDel;
+		for (size_t i = 0; i < m_headers.size() ; i++)
+		{
+			InstanceModelHeader& header = m_headers[i];
+			ImGui::PushID(static_cast<int>(i));
+			if (header.RenderUI())
+			{
+				headerToDel.push_back(i);
+			}
+			ImGui::PopID();
+			ImGui::Separator();
+		}
+		//ImGui::Separator();
+		if (!headerToDel.empty())
+		{
+			for (int i = static_cast<int>(headerToDel.size()) - 1; i >= 0; i--)
+				m_headers.erase(m_headers.begin() + headerToDel[i]);
+		}
+		if (ImGui::TreeNode("Textures##Model"))
+		{
+			std::unordered_set<std::string> texList;
+			for (InstanceModelHeader& hd : m_headers)
+			{
+				for (Tri& tri : hd.GetGeometry())
+				{
+					texList.insert(tri.texture);
+				}
+
+			}
+			for (std::string texName : texList)
+			{
+				if (ImGui::TreeNode((texName + "##modelListtexture").c_str()))
+				{
+					materialToTexture[texName].RenderUI();
+					ImGui::TreePop();
+				}
+			}
+			ImGui::TreePop();
+		}
+		if (ImGui::Button("Add LOD"))
+		{
+			auto selection = pfd::open_file("Model LOD File", Settings::m_lastOpenedModelFolder, { "CTR Model Files", "*.gltf" }, pfd::opt::force_path).result();
+			if (!selection.empty())
+			{
+				InstanceModelHeader header;
+				header.Clear();
+				header.LoadGLTF(selection.front(), materialToTexture);
+				if (!header.GetGeometry().empty())
+					m_headers.push_back(header);
+			}
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Export Model"))
+		{
+			auto selection = pfd::select_folder("Model Folder", Settings::m_lastOpenedModelFolder, pfd::opt::force_path).result();
+			if (!selection.empty())
+			{
+				const std::filesystem::path path = selection + "\\";
+				Settings::m_lastOpenedModelFolder = path.string();
+				Export(path, materialToTexture);
+			}
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("Delete Model"))
+		{
+			toDel = true;
+		}
+		ImGui::Text("\n");
+		ImGui::TreePop();
+	}
+	return toDel;
 }
 
 template<typename T, MaterialType M>
@@ -662,6 +1009,7 @@ void Level::RenderUI(Renderer& renderer)
 		if (ImGui::MenuItem("Renderer")) { Settings::w_renderer = !Settings::w_renderer; }
 		if (ImGui::MenuItem("Ghosts")) { Settings::w_ghost = !Settings::w_ghost; }
 		if (ImGui::MenuItem("Python")) { Settings::w_python = !Settings::w_python; }
+		if (ImGui::MenuItem("Instances")) { Settings::w_modelImporter = !Settings::w_modelImporter; }
 		if (ImGui::MenuItem("Bot")) { Settings::w_bot = !Settings::w_bot; }
 		ImGui::EndMainMenuBar();
 	}
@@ -726,7 +1074,8 @@ void Level::RenderUI(Renderer& renderer)
 			{
 				UIFlagCheckbox(m_configFlags, LevConfigFlags::ENABLE_SKYBOX_GRADIENT, "Enable Skybox Gradient");
 				UIFlagCheckbox(m_configFlags, LevConfigFlags::MASK_GRAB_UNDERWATER, "Mask Grab Underwater");
-				UIFlagCheckbox(m_configFlags, LevConfigFlags::ANIMATE_WATER_VERTEX, "Animate Water Vertex");
+				UIFlagCheckbox(m_configFlags, LevConfigFlags::ANIMATE_WATER_VERTEX, "Animated VColors");
+				ImGui::SetItemTooltip("This flag decide if you can use Water, or Animated VColors (Roo Tubes effect). They are mutually exclusive");
 				ImGui::TreePop();
 			}
 			if (ImGui::TreeNode("Sky Gradient"))
@@ -841,7 +1190,207 @@ void Level::RenderUI(Renderer& renderer)
 				ImGui::TreePop();
 			}
 
-			if (ImGui::TreeNode("Reflection Surface Height"))
+			if (ImGui::TreeNode("Moving Instances Path"))
+			{
+				ImGui::SeparatorText("Loading settings");
+				ImGui::Checkbox("Normalize Distances##mip", &InstanceLoadPathSettings::normalize); 
+				ImGui::BeginDisabled(!InstanceLoadPathSettings::normalize);
+				ImGui::SameLine();
+				ImGui::SetNextItemWidth(200.0f);
+				ImGui::DragFloat("Node Distance", &InstanceLoadPathSettings::normalizeDist, 0.1f, 0.1f, 100.0f, "%.1f");
+				ImGui::EndDisabled();
+				ImGui::Checkbox("Snap to Ground##mip", &InstanceLoadPathSettings::groundSnap);
+				ImGui::BeginDisabled(!InstanceLoadPathSettings::groundSnap);
+				ImGui::SameLine();
+				ImGui::SetNextItemWidth(150.0f);
+				ImGui::DragFloat("Below ground threshold##mip", &InstanceLoadPathSettings::negSnapDist, 0.1f, -50.0f, -0.1f, "%.1f");
+				ImGui::SameLine();
+				ImGui::SetNextItemWidth(150.0f);
+				ImGui::DragFloat("Above ground threshold##mip", &InstanceLoadPathSettings::posSnapDist, 0.1f, 0.1f, 50.0f, "%.1f");
+				ImGui::EndDisabled();
+				ImGui::Checkbox("Rolling##mip", &InstanceLoadPathSettings::rolling);
+				ImGui::SetItemTooltip("Only used for pos + rot");
+				ImGui::BeginDisabled(!InstanceLoadPathSettings::rolling);
+				ImGui::SameLine();
+				ImGui::SetNextItemWidth(200.0f);
+				ImGui::DragFloat("Object Radius##mip", &InstanceLoadPathSettings::radius, 0.1f, 0.1f, 100.0f, "%.1f");
+				ImGui::SetItemTooltip("Only used for pos + rot");
+				ImGui::EndDisabled();
+				ImGui::Checkbox("Loop##mip", &InstanceLoadPathSettings::loop);
+				ImGui::SetItemTooltip("Loop or Point to Point");
+
+				ImGui::SeparatorText("Path positions only");
+				for (size_t i = 0; i < m_spawntypes.size(); i++)
+				{
+					ImGui::PushID(static_cast<int>(i));
+					
+					if (ImGui::TreeNode(("Path " + std::to_string(i) + "##st2pos").c_str()))
+					{
+						
+						if (ImGui::Button("Load Path##st2pos"))
+						{
+							auto selection = pfd::open_file("Select Path OBJ", m_parentPath.string(),
+								{ "OBJ Files", "*.obj", "All Files", "*" }).result();
+
+							if (!selection.empty())
+							{
+								std::vector<Vec3> vec = LoadPath(selection[0]);
+								if (InstanceLoadPathSettings::normalize)
+									vec = NormalizePos(vec, InstanceLoadPathSettings::normalizeDist, InstanceLoadPathSettings::loop);
+								if (InstanceLoadPathSettings::groundSnap)
+								{
+									std::vector<size_t> quadindexes;
+									for (size_t j = 0; j < m_quadblocks.size(); j++)
+									{
+										if (m_quadblocks[j].GetFlags() & QuadFlags::GROUND)
+											quadindexes.push_back(j);
+									}
+									Vec3 dummyRot;
+									for (Vec3& pos : vec)
+									{
+										SnapToClosestQuad(m_quadblocks, quadindexes, pos, dummyRot, Vec3(0.0f, 1.0f, 0.0f),
+											InstanceLoadPathSettings::negSnapDist, InstanceLoadPathSettings::posSnapDist);
+									}
+										
+								}
+								m_spawntypes[i].clear();
+								m_spawntypes[i] = std::move(vec);
+							}		
+						}
+						ImGui::SameLine();
+						if (ImGui::Button("Delete Path##st2pos"))
+						{
+							m_spawntypes.erase(m_spawntypes.begin() + i);
+						}
+						ImGui::SeparatorText("");
+
+						for (size_t j = 0; j < m_spawntypes[i].size(); j++)
+						{
+							ImGui::PushID(static_cast<int>(j));
+							ImGui::Text(("Pos " + std::to_string(j) + " : ").c_str()); ImGui::SameLine();
+							ImGui::InputFloat3("##pos", m_spawntypes[i][j].Data());
+							ImGui::Separator();
+							ImGui::PopID();
+						}
+						if (ImGui::Button("Add Node##st2pos"))
+						{
+							m_spawntypes[i].emplace_back();
+						}
+						ImGui::SameLine();
+						if (ImGui::Button("Delete Node##st2pos"))
+						{
+							m_spawntypes[i].pop_back();
+						}
+						ImGui::TreePop();
+					}
+					
+					ImGui::PopID();
+				}
+				if (ImGui::Button("Add Path##st2pos"))
+				{
+					m_spawntypes.push_back({});
+				}
+				ImGui::SeparatorText("Path positions+rotations");
+				for (size_t i = 0; i < m_spawntypesPosRot.size(); i++)
+				{
+					ImGui::PushID(static_cast<int>(i));
+					
+					if (ImGui::TreeNode(("Path " + std::to_string(i) + "##st2posRot").c_str()))
+					{
+						if (ImGui::Button("Load##st2posrot"))
+						{
+							auto selection = pfd::open_file("Select Path OBJ", m_parentPath.string(),
+								{ "OBJ Files", "*.obj", "All Files", "*" }).result();
+
+							if (!selection.empty())
+							{
+								std::vector<Vec3> posvec = LoadPath(selection[0]);
+								if (InstanceLoadPathSettings::normalize)
+									posvec = NormalizePos(posvec, InstanceLoadPathSettings::normalizeDist, InstanceLoadPathSettings::loop);
+								std::vector<Vec3> rotvec = ComputeYaw(posvec, InstanceLoadPathSettings::loop);
+								std::vector<Vec3> upvec(rotvec.size(), Vec3(0.0f, 1.0f, 0.0f));
+								if (InstanceLoadPathSettings::groundSnap)
+								{
+									std::vector<size_t> quadindexes;
+									for (size_t j = 0; j < m_quadblocks.size(); j++)
+									{
+										if (m_quadblocks[j].GetFlags() & QuadFlags::GROUND)
+											quadindexes.push_back(j);
+									}
+									for (size_t j = 0; j < posvec.size() ; j++)
+									{
+
+										int quadId = SnapToClosestQuad(m_quadblocks, quadindexes, posvec[j], rotvec[j], Vec3(0.0f, 1.0f, 0.0f),
+											InstanceLoadPathSettings::negSnapDist, InstanceLoadPathSettings::posSnapDist);
+										if (quadId != -1)
+											upvec[j] = m_quadblocks[quadId].GetNormal();
+									}
+								}
+								if (InstanceLoadPathSettings::rolling)
+								{
+									float totalDist = 0.0f;
+									for (size_t j = 0; j < posvec.size() - 1; j++)
+									{
+										Vec3& pos = posvec[j + 1];
+										Vec3& prevpos = posvec[j];
+										totalDist += (pos - prevpos).Length();
+										float rotAngleRad = totalDist / InstanceLoadPathSettings::radius;
+										Quaternion preRoll(rotvec[j + 1]);
+										Quaternion rolling(Vec3(1.0f, 0.0f, 0.0f), rotAngleRad);
+										rotvec[j + 1] = (preRoll * rolling).ToEulerYXZ();
+									}
+									for (size_t j = 0; j < posvec.size(); j++)
+									{
+										posvec[j] += upvec[j] * InstanceLoadPathSettings::radius;
+									}
+								}
+								m_spawntypesPosRot[i].clear();
+								for (size_t j = 0; j < posvec.size(); j++)
+								{
+									m_spawntypesPosRot[i].emplace_back(posvec[j], rotvec[j]);
+								}
+								
+							}
+						}
+						ImGui::SameLine();
+						if (ImGui::Button("Delete##st2posrot"))
+						{
+							m_spawntypesPosRot.erase(m_spawntypesPosRot.begin() + i);
+						}
+						ImGui::SeparatorText("");
+
+						for (size_t j = 0; j < m_spawntypesPosRot[i].size(); j++)
+						{
+							ImGui::PushID(static_cast<int>(j));
+							ImGui::Text(("Pos " + std::to_string(j) + " : ").c_str()); ImGui::SameLine();
+							ImGui::InputFloat3("##pos", m_spawntypesPosRot[i][j].pos.Data());
+							ImGui::Text(("Rot " + std::to_string(j) + " : ").c_str()); ImGui::SameLine();
+							ImGui::InputFloat3("##rot", m_spawntypesPosRot[i][j].rot.Data());
+							ImGui::Separator();
+							ImGui::PopID();
+						}
+						if (ImGui::Button("Add Node##st2posRot"))
+						{
+							m_spawntypesPosRot[i].emplace_back();
+						}
+						ImGui::SameLine();
+						if (ImGui::Button("Delete Node##st2posRot"))
+						{
+							m_spawntypesPosRot[i].pop_back();
+						}
+						ImGui::TreePop();
+					}
+				
+					ImGui::PopID();
+				}
+				if (ImGui::Button("Add Path##st2posrot"))
+				{
+					m_spawntypesPosRot.push_back({});
+				}
+				ImGui::TreePop();
+			}
+
+			if (ImGui::TreeNode("SplitLines"))
 			{
 				ImGui::Text("Reflection 1:"); 
 				ImGui::SameLine(); 
@@ -873,7 +1422,7 @@ void Level::RenderUI(Renderer& renderer)
 				ImGui::InputInt("Target Height##minimap", &MinimapSettings::textureHeight);
 				ImGui::Checkbox("Use checkpoint quads##minimap", &MinimapSettings::checkpointQuads);
 				ImGui::Checkbox("Use checkpoint pathable quads##minimap", &MinimapSettings::checkpointPathableQuads);
-				const char* orientationModes[] = { "0°", "90°", "180°", "270°", "Auto" };
+				const char* orientationModes[] = { "0Â°", "90Â°", "180Â°", "270Â°", "Auto" };
 				int selectOrientation = MinimapSettings::orientation;
 				if (ImGui::Combo("Relative rotation##minimapsettings", &selectOrientation, orientationModes, 5))
 				{
@@ -1691,6 +2240,305 @@ void Level::RenderUI(Renderer& renderer)
 			ImGui::EndChild();
 		}
 		ImGui::End();
+	}
+
+
+	if (Settings::w_modelImporter)
+	{
+		if (ImGui::Begin("Instances", &Settings::w_modelImporter))
+		{
+			static std::string modelPathString = "";
+			static std::filesystem::path modelPath;
+			ImGui::Text("Model Path"); ImGui::SameLine();
+			ImGui::InputText("##modelpath_importer", &modelPathString, ImGuiInputTextFlags_ReadOnly);
+			ImGui::SetItemTooltip(modelPathString.c_str()); ImGui::SameLine();
+			if (ImGui::Button("...##modelimporter"))
+			{
+				auto selection = pfd::open_file("CTR Model File", Settings::m_lastOpenedModelFolder, { "CTR Model Files", "*.json" }, pfd::opt::force_path).result();
+				if (!selection.empty())
+				{ 
+					Settings::m_lastOpenedModelFolder = std::filesystem::path(selection.front()).parent_path().string();
+					modelPath = selection.front();
+					modelPathString = modelPath.string();
+				}
+			}
+
+			bool disabled = modelPath.empty();
+			ImGui::BeginDisabled(disabled);
+
+			static ButtonUI importModelButton = ButtonUI();
+			static std::string importModelButtonMessage;
+			if (importModelButton.Show("Import Model", importModelButtonMessage, false))
+			{
+				InstanceModel model(modelPath, m_materialToTexture);
+				if (model.IsValid())
+				{
+					importModelButtonMessage = "Successfully imported" + model.GetName();
+					size_t modelKey = GenerateUniqueModelKey();
+					m_instanceModels[modelKey] = model;
+				}
+				else
+					importModelButtonMessage = "Failed to import the model";
+			}
+			ImGui::EndDisabled();
+			if (disabled) { ImGui::SetItemTooltip("You must select a .json file before importing."); }
+			ImGui::SameLine();
+			if (ImGui::Button("New Model"))
+			{
+				InstanceModel model;
+				size_t modelKey = GenerateUniqueModelKey();
+				m_instanceModels[modelKey] = model;
+			}
+
+			// Show list of currently loaded models
+			ImGui::Separator();
+			if (ImGui::TreeNodeEx((void*)this, ImGuiTreeNodeFlags_None, "Loaded models (%zu)", m_instanceModels.size()))
+			{
+				ImGui::Separator();
+
+				if (!m_instanceModels.empty())
+				{
+					std::vector<size_t> modelToDelete;
+					for (auto& [modelKey, instModel] : m_instanceModels)
+					{
+						ImGui::PushID(static_cast<int>(modelKey));
+
+						if (instModel.RenderUI(m_materialToTexture))
+							modelToDelete.push_back(modelKey);
+						ImGui::PopID();
+						
+					}
+
+					// Delete the model after iteration to avoid iterator invalidation
+					for (size_t key : modelToDelete)
+						m_instanceModels.erase(key);
+					modelToDelete.clear();
+				}
+				else
+				{
+					ImGui::TextDisabled("No models loaded");
+				}
+
+				ImGui::TreePop();
+			}
+
+			// Model Instances section
+			ImGui::Separator();
+			ImGui::Text("Model Instances (%zu)", m_instances.size());
+			ImGui::Separator();
+
+			// Add Instance button
+			bool hasModels = !m_instanceModels.empty();
+			if (!hasModels)
+			{
+				ImGui::BeginDisabled();
+			}
+
+			if (ImGui::Button("+ Add Instance"))
+			{
+				m_instances.emplace_back(m_instanceModels.begin()->first);
+				GenerateRenderInstanceData();
+			}
+
+			if (!hasModels)
+			{
+				ImGui::EndDisabled();
+				if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+				{
+					ImGui::SetTooltip("Import a model first");
+				}
+			}
+
+			// Create Instance Row section
+			bool instanceRowCreated = false;
+			if (!m_instances.empty())
+			{
+				ImGui::Separator();
+				if (ImGui::TreeNodeEx("Create Instance Row", 0))
+				{
+					static int createRowInstanceIndex = 0;
+					static int createRowNumInstances = 4;
+					static float createRowSpacing = 4.5f;
+					static bool createRowDeleteAfter = false;
+					static ButtonUI createRowButton = ButtonUI();
+					static std::string createRowMessage;
+
+					if (createRowInstanceIndex >= static_cast<int>(m_instances.size()))
+						createRowInstanceIndex = static_cast<int>(m_instances.size()) - 1;
+
+					std::string preview = m_instances[createRowInstanceIndex].GetName();
+					if (preview.empty())
+						preview = "Instance " + std::to_string(createRowInstanceIndex + 1);
+
+					if (ImGui::BeginCombo("Source Instance", preview.c_str()))
+					{
+						for (size_t i = 0; i < m_instances.size(); i++)
+						{
+							bool isSelected = (createRowInstanceIndex == static_cast<int>(i));
+							std::string label = m_instances[i].GetName();
+							if (label.empty())
+								label = "Instance " + std::to_string(i + 1);
+							if (ImGui::Selectable(label.c_str(), isSelected))
+								createRowInstanceIndex = static_cast<int>(i);
+							if (isSelected)
+								ImGui::SetItemDefaultFocus();
+						}
+						ImGui::EndCombo();
+					}
+
+					ImGui::SetNextItemWidth(100.0f);
+					ImGui::InputInt("Count", &createRowNumInstances);
+					if (createRowNumInstances < 1) createRowNumInstances = 1;
+
+					ImGui::SetNextItemWidth(200.0f);
+					ImGui::DragFloat("Spacing", &createRowSpacing, 0.1f, 0.1f, 30.0f, "%.1f");
+
+					ImGui::Checkbox("Delete instance after", &createRowDeleteAfter);
+
+					int checkpointIndex = -1;
+					if (!m_rendererSelectedQuadblockIndexes.empty())
+					{
+						size_t qbIdx = m_rendererSelectedQuadblockIndexes.back();
+						if (qbIdx < m_quadblocks.size())
+							checkpointIndex = m_quadblocks[qbIdx].GetCheckpoint();
+					}
+
+					if (checkpointIndex < 0)
+					{
+						ImGui::BeginDisabled();
+					}
+
+					if (createRowButton.Show("Create Instance Row", createRowMessage, false))
+					{
+						if (checkpointIndex < 0 || checkpointIndex >= static_cast<int>(m_checkpoints.size()))
+						{
+							createRowMessage = "No valid checkpoint selected.";
+						}
+						else if (GenerateInstanceRow(checkpointIndex, createRowInstanceIndex, createRowNumInstances, createRowSpacing, createRowDeleteAfter))
+						{
+							GenerateRenderInstanceData();
+							createRowMessage = "Successfully created the instance row.";
+							if (createRowDeleteAfter)
+							{
+								m_closeInstanceIndex = -1;
+								m_openInstanceIndex = createRowInstanceIndex;
+							}
+							else
+							{
+								m_closeInstanceIndex = createRowInstanceIndex;
+								m_openInstanceIndex = createRowInstanceIndex + 1;
+							}
+							instanceRowCreated = true;
+						}
+						else
+						{
+							createRowMessage = "Failed creating the instance row.";
+						}
+					}
+
+					if (checkpointIndex < 0)
+					{
+						ImGui::EndDisabled();
+						if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+							ImGui::SetTooltip("Select a quadblock with a checkpoint assigned");
+					}
+
+					ImGui::TreePop();
+				}
+			}
+
+			// Show instances
+			int instanceToDelete = -1;
+			int instanceToDuplicate = -1;
+			bool renderInstanceNeedsUpdate = false;
+			for (size_t i = 0; i < m_instances.size(); i++)
+			{
+				// Auto-open/close for duplication
+				if (static_cast<int>(i) == m_closeInstanceIndex)
+					ImGui::SetNextItemOpen(false);
+				if (static_cast<int>(i) == m_openInstanceIndex)
+					ImGui::SetNextItemOpen(true);
+
+				ImGui::PushID(static_cast<int>(i));
+				bool shouldDelete = false;
+				bool shouldDuplicate = false;
+				if (m_instances[i].RenderUI(shouldDelete, shouldDuplicate, static_cast<int>(i), m_instanceModels, m_rendererQueryPoint, m_quadblocks))
+					renderInstanceNeedsUpdate = true;
+				if (shouldDelete)
+					instanceToDelete = static_cast<int>(i);
+				if (shouldDuplicate)
+					instanceToDuplicate = static_cast<int>(i);
+				ImGui::PopID();
+			}
+
+		// Delete instance after iteration
+		if (instanceToDelete >= 0)
+		{
+			m_instances.erase(m_instances.begin() + instanceToDelete);
+			GenerateRenderInstanceData();
+		}
+
+			// Duplicate instance after iteration
+			if (instanceRowCreated)
+			{
+				m_openInstanceIndex = -1;
+				m_closeInstanceIndex = -1;
+			}
+			else if (instanceToDuplicate >= 0)
+			{
+				m_closeInstanceIndex = instanceToDuplicate;
+				m_instances.push_back(m_instances[instanceToDuplicate]);
+				GenerateRenderInstanceData();
+				Instance& dup = m_instances.back();
+
+				dup.SetName(GenerateUniqueInstanceName(dup.GetName()));
+
+				// Track for auto-open
+				m_openInstanceIndex = static_cast<int>(m_instances.size() - 1);
+			}
+			else
+			{
+				m_openInstanceIndex = -1;
+				m_closeInstanceIndex = -1;
+			}
+
+			if (renderInstanceNeedsUpdate)
+				GenerateRenderInstanceData();
+
+			if (m_instances.empty())
+			{
+				ImGui::TextDisabled("No instances created");
+			}
+		}
+		ImGui::End();
+
+		// Live update instance transforms without full regeneration
+		if (!m_instances.empty())
+		{
+			Model* instanceModel = GetInstancesModel();
+			if (instanceModel && instanceModel->GetModelCount() >= m_instances.size() * 2)
+			{
+				for (size_t i = 0; i < m_instances.size(); i++)
+				{
+					const Instance& inst = m_instances[i];
+					Vec3 pos = inst.GetPos();
+
+					Model* geom = instanceModel->GetModel(i * 2);
+					if (geom) {
+						geom->SetPosition(pos);
+						geom->SetRotationYXZ(inst.GetRot());
+						geom->SetScale(inst.GetScale());
+					}
+
+					Model* label = instanceModel->GetModel(i * 2 + 1);
+					if (label) {
+						Vec3 labelPos = pos;
+						labelPos.y += 3.0f;
+						label->SetPosition(labelPos);
+					}
+				}
+			}
+		}
 	}
 
 	if (Settings::w_bot)
