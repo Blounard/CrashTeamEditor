@@ -180,8 +180,6 @@ void BSP::RenderUI(const std::vector<Quadblock>& quadblocks)
 					{
 						BSPaxisSplit = currentAxis;
 					}
-
-					// Set initial focus to the currently selected item when opening the combo
 					if (isSelected)
 					{
 						ImGui::SetItemDefaultFocus();
@@ -333,7 +331,7 @@ void BotNode::RenderUI(int index, bool& deleteRequested)
 		if (ImGui::InputInt("Checkpoint##botnode", &goBack))
 			m_checkpoint = static_cast<uint8_t>(std::clamp(goBack, 0, 255));
 
-		const char* options[] = { "Ram Physics", "Reflection", "Shadow"};
+		const char* options[] = { "Ram Physics", "Reflection", "Shadow" };
 		int selectMode = static_cast<int>(m_specialBits);
 		if (ImGui::Combo("Special Option##botnode", &selectMode, options, 3))
 		{
@@ -907,6 +905,7 @@ bool MaterialProperty<T, M>::RenderUI(const std::string& material, const std::ve
 	return false;
 }
 
+
 void Level::RenderUI(Renderer& renderer)
 {
 	if (m_showLogWindow)
@@ -942,7 +941,7 @@ void Level::RenderUI(Renderer& renderer)
 			ImGui::SetItemTooltip(levPath.c_str()); ImGui::SameLine();
 			if (ImGui::Button("...##levhotreload"))
 			{
-				auto selection = pfd::open_file("Lev File", m_parentPath.string(), {"Lev Files", "*.lev"}, pfd::opt::force_path).result();
+				auto selection = pfd::open_file("Lev File", m_parentPath.string(), { "Lev Files", "*.lev" }, pfd::opt::force_path).result();
 				if (!selection.empty()) { m_hotReloadLevPath = selection.front(); }
 			}
 
@@ -952,7 +951,7 @@ void Level::RenderUI(Renderer& renderer)
 			ImGui::SetItemTooltip(vrmPath.c_str()); ImGui::SameLine();
 			if (ImGui::Button("...##vrmhotreload"))
 			{
-				auto selection = pfd::open_file("Vrm File", m_parentPath.string(), {"Vrm Files", "*.vrm"}, pfd::opt::force_path).result();
+				auto selection = pfd::open_file("Vrm File", m_parentPath.string(), { "Vrm Files", "*.vrm" }, pfd::opt::force_path).result();
 				if (!selection.empty()) { m_hotReloadVRMPath = selection.front(); }
 			}
 			if (ImGui::TreeNode("Settings##hotreload"))
@@ -995,7 +994,6 @@ void Level::RenderUI(Renderer& renderer)
 		}
 		ImGui::End();
 	}
-
 
 	if (!m_loaded) { return; }
 
@@ -1186,7 +1184,7 @@ void Level::RenderUI(Renderer& renderer)
 			{
 				ImGui::Text("Jump Vertical Speed Cap");
 				ImGui::SameLine();
-				if (ImGui::InputInt("##jysc", &m_jumpYSpeedCap)) 
+				if (ImGui::InputInt("##jysc", &m_jumpYSpeedCap))
 					m_jumpYSpeedCap = Clamp(m_jumpYSpeedCap, 0, 80);
 				ImGui::SetItemTooltip("Set the maximum vertical speed you can have from jumping\n");
 				ImGui::TreePop();
@@ -1397,17 +1395,17 @@ void Level::RenderUI(Renderer& renderer)
 				ImGui::Text("SplitLine 1:"); 
 				ImGui::SameLine(); 
 				ImGui::InputFloat("##sl1", &m_splitLines[0]);
-				ImGui::SetItemTooltip("Reflection 1 flag\n");
+				ImGui::SetItemTooltip("Height of the surface used for Reflection 1 flag\n");
 				ImGui::SameLine();
 				if (ImGui::Button(("Set from selection##1")))
 				{
 					m_splitLines[0] = m_rendererQueryPoint.y;
 				}
 
-				ImGui::Text("SplitLine 2:");
+				ImGui::Text("Reflection 2:");
 				ImGui::SameLine();
 				ImGui::InputFloat("##sl2", &m_splitLines[1]);
-				ImGui::SetItemTooltip("Reflection 2 flag\n");
+				ImGui::SetItemTooltip("Height of the surface used for Reflection 2 flag\n");
 				ImGui::SameLine();
 				if (ImGui::Button(("Set from selection##2")))
 				{
@@ -1503,7 +1501,7 @@ void Level::RenderUI(Renderer& renderer)
 			if (ImGui::TreeNode("Water"))
 			{
 				if (ImGui::TreeNode("Settings##Water"))
-				{	
+				{
 					ImGui::SeparatorText("Base UV");
 					ImGui::DragFloat("World Tex size", &WaterAnimSettings::sizeTex, 0.5f, 0.0f, 100.0f, "%.1f");
 					ImGui::SetItemTooltip("Size of the full texture in world units");
@@ -1519,7 +1517,6 @@ void Level::RenderUI(Renderer& renderer)
 					ImGui::DragFloat("Wave Amplitude", &WaterAnimSettings::waveAmplitude, 0.1f, 0.0f, 64.0f, "%.1f pixels");
 
 					ImGui::SeparatorText("Brightness");
-					// --- Brightness & Shimmer ---
 					ImGui::DragFloat("Base Brightness", &WaterAnimSettings::baseBrightness, 0.1f, 0.0f, 15.0f, "%.1f");
 					ImGui::SetItemTooltip("Base brightness (range 0 to 15).");
 
@@ -1527,7 +1524,7 @@ void Level::RenderUI(Renderer& renderer)
 					{
 						WaterAnimSettings::brightAmp = Clamp(WaterAnimSettings::brightAmp, 0.0f, 15.0f);
 					}
-					ImGui::SetItemTooltip("Base lighting brightness (range 0 to 15).");						
+					ImGui::SetItemTooltip("Base lighting brightness (range 0 to 15).");
 					ImGui::InputInt("Brightness Cycles Time", &WaterAnimSettings::brightWaveCycle);
 					ImGui::SetItemTooltip("Temporal cycles over loop (different from ripple cycles so waves and shimmer don't lock-step).");
 
@@ -1604,7 +1601,6 @@ void Level::RenderUI(Renderer& renderer)
 							ImGui::TreePop();
 						}
 					}
-
 					ImGui::TreePop();
 				}
 			}
@@ -1774,23 +1770,13 @@ void Level::RenderUI(Renderer& renderer)
 			}
 			ImGui::BeginDisabled(!ready);
 			static ButtonUI generateButton;
-			static bool showWarning = false;
-			static std::chrono::time_point<std::chrono::steady_clock> warningStart;
-			if (generateButton.Show("Generate", "Checkpoints successfully generated.", false))
+			static std::string generateCkptMessage;
+			if (generateButton.Show("Generate", generateCkptMessage, false))
 			{
-				if (!GenerateCheckpoints())
-				{
-					showWarning = true;
-					warningStart = std::chrono::steady_clock::now();
-				}
-			}
-			if (showWarning)
-			{
-				auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - warningStart).count();
-				if (elapsed < 5) 
-					ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "Warning: some paths are overlapping.\nCheck console for details.");
+				if (GenerateCheckpoints())
+					generateCkptMessage = "Checkpoints successfully generated.";
 				else
-					showWarning = false;
+					generateCkptMessage = "Warning : Checkpoints couldn't be generated properly. Check log window.";
 			}
 			ImGui::EndDisabled();
 			ImGui::TreePop();
@@ -1843,13 +1829,14 @@ void Level::RenderUI(Renderer& renderer)
 			}
 			if (generateVisTreeButton.Show("Generate VisTree", buttonMessage, false))
 			{
-				if (GenerateVisTreeOnly()) { buttonMessage = "Successfully generated the VisTree."; }
+				if (GenerateVisTreeLev()) { buttonMessage = "Successfully generated the VisTree."; }
 				else { buttonMessage = "Failed generating the VisTree."; }
 			}
 			ImGui::SetItemTooltip("Generating the vis tree may take several minutes, but the gameplay will be more performant.");
 		}
 		ImGui::End();
 	}
+
 
 	if (Settings::w_ghost)
 	{
@@ -2605,7 +2592,7 @@ void Level::RenderUI(Renderer& renderer)
 				if (ImGui::Button(("Browse##selectbotpath" + std::to_string(i)).c_str()))
 				{
 					auto selection = pfd::open_file("Select Path (obj or ghost)", GetParentPath().string().c_str(),
-						{ "OBJ Files", "*.obj", "Ghost Files" ,"*.ctrghost", "All Files", "*"}).result();
+						{ "OBJ Files", "*.obj", "Ghost Files" ,"*.ctrghost", "All Files", "*" }).result();
 
 					if (!selection.empty())
 					{
@@ -2632,7 +2619,7 @@ void Level::RenderUI(Renderer& renderer)
 					{
 						std::vector<Vec3> vec;
 						if (s_objPaths[i].extension() == ".obj")
-							 vec = LoadPath(s_objPaths[i]);
+							vec = LoadPath(s_objPaths[i]);
 						else
 							vec = LoadGhostPath(s_objPaths[i], BotPathSettings::ghostStart, BotPathSettings::ghostEnd);
 						success = m_botPaths[i].GeneratePath(vec, m_quadblocks, i);
@@ -2659,14 +2646,14 @@ void Level::RenderUI(Renderer& renderer)
 					GenerateBotPathChangeCode();
 				}
 				ImGui::SameLine();
-				float colorBot[3] = { BotPathSettings::pathColor[i].Red(), BotPathSettings::pathColor[i].Green(), BotPathSettings::pathColor[i].Blue()};
+				float colorBot[3] = { BotPathSettings::pathColor[i].Red(), BotPathSettings::pathColor[i].Green(), BotPathSettings::pathColor[i].Blue() };
 				if (ImGui::ColorEdit3("Path Color##botcolor", colorBot))
 				{
 					BotPathSettings::pathColor[i] = Color(static_cast<float>(colorBot[0]), colorBot[1], colorBot[2]);
 					UpdateRenderBotData();
 				}
 				m_botPaths[i].RenderUI(i);
-				if (i<2){ ImGui::Separator(); }
+				if (i < 2) { ImGui::Separator(); }
 				ImGui::PopID();
 			}
 		}
@@ -2848,6 +2835,7 @@ bool Quadblock::RenderUI(size_t checkpointCount, bool& resetBsp)
 					resetBsp = true;
 					ComputeBoundingBox();
 					ComputeCollTrifaces();
+					m_hasRawNormalData = false;
 				}
 			}
 			ImGui::TreePop();
@@ -2878,13 +2866,11 @@ bool Quadblock::RenderUI(size_t checkpointCount, bool& resetBsp)
 					ImGui::InputFloat2("Bottom left:", &m_uvs[face][2].x, "%.2f");
 					ImGui::InputFloat2("Bottom right:", &m_uvs[face][3].x, "%.2f");
 					ImGui::TreePop();
-				}				
+				}
 				ImGui::PopID();
 			}
 			ImGui::TreePop();
 		}
-	
-		
 		if (ImGui::TreeNode("Terrain"))
 		{
 			std::string terrainLabel;
@@ -3024,18 +3010,18 @@ void Texture::RenderUI(const std::vector<std::pair<size_t, size_t>>& quadblockFa
 		std::filesystem::path currentPath = GetPath();
 		std::string defaultDir = currentPath.has_parent_path() ? currentPath.parent_path().string() : ".";
 		std::string defaultFile = currentPath.filename().string();
-		auto selection = pfd::open_file("Texture File", defaultDir, {"Texture Files", "*.bmp, *.jpeg, *.jpg, *.png"}).result();
+		auto selection = pfd::open_file("Texture File", defaultDir, { "Texture Files", "*.bmp, *.jpeg, *.jpg, *.png" }).result();
 		if (!selection.empty())
 		{
 			const std::filesystem::path& newTexPath = selection.front();
 			UpdateTexture(newTexPath);
 			refreshTextureStores();
-			for (const auto& quadFace : quadblockFaces) { quadblocks[quadFace.first].SetTexPath(quadFace.second, newTexPath); } 
+			for (const auto& quadFace : quadblockFaces) { quadblocks[quadFace.first].SetTexPath(quadFace.second, newTexPath); }
 		}
 	}
 	ImGui::Text("Size : %d x %d", GetWidth(), GetHeight());
 	constexpr size_t NUM_BLEND_MODES = 4;
-	const std::array<std::string, NUM_BLEND_MODES> BLEND_MODES = {"Half Transparent", "Additive", "Subtractive", "Additive Translucent"};
+	const std::array<std::string, NUM_BLEND_MODES> BLEND_MODES = { "Half Transparent", "Additive", "Subtractive", "Additive Translucent" };
 	uint16_t blendMode = GetBlendMode();
 	ImGui::Text("Blend Mode:"); ImGui::SameLine();
 	if (ImGui::BeginCombo("##blendmode", BLEND_MODES[blendMode].c_str()))
@@ -3051,7 +3037,6 @@ void Texture::RenderUI(const std::vector<std::pair<size_t, size_t>>& quadblockFa
 		}
 		ImGui::EndCombo();
 	}
-	
 }
 
 void Texture::RenderUI()

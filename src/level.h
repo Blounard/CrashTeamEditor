@@ -45,30 +45,15 @@ namespace LevelModels
 	static constexpr size_t COUNT = 11;
 };
 
-struct HostSettings // RAW STRUCT TO EMIT FOR HOT RELOAD SETTINGS
-{
-	int32_t magic;          // HOST_SETTINGS_MAGIC once the editor has written here
-	int32_t sequence;       // bumped by the editor on every push
-	int32_t relicSapphire;  // ms
-	int32_t relicGold;      // ms
-	int32_t relicPlatinum;  // ms
-	int32_t crystalTime;    // ms
-	int32_t introCutscene;  // 1 plays the intro cam, 0 skips it
-	int32_t ghost;          // 1 leaves the ghost replay alone, 0 kills its thread
-};
-
-
-
 class Level
 {
 public:
 	bool Load(const std::filesystem::path& filename, bool isLevel);
-	bool Save(const std::filesystem::path& path);
-	bool SaveLEV(const std::filesystem::path& path, bool useRawTexture);
 	bool SaveOBJ(const std::filesystem::path& objFile);
+	bool SaveLEV(const std::filesystem::path& path, bool useRawTextures);
 	bool IsLoaded() const;
+	bool HasRawTexture() const; 
 	void Clear(bool clearErrors);
-	//bool ImportModel(const std::filesystem::path& ctrmodelPath);
 	const std::string& GetName() const;
 	std::vector<Quadblock>& GetQuadblocks();
 	BSP& GetBSP();
@@ -89,6 +74,10 @@ public:
 	Model* GetMultiSelectedModel();
 	Model* GetFilterModel();
 	Model* GetInstancesModel();
+	bool GenerateSpawn(float colSpacing, float rowSpacing, float centerOffset);
+	bool GenerateBSP();
+	bool GenerateVisTreeLev();
+	void GenerateBotPathChangeCode();
 	bool LoadPreset(const std::filesystem::path& filename);
 	bool SavePreset(const std::filesystem::path& path);
 	void ResetFilter();
@@ -96,35 +85,27 @@ public:
 	void UpdateRenderCheckpointData();
 	void UpdateRenderBotData();
 	void GenerateRenderLevData();
-	bool GenerateVisTreeOnly();
-	void GenerateBotPathLeft();
-	bool HasRawTexture() const { return m_hasRawTexture; }
 
 private:
 	void ManageTurbopad(Quadblock& quadblock);
 	bool LoadLEV(const std::filesystem::path& levFile);
 	bool LoadOBJ(const std::filesystem::path& objFile, bool isLevel);
-
-
 	bool StartEmuIPC(const std::string& emulator);
 	bool HotReload(const std::string& levPath, const std::string& vrmPath, const std::string& emulator);
 	bool SaveGhostData(const std::string& emulator, const std::filesystem::path& path);
 	bool SetGhostData(const std::filesystem::path& path, bool tropy);
 	bool UpdateVRM();
-	std::vector<uint16_t> ReadRawVRAM(std::filesystem::path vrmPath);
 	bool EmplaceInstanceBSP();
-	void GenerateBotPathChangeCode();
-	bool GenerateSpawn(float colSpacing, float rowSpacing, float centerOffset);
 	bool GenerateInstanceRow(int checkpointIndex, size_t instanceIndex, int numInstances, float spacing, bool deleteAfter);
 	bool QueryGround(const Vec3& pos, float& height, Vec3& normal) const;
 	std::string GenerateUniqueInstanceName(const std::string& name) const;
 	bool GenerateCheckpoints();
-	bool GenerateBSP();
 	bool ReOrderBSP();
 	bool GenerateOceanVertices();
 	bool GenerateMinimap();
 	void OpenHotReloadWindow();
 	void RenderUI(Renderer& renderer);
+
 	void InitModels(Renderer& renderer);
 	void UpdateAnimationRenderData();
 	void UpdateFilterRenderData(const Quadblock& qb);
@@ -181,8 +162,7 @@ private:
 	std::unordered_map<LayoutKey, std::string> m_materialCache; // Layout Key -> matName
 	std::unordered_map<LayoutKey, PixelBounds> m_textureToPixelBounds; // Map Layout key -> Pixels bounds of the texture.
 	PSX::TextureLayout m_rawWaterLayout;
-	//std::vector<PSX::Vertex> m_rawWaterVertices;
-	//std::vector<PSX::OceanVertex> m_rawWaterColors;
+
 	std::map<std::string, std::vector<std::pair<size_t, size_t>>> m_materialToQuadFaces; // MaterialName -> List of (QuadId, FaceId)
 	std::unordered_map<std::string, Texture> m_materialToTexture;
 	MaterialProperty<std::string, MaterialType::TERRAIN> m_propTerrain;

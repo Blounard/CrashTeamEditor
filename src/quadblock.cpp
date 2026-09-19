@@ -2,16 +2,13 @@
 #include "utils.h"
 #include "settings.h"
 
-#include <unordered_map>
 #include <map>
+#include <unordered_map>
 #include <unordered_set>
 #include <cstring>
 
-Quadblock::Quadblock(const std::string& name,
-	const std::vector<Point>& points,
-	std::vector<std::vector<size_t>>& facesIndexes,
-	std::vector<std::vector<Vec2>>& faceUVs,
-	std::vector<std::string>& faceMaterials,
+Quadblock::Quadblock(const std::string& name, const std::vector<Point>& points,
+	std::vector<std::vector<size_t>>& facesIndexes, std::vector<std::vector<Vec2>>& faceUVs, std::vector<std::string>& faceMaterials,
 	bool hasUV, UpdateFilterCallback filterCallback)
 {
 	constexpr size_t INVALID = std::numeric_limits<size_t>::max();
@@ -108,15 +105,15 @@ Quadblock::Quadblock(const std::string& name,
 				// Correct face, now check UVs
 				auto UVsMatch = [](const Vec2& a, const Vec2& b) -> bool
 					{
-						constexpr float UV_EPS = 1/256.0f; 
+						constexpr float UV_EPS = 1 / 256.0f;
 						return std::abs(a.x - b.x) < UV_EPS && std::abs(a.y - b.y) < UV_EPS;
 					};
 				if (UVsMatch(faceUVs[centerFace][faceVertId], faceUVs[outFaceId][outFaceEdgeVert1Id]) &&
-					UVsMatch(faceUVs[centerFace][(faceVertId + 1) % 3], faceUVs[outFaceId][outFaceEdgeVert2Id])) 
+					UVsMatch(faceUVs[centerFace][(faceVertId + 1) % 3], faceUVs[outFaceId][outFaceEdgeVert2Id]))
 				{
 					// Found matching, merge CenterFace and OutFaceId into a quadface.
 					foundMatching = true;
-					std::vector<size_t> newFaceIndexes; 
+					std::vector<size_t> newFaceIndexes;
 					std::vector<Vec2> newFaceUVs;
 					newFaceIndexes.push_back(facesIndexes[centerFace][(faceVertId + 1) % 3]);
 					newFaceUVs.push_back(faceUVs[centerFace][(faceVertId + 1) % 3]);
@@ -141,7 +138,7 @@ Quadblock::Quadblock(const std::string& name,
 
 					// Re compute the start of this constructor with those new params : 
 					objFaceVertIdMap.clear();
-					for (size_t& count : refCount) { count = 0 ; }
+					for (size_t& count : refCount) { count = 0; }
 					for (size_t objFaceId = 0; objFaceId < facesIndexes.size(); objFaceId++)
 					{
 						const auto& face = facesIndexes[objFaceId];
@@ -175,7 +172,7 @@ Quadblock::Quadblock(const std::string& name,
 	std::array<size_t, NUM_FACES_QUADBLOCK> faceQuadtoOBJ{}; faceQuadtoOBJ.fill(INVALID); // Quadblock face index -> OBJ face index
 	std::array<size_t, NUM_VERTICES_QUADBLOCK> vertQuadtoOBJ{}; vertQuadtoOBJ.fill(INVALID); // Quadblock vert index -> OBJ vert index
 
-	constexpr size_t quadFaceVertOrder[NUM_FACES_QUADBLOCK][4] = 
+	constexpr size_t quadFaceVertOrder[NUM_FACES_QUADBLOCK][4] =
 	{
 		{4, 3, 0, 1},
 		{4, 1, 2, 5},
@@ -190,7 +187,7 @@ Quadblock::Quadblock(const std::string& name,
 			size_t facePos = INVALID;
 			for (size_t i = 0; i < NUM_FACES_QUADBLOCK; i++)
 			{
-				if (quadFaceOrder[i] == faceId) 
+				if (quadFaceOrder[i] == faceId)
 					facePos = i;
 			}
 			return quadFaceOrder[(((static_cast<int>(facePos) - offset) % NUM_FACES_QUADBLOCK) + NUM_FACES_QUADBLOCK) % NUM_FACES_QUADBLOCK];
@@ -212,17 +209,17 @@ Quadblock::Quadblock(const std::string& name,
 			// facesIndexes[i] ; vert ID (quad ID, not face) ; Offset (like +1 for next in face) -> vert ID (quad ID not face)
 			if (!objFaceVertIdMap.contains(std::make_tuple(objFaceId, objGlobalVertId)))
 				return INVALID;
-			size_t objFaceVertId = objFaceVertIdMap[std::make_tuple(objFaceId, objGlobalVertId)];				
+			size_t objFaceVertId = objFaceVertIdMap[std::make_tuple(objFaceId, objGlobalVertId)];
 			int facesSize = static_cast<int>(facesIndexes[objFaceId].size());
 			return facesIndexes[objFaceId][(((static_cast<int>(objFaceVertId) - offset) % facesSize) + facesSize) % facesSize];
 		};
 
-	// Step 1 : Assign quadFace0 with any face in the OBJ. We pick a 4-vert face if any to avoid rotations later
+	// Assign quadFace0 with any face in the OBJ. We pick a 4-vert face if any to avoid rotations later
 	// We assign it to quadFace0 since face it can't always be collapsed, so it's better if it's not INVALID.
 	size_t objFace0 = 0;
 	for (size_t objFaceId = 0; objFaceId < facesIndexes.size(); objFaceId++)
 	{
-		if (facesIndexes[objFaceId].size() == 4) { objFace0 = objFaceId; break; } 
+		if (facesIndexes[objFaceId].size() == 4) { objFace0 = objFaceId; break; }
 	}
 	faceOBJtoQuad[objFace0] = 0;
 	faceQuadtoOBJ[0] = objFace0;
@@ -276,7 +273,7 @@ Quadblock::Quadblock(const std::string& name,
 		size_t prevObjFace = INVALID; size_t nextObjFace = INVALID;
 		if (FindRelativePointOBJ(objFaceA, objCenterId, 1) == FindRelativePointOBJ(objFaceB, objCenterId, -1))
 		{
-			nextObjFace = objFaceA; 
+			nextObjFace = objFaceA;
 			prevObjFace = objFaceB;
 		}
 		else if (FindRelativePointOBJ(objFaceA, objCenterId, -1) == FindRelativePointOBJ(objFaceB, objCenterId, 1))
@@ -329,7 +326,7 @@ Quadblock::Quadblock(const std::string& name,
 			if (refCount[relOBJVertId] == 2 || (offset != 2 && faceQuadtoOBJ[FindRelativeFaceQuad(quadFaceId, offset)] == INVALID))
 				vertQuadtoOBJ[relQuadVertId] = relOBJVertId;
 			else
-				vertQuadtoOBJ[oppQuadVertId] = relOBJVertId;			
+				vertQuadtoOBJ[oppQuadVertId] = relOBJVertId;
 		}
 	}
 
@@ -361,7 +358,6 @@ Quadblock::Quadblock(const std::string& name,
 		}
 	}
 
-
 	bool needRotation = false;
 	bool noRotation = false;
 	// Collapse missing face's unique vert
@@ -369,7 +365,7 @@ Quadblock::Quadblock(const std::string& name,
 	{
 		if (faceQuadtoOBJ[quadFaceId] == INVALID)
 		{
-			int uniqueVertOffset = 2; 
+			int uniqueVertOffset = 2;
 			size_t uniqueQuadVertInFace = FindRelativePointQuad(quadFaceId, centerQuadVertId, uniqueVertOffset);
 			int prevEdgeOffset = -1;
 			size_t prevQuadFaceId = FindRelativeFaceQuad(quadFaceId, prevEdgeOffset);
@@ -377,7 +373,7 @@ Quadblock::Quadblock(const std::string& name,
 			int nextEdgeOffset = 1;
 			size_t nextQuadFaceId = FindRelativeFaceQuad(quadFaceId, nextEdgeOffset);
 			size_t nextEdgeQuadVertInFace = FindRelativePointQuad(quadFaceId, centerQuadVertId, nextEdgeOffset);
-			
+
 			vertQuadtoOBJ[uniqueQuadVertInFace] = vertQuadtoOBJ[centerQuadVertId];
 			if (faceQuadtoOBJ[prevQuadFaceId] != INVALID && faceQuadtoOBJ[nextQuadFaceId] != INVALID) // Check that logic
 			{
@@ -385,7 +381,6 @@ Quadblock::Quadblock(const std::string& name,
 				{
 					if (uniqueQuadVertInFace == 0 || uniqueQuadVertInFace == 8)
 					{
-						printf("WARNING : When collapsing missing face in %s, we collapsed the vert %zu\n", name.c_str(), uniqueQuadVertInFace);
 						needRotation = true;
 					}
 					else
@@ -399,13 +394,12 @@ Quadblock::Quadblock(const std::string& name,
 		throw QuadException("No valid rotation found that preserves geometry"); // Need more research maybe ? Or actually impossible ? Can this even happen ?
 	if (needRotation)
 	{
-		printf("Rotation done on %s\n", name.c_str());
 		std::array<size_t, NUM_FACES_QUADBLOCK> rotation90FaceMap = { 1, 3, 0, 2 };
-		std::array<size_t, NUM_VERTICES_QUADBLOCK> rotation90VertMap = { 2, 5, 8, 1, 4, 7, 0, 3, 6};
-		std::vector<size_t> rotatedFaceOBJtoQuad(facesIndexes.size(), INVALID); 
+		std::array<size_t, NUM_VERTICES_QUADBLOCK> rotation90VertMap = { 2, 5, 8, 1, 4, 7, 0, 3, 6 };
+		std::vector<size_t> rotatedFaceOBJtoQuad(facesIndexes.size(), INVALID);
 		std::array<size_t, NUM_FACES_QUADBLOCK> rotatedFaceQuadtoOBJ{}; rotatedFaceQuadtoOBJ.fill(INVALID);
 		std::array<size_t, NUM_VERTICES_QUADBLOCK> rotatedVertQuadtoOBJ{}; rotatedVertQuadtoOBJ.fill(INVALID);
-		
+
 		for (size_t quadFaceId = 0; quadFaceId < NUM_FACES_QUADBLOCK; quadFaceId++)
 		{
 			rotatedFaceQuadtoOBJ[quadFaceId] = faceQuadtoOBJ[rotation90FaceMap[quadFaceId]];
@@ -420,8 +414,6 @@ Quadblock::Quadblock(const std::string& name,
 		faceQuadtoOBJ = rotatedFaceQuadtoOBJ;
 		vertQuadtoOBJ = rotatedVertQuadtoOBJ;
 	}
-	if (noRotation)
-		printf("No-rotation requested on %s\n", name.c_str());
 	// collapse missing edges to center
 	for (size_t quadFaceId = 0; quadFaceId < NUM_FACES_QUADBLOCK; quadFaceId++)
 	{
@@ -440,17 +432,15 @@ Quadblock::Quadblock(const std::string& name,
 		if (vertQuadtoOBJ[uniqueQuadVertInFace] == INVALID)
 			vertQuadtoOBJ[uniqueQuadVertInFace] = vertQuadtoOBJ[prevEdgeQuadVertInFace];
 	}
-	for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++) 
-	{ 
+	for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++)
+	{
 		if (vertQuadtoOBJ[i] == INVALID)
-			throw QuadException("Quadblock Vert " + std::to_string(i) + " couldn't be identified");	
-			
+			throw QuadException("Quadblock Vert " + std::to_string(i) + " couldn't be identified");
+
 		m_p[i] = Vertex(points[vertQuadtoOBJ[i]]);
 	}
 
-	// Step 6: UVs. A synthesized corner's grid index equals its substitute edge's grid index,
-	// so this lookup naturally finds that edge's own real, authored UV for it automatically -
-	// no special-casing needed for the missing-corner case.
+	// UVs
 	constexpr size_t uvVertInd[NUM_FACES_QUADBLOCK][4] =
 	{
 		{0, 1, 3, 4},
@@ -465,7 +455,11 @@ Quadblock::Quadblock(const std::string& name,
 		for (size_t quadFaceId = 0; quadFaceId < NUM_FACES_QUADBLOCK; quadFaceId++)
 		{
 			const size_t objFaceId = faceQuadtoOBJ[quadFaceId];
-			if (objFaceId == INVALID) continue;
+			if (objFaceId == INVALID)
+			{
+				for (size_t faceVertId = 0; faceVertId < 4; faceVertId++) { m_uvs[quadFaceId][faceVertId] = faceUVs[0][0]; }
+				continue;
+			}
 			for (size_t faceVertId = 0; faceVertId < 4; faceVertId++)
 			{
 				size_t quadVertId = uvVertInd[quadFaceId][faceVertId];
@@ -478,10 +472,10 @@ Quadblock::Quadblock(const std::string& name,
 	}
 
 	m_name = name;
-	for (size_t quadFaceId = 0; quadFaceId < NUM_FACES_QUADBLOCK; quadFaceId++) 
-	{ 
+	for (size_t quadFaceId = 0; quadFaceId < NUM_FACES_QUADBLOCK; quadFaceId++)
+	{
 		size_t objFaceId = faceQuadtoOBJ[quadFaceId];
-		if (objFaceId == INVALID) 
+		if (objFaceId == INVALID)
 			m_materials[quadFaceId] = faceMaterials[0];
 		else
 			m_materials[quadFaceId] = faceMaterials[objFaceId];
@@ -489,23 +483,22 @@ Quadblock::Quadblock(const std::string& name,
 	m_materials[NUM_FACES_QUADBLOCK] = m_materials[0];
 	m_filterCallback = filterCallback;
 	SetDefaultValues();
+	m_hasRawNormalData = false;
 }
+
 
 Quadblock::Quadblock(const PSX::Quadblock& quadblock, const std::vector<PSX::Vertex>& vertices, UpdateFilterCallback filterCallback)
 {
-	uint16_t reverseIndexMapping[NUM_VERTICES_QUADBLOCK] = {0, 2, 6, 8, 1, 3, 4, 5, 7};
-	std::unordered_set<uint16_t> indexes;
+	uint16_t reverseIndexMapping[NUM_VERTICES_QUADBLOCK] = { 0, 2, 6, 8, 1, 3, 4, 5, 7 };
 	for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++)
 	{
 		uint16_t index = quadblock.index[i];
-		indexes.insert(index);
 		const PSX::Vertex& vertex = vertices[index];
 		m_p[reverseIndexMapping[i]] = Vertex(vertex);
 	}
 	SetDefaultValues();
 	ResetUVs();
 	m_hasRawNormalData = true;
-	m_hasRawTexture = true;
 	m_triNormalVecBitshift = quadblock.triNormalVecBitshift;
 	for (int i = 0; i < 10; i++) { m_triNormalVecDividend[i] = quadblock.triNormalVecDividend[i]; }
 	m_bbox.max = ConvertPSXVec3(quadblock.bbox.max, FP_ONE_GEO);
@@ -520,9 +513,7 @@ Quadblock::Quadblock(const PSX::Quadblock& quadblock, const std::vector<PSX::Ver
 		m_faceRotateFlip[i] = packedFace & 0b111;
 		m_faceDrawMode[i] = (packedFace >> 3) & 0b11;
 		if (quadblock.drawOrderHigh[i] != 0) { m_drawOrderHigh = static_cast<int>(quadblock.drawOrderHigh[i]); }
-		m_offTextures[i] = quadblock.offMidTextures[i];
 	}
-	m_offTextures[NUM_FACES_QUADBLOCK] = quadblock.offLowTexture;
 	m_terrain = quadblock.terrain;
 	m_downforce = static_cast<int>(quadblock.speedImpact);
 	m_weatherIntensity = quadblock.weatherIntensity;
@@ -533,10 +524,9 @@ Quadblock::Quadblock(const PSX::Quadblock& quadblock, const std::vector<PSX::Ver
 	for (size_t face = 0; face < NUM_FACES_QUADBLOCK + 1; face++)
 	{
 		m_materials[face] = "default";
-	}	
+	}
 	m_triblock = false;
 	m_filterCallback = filterCallback;
-		
 }
 
 const std::string& Quadblock::GetName() const
@@ -731,11 +721,6 @@ const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>& Quadblock::GetUVs() const
 	return m_uvs;
 }
 
-uint32_t Quadblock::GetRawTexOffset(size_t i) const
-{
-	return m_offTextures[i];
-}
-
 size_t Quadblock::GetRenderPrimitiveIndex() const
 {
 	return m_renderPrimitiveIndex;
@@ -816,14 +801,14 @@ void Quadblock::SetHide(bool active)
 	m_hide = active;
 }
 
-void Quadblock::SetTextureID(size_t id, size_t quad)
+void Quadblock::SetTextureID(int id, size_t quad)
 {
-	m_textureIDs[quad] = static_cast<int>(id);
+	m_textureIDs[quad] = id;
 }
 
-void Quadblock::SetAnimTextureOffset(size_t relOffset, size_t levOffset, size_t quad)
+void Quadblock::SetAnimTextureOffset(int offset, size_t quad)
 {
-	m_animTexOffset[quad] = static_cast<int>(relOffset + levOffset);
+	m_animTexOffset[quad] = offset;
 }
 
 void Quadblock::SetTrigger(QuadblockTrigger trigger)
@@ -858,24 +843,16 @@ void Quadblock::SetSpeedImpact(int speed)
 	m_downforce = speed;
 }
 
-void Quadblock::SetUVs(const QuadUV& uvs)
-{
-	for (size_t i = 0; i < NUM_FACES_QUADBLOCK + 1; i++)
-	{
-		m_uvs[i] = uvs;
-	}
-}
-
 void Quadblock::SetFaceUVs(size_t faceIndex, const QuadUV& uvs)
 {
-	if (faceIndex < m_uvs.size())
+	if (faceIndex < NUM_FACES_QUADBLOCK + 1)
 	{
 		m_uvs[faceIndex] = uvs;
 	}
 }
 
-void Quadblock::SetMaterial(size_t face, const std::string& material) 
-{ 
+void Quadblock::SetMaterial(size_t face, const std::string& material)
+{
 	m_materials[face] = material;
 }
 
@@ -972,7 +949,7 @@ std::vector<Primitive> Quadblock::ToGeometry(bool filterTriangles, const std::ar
 			{ 3, 4, 6 },
 			{ 1, 4, 3 },
 		};
-		constexpr int triblockQuadIndex[triCount] = {0, 1, 2, 0};
+		constexpr int triblockQuadIndex[triCount] = { 0, 1, 2, 0 };
 		for (int triIndex = 0; triIndex < triCount; triIndex++)
 		{
 			const int faceId = triblockQuadIndex[triIndex];
@@ -1000,7 +977,7 @@ std::vector<Primitive> Quadblock::ToGeometry(bool filterTriangles, const std::ar
 std::vector<Vertex> Quadblock::GetVertices() const
 {
 	/*                                 0       1       2       3       4       5       6       7       8    */
-	std::vector<Vertex> vertices = {m_p[0], m_p[2], m_p[6], m_p[8], m_p[1], m_p[3], m_p[4], m_p[5], m_p[7]};
+	std::vector<Vertex> vertices = { m_p[0], m_p[2], m_p[6], m_p[8], m_p[1], m_p[3], m_p[4], m_p[5], m_p[7] };
 	return vertices;
 }
 
@@ -1089,11 +1066,10 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 		{
 			if (m_textureIDs[i] >= 0)
 				quadblock.offMidTextures[i] = static_cast<uint32_t>(offTextures + (m_textureIDs[i] * sizeof(PSX::TextureGroup)));
-		}
+		}	
 	}
-	if (m_textureIDs[4] >= 0)
+	if (m_textureIDs[4] >= 0) 
 		quadblock.offLowTexture = static_cast<uint32_t>(offTextures + (m_textureIDs[4] * sizeof(PSX::TextureGroup)));
-
 	quadblock.bbox.min = ConvertVec3(m_bbox.min, FP_ONE_GEO);
 	quadblock.bbox.max = ConvertVec3(m_bbox.max, FP_ONE_GEO);
 	quadblock.terrain = m_terrain;
@@ -1143,6 +1119,7 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 	std::memcpy(buffer.data(), &quadblock, sizeof(quadblock));
 	return buffer;
 }
+
 void Quadblock::ComputeCollTrifaces()
 {
 	const bool equivalentDiagonal = std::abs((m_p[2].m_pos - m_p[6].m_pos).Length() - ((m_p[2].m_pos - m_p[4].m_pos).Length() + (m_p[4].m_pos - m_p[6].m_pos).Length())) <= EPSILON;
@@ -1187,7 +1164,6 @@ void Quadblock::SetDefaultValues()
 		m_faceDrawMode[i] = FaceDrawMode::DRAW_BOTH;
 		m_faceRotateFlip[i] = FaceRotateFlip::NONE;
 	}
-
 	m_doubleSided = false;
 	m_checkpointPathable = true;
 	m_checkpointStatus = false;
@@ -1199,12 +1175,12 @@ void Quadblock::SetDefaultValues()
 	m_animated = false;
 	m_filter = false;
 	m_downforce = 0;
-	m_hasRawNormalData = false;
-	m_hasRawTexture = false;
 	m_weatherIntensity = 0;
 	m_weatherVanishRate = 0;
 	m_filterColor = GuiRenderSettings::defaultFilterColor;
 	m_renderPrimitiveIndex = RENDER_INDEX_NONE;
+	m_textureIDs = { -1, -1, -1, -1, -1 };
+	m_animTexOffset = { -1, -1, -1, -1, -1 };
 	m_water = false;
 	for (size_t i = 0; i < NUM_VERTICES_QUADBLOCK; i++)
 	{
@@ -1240,7 +1216,6 @@ void Quadblock::ComputeBoundingBox()
 	}
 	m_bbox.min = min;
 	m_bbox.max = max;
-	m_hasRawNormalData = false;
 }
 
 int SnapToClosestQuad(const std::vector<Quadblock>& quadblocks, const std::vector<size_t>quadIndexes, Vec3& outpos, Vec3& outrot, const Vec3& projectDir, float negSnapLimit, float posSnapLimit, float barycentricTolerance)

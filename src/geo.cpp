@@ -722,7 +722,7 @@ std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist, b
 	{
 		Vec3 segment = denseSamples[i] - denseSamples[i - 1];
 		float segLen = segment.Length();
-		if (segLen <= 0.00001f) continue;
+		if (segLen <= EPSILON) continue;
 
 		accumulated += segLen;
 

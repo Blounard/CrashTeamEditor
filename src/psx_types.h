@@ -363,7 +363,7 @@ namespace PSX
 	enum LevelExtra
 	{
 		MINIMAP = 0,
-		SPAWN = 1,
+		SPAWN = 1, // what
 		CAMERA_END_OF_RACE = 2,
 		CAMERA_DEMO = 3,
 		N_TROPY_GHOST = 4,
@@ -430,8 +430,6 @@ namespace PSX
 		uint32_t offVertex;  // pointer to Vertex
 		uint32_t offOceanVertex; //pointer to OceanVertex
 	};
-
-
 
 	struct OceanVertexFrame
 	{
@@ -538,7 +536,6 @@ namespace PSX
 		uint32_t offBSP[MAX_NUM_PLAYERS]; // 0x20
 	};
 
-
 	struct levAINavTable
 	{
 		uint32_t offAIPathArray[3];
@@ -565,8 +562,6 @@ namespace PSX
 		uint8_t goBackCount; // 0x12
 		uint8_t specialBits; // 0x13
 	};
-
-
 
 	static constexpr size_t NUM_SKYBOX_SEGMENTS = 8;
 	static constexpr size_t SKYBOX_FACE_STRIDE = 4; // 3 vertex offsets + 1 padding per face
@@ -660,8 +655,6 @@ struct std::hash<PSX::OceanVertexFrame>
 		return std::hash<uint16_t>{}(packed);
 	}
 };
-
-
 
 static constexpr int16_t FP_ONE = 0x1000;
 static constexpr int16_t FP_ONE_GEO = 64;
@@ -781,7 +774,6 @@ static inline Stars ConvertStars(const PSX::Stars& stars)
     out.zDepth = stars.zDepth;
     return out;
 }
-
 
 static inline Weather ConvertWeather(const PSX::Weather& weather)
 {

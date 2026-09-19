@@ -111,11 +111,8 @@ typedef std::function<void(const Quadblock&)> UpdateFilterCallback;
 class Quadblock
 {
 public:
-	Quadblock(const std::string& name,
-		const std::vector<Point>& points,
-		std::vector<std::vector<size_t>>& faceIndices,
-		std::vector<std::vector<Vec2>>& faceUVs,
-		std::vector<std::string>& faceMaterials,
+	Quadblock(const std::string& name, const std::vector<Point>& points,
+		std::vector<std::vector<size_t>>& faceIndices, std::vector<std::vector<Vec2>>& faceUVs, std::vector<std::string>& faceMaterials,
 		bool hasUV, UpdateFilterCallback filterCallback);
 	Quadblock(const PSX::Quadblock& quadblock, const std::vector<PSX::Vertex>& vertices, UpdateFilterCallback filterCallback);
 	const std::string& GetName() const;
@@ -147,7 +144,6 @@ public:
 	const QuadUV& GetQuadUV(size_t quad) const;
 	const std::filesystem::path& GetTexPath(size_t face) const;
 	const std::array<QuadUV, NUM_FACES_QUADBLOCK + 1>& GetUVs() const;
-	uint32_t GetRawTexOffset(size_t i) const;
 	size_t GetRenderPrimitiveIndex() const;
 	const std::string& GetMaterial(size_t face) const;
 	void SetRenderPrimitiveIndex(size_t triangleIndex);
@@ -164,20 +160,19 @@ public:
 	void SetName(const std::string& name);
 	void SetTurboPadIndex(size_t index);
 	void SetHide(bool active);
-	void SetTextureID(size_t id, size_t quad);
-	void SetAnimTextureOffset(size_t relOffset, size_t levOffset, size_t quad);
+	void SetTextureID(int id, size_t quad);
+	void SetAnimTextureOffset(int offset, size_t quad);
 	bool IsQuadblock() const;
 	void SetTrigger(QuadblockTrigger trigger);
 	void SetTexPath(size_t face, const std::filesystem::path& path);
+	void SetMaterial(size_t face, const std::string& material);
 	void SetAnimated(bool animated);
 	void SetFilter(bool filter);
 	void SetFilterColor(const Color& color);
 	void SetSpeedImpact(int speed);
-	void SetUVs(const QuadUV& uvs);
 	void SetFaceUVs(size_t faceIndex, const QuadUV& uvs);
-	void SetMaterial(size_t face, const std::string& material);
 	void SetOceanVertex(PSX::OceanVertex overt, size_t vertId);
-	PSX::OceanVertex GetOceanVertex(size_t vertId) const ;
+	PSX::OceanVertex GetOceanVertex(size_t vertId) const;
 	void SetWeatherIntensity(int intensity);
 	void SetWeatherVanishRate(int vanishRate);
 	void Translate(float ratio, const Vec3& direction);
@@ -242,8 +237,6 @@ private:
 	bool m_hasRawNormalData; //for raw normals
 	uint8_t m_triNormalVecBitshift;
 	int16_t m_triNormalVecDividend[10];
-	bool m_hasRawTexture;
-	uint32_t m_offTextures[NUM_FACES_QUADBLOCK + 1];
 	size_t m_renderPrimitiveIndex = RENDER_INDEX_NONE;
 	UpdateFilterCallback m_filterCallback;
 };

@@ -357,11 +357,12 @@ void init_crashteameditor(py::module_& m)
 		.def_property("checkpoint_pathable", &Quadblock::GetCheckpointPathable, &Quadblock::SetCheckpointPathable)
 		.def_property("vistree_transparent", &Quadblock::GetVisTreeTransparent, &Quadblock::SetVisTreeTransparent)
 		.def_property("z_depth_bias", &Quadblock::GetDrawOrderHigh, &Quadblock::SetDrawOrderHigh)
+		.def("get_tex_path", &Quadblock::GetTexPath, py::arg("face"))
+		.def("set_tex_path", &Quadblock::SetTexPath, py::arg("face"), py::arg("path"))
+		.def("get_material", &Quadblock::GetMaterial, py::arg("face"))
+		.def("set_material", &Quadblock::SetMaterial, py::arg("face"), py::arg("materialName")) 
 		.def_property("weather_intensity", &Quadblock::GetWeatherIntensity, &Quadblock::SetWeatherIntensity)
 		.def_property("weather_vanish_rate", &Quadblock::GetWeatherVanishRate, &Quadblock::SetWeatherVanishRate)
-		/*.def_property("tex_path",
-			[](const Quadblock& qb) { return std::filesystem::path(qb.GetTexPath()); },
-			&Quadblock::SetTexPath)*/ // TODO so something
 		.def_property_readonly("bounding_box", &Quadblock::GetBoundingBox, py::return_value_policy::copy)
 		.def_property_readonly("uvs", &Quadblock::GetUVs, py::return_value_policy::copy)
 		.def("is_quadblock", &Quadblock::IsQuadblock)
@@ -405,8 +406,6 @@ void init_crashteameditor(py::module_& m)
 			return verts;
 		})
 		.def("get_quad_uv", &Quadblock::GetQuadUV, py::arg("quad"), py::return_value_policy::copy)
-		.def("set_texture_id", &Quadblock::SetTextureID, py::arg("texture_id"), py::arg("quad"))
-		.def("set_anim_texture_offset", &Quadblock::SetAnimTextureOffset, py::arg("rel_offset"), py::arg("lev_offset"), py::arg("quad"))
 		.def("set_checkpoint_status", &Quadblock::SetCheckpointStatus)
 		.def("set_trigger", &Quadblock::SetTrigger)
 		.def("compute_normal_vector", &Quadblock::ComputeNormalVector, py::arg("id0"), py::arg("id1"), py::arg("id2"));
@@ -536,23 +535,16 @@ void init_crashteameditor(py::module_& m)
 		.def("set_quadblock_indexes", &BSP::SetQuadblockIndexes)
 		.def("split_leaf", &BSP::SplitLeafGeometry, py::arg("quadblocks"), py::arg("axis"), py::arg("midpoint"))
 		.def("clear", &BSP::Clear)
-		.def("generate", [](BSP& bsp, const std::vector<Quadblock>& quadblocks, int maxQuadPerLeaf, float maxAxisDistance, bool separateMaterial)
+		.def("generate", [](BSP& bsp, const std::vector<Quadblock>& quadblocks)
 			{
-				BSPTreeSettings settings;
-				settings.maxQuadPerLeaf = maxQuadPerLeaf;
-				settings.maxAxisDistance = maxAxisDistance;
-				settings.separateMaterial = separateMaterial;
 				bsp.Generate(quadblocks);
 			}
-	, py::arg("quadblocks"), py::arg("max_quads_per_leaf"), py::arg("max_axis_length"), py::arg("separate_material") );
-
+	, py::arg("quadblocks"));
 
 	py::class_<BitMatrix>(m, "VisTree")
 		.def(py::init<>())
 		.def("get", &BitMatrix::Get, py::arg("x"), py::arg("y"))
 		.def("set", &BitMatrix::Set, py::arg("val"), py::arg("x"), py::arg("y"));
-
-
 
 	py::class_<BotNode>(m, "BotNode")
 		.def(py::init<>())
@@ -562,13 +554,12 @@ void init_crashteameditor(py::module_& m)
 		.def_property("checkpoint", &BotNode::GetCheckpoint, &BotNode::SetCheckpoint)
 		.def_property("path_change", &BotNode::GetPathChange, &BotNode::SetPathChange)
 		.def_property("path_change_index", &BotNode::GetPathChangeIndex, &BotNode::SetPathChangeIndex);
-		
 
 	py::class_<Level> level(m, "Level");
 	level
 		.def(py::init<>())
-		.def("load", [](Level& self, const std::string& filename) {return self.Load(filename, true);}, py::arg("filename"))
-		.def("save", &Level::Save, py::arg("path"))
+		.def("load", [](Level& self, const std::string& filename) {return self.Load(filename, true); }, py::arg("filename"))
+		.def("save", &Level::SaveLEV, py::arg("path"), py::arg("useRawTex"))
 		.def_property_readonly("is_loaded", &Level::IsLoaded)
 		.def("clear", &Level::Clear, py::arg("clear_errors") = true)
 		.def("reset_filter", &Level::ResetFilter)
@@ -593,7 +584,7 @@ void init_crashteameditor(py::module_& m)
 		.def("get_material_quadblock_indexes", &Level::GetMaterialQuadblockIndexes, py::arg("material"), py::return_value_policy::copy)
 		.def("load_preset", &Level::LoadPreset, py::arg("filename"))
 		.def("save_preset", &Level::SavePreset, py::arg("path"))
-		.def("generate_vistree", &Level::GenerateVisTreeOnly)
+		.def("generate_vistree", &Level::GenerateVisTreeLev)
 		.def("get_renderer_selected_data", [](Level& level) {
 			auto selection = level.GetRendererSelectedData();
 			const auto& quadblocks = std::get<0>(selection);

@@ -58,7 +58,6 @@ private:
 	std::filesystem::path m_path;
 	std::vector<AnimTextureFrame> m_frames;
 	std::vector<Texture> m_textures;
-	std::vector<std::string> m_texNames;
 	std::vector<size_t> m_quadblockIndexes;
 
 	int m_startAtFrame;
