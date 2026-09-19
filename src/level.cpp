@@ -3080,6 +3080,222 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 	return ret;
 }
 
+bool Level::SaveOBJ(const std::filesystem::path& objFile)
+{
+	std::ofstream file(objFile);
+	if (!file.is_open()) { return false; }
+
+	// --- Collect all unique vertices, normals, UVs across all quadblocks ---
+	std::vector<std::pair<Vec3, Color>> allVertices;
+	std::vector<Vec3> allNormals;
+	std::vector<Vec2> allUVs;
+
+	// Maps for deduplication (using string keys for float precision safety)
+	auto Vec3Key = [](const Vec3& v) {
+		return std::to_string(v.x) + "," + std::to_string(v.y) + "," + std::to_string(v.z);
+		};
+	auto Vec2Key = [](const Vec2& v) {
+		return std::to_string(v.x) + "," + std::to_string(v.y);
+		};
+	auto PointKey = [](const Vec3& pos) {
+		return std::to_string(pos.x) + "," + std::to_string(pos.y) + "," + std::to_string(pos.z);
+		};
+
+	std::unordered_map<std::string, int> vertexIndexMap;  // 1-based
+	std::unordered_map<std::string, int> normalIndexMap;  // 1-based
+	std::unordered_map<std::string, int> uvIndexMap;      // 1-based
+
+	// Per-quadblock face data: each face = list of (vi, uvi, ni) tuples
+	struct FaceVertex { int vi, uvi, ni; };
+	struct FaceData { std::vector<std::vector<FaceVertex>> faces; };
+	std::vector<FaceData> quadblockFaces(m_quadblocks.size());
+
+	auto GetOrAddVertex = [&](size_t quadblockIndex, int vertexSlot, const Vec3& pos, const Color& color) -> int {
+		std::string key = std::to_string(quadblockIndex) + ":" + std::to_string(vertexSlot);
+		auto it = vertexIndexMap.find(key);
+		if (it != vertexIndexMap.end()) { return it->second; }
+		int idx = (int)allVertices.size() + 1;
+		allVertices.push_back({ pos, color });
+		vertexIndexMap[key] = idx;
+		return idx;
+		};
+	auto GetOrAddNormal = [&](const Vec3& n) -> int {
+		std::string key = Vec3Key(n);
+		auto it = normalIndexMap.find(key);
+		if (it != normalIndexMap.end()) { return it->second; }
+		int idx = (int)allNormals.size() + 1;
+		allNormals.push_back(n);
+		normalIndexMap[key] = idx;
+		return idx;
+		};
+	auto GetOrAddUV = [&](const Vec2& uv) -> int {
+		// Invert Y back to Blender convention before storing
+		Vec2 blenderUV = { uv.x, 1.0f - uv.y };
+		std::string key = Vec2Key(blenderUV);
+		auto it = uvIndexMap.find(key);
+		if (it != uvIndexMap.end()) { return it->second; }
+		int idx = (int)allUVs.size() + 1;
+		allUVs.push_back(blenderUV);
+		uvIndexMap[key] = idx;
+		return idx;
+		};
+
+	// --- Pass 1: gather all geometry into index buffers ---
+	for (size_t qi = 0; qi < m_quadblocks.size(); qi++)
+	{
+		const Quadblock& qb = m_quadblocks[qi];
+		FaceData& fd = quadblockFaces[qi];
+		const Vertex* verts = qb.GetUnswizzledVertices();
+		static constexpr int QUAD_FACES[4][4] = {
+				{0, 3, 4, 1},
+				{1, 4, 5, 2},
+				{3, 6, 7, 4},
+				{4, 7, 8, 5}
+		};
+		static constexpr int QUAD_UV_REMAP[4] = { 0, 2, 3, 1 };
+
+		for (int f = 0; f < NUM_FACES_QUADBLOCK; f++)
+		{
+			QuadUV faceUVs = qb.GetQuadUV(f);
+			RotateFlip(faceUVs, qb.GetFaceRotateFlip(f));
+			// Remap UVs to avoid degenerated blender's rendering when degenerated UVs
+			std::array<Vec3, 4> cornerPositions;
+			std::array<Vec2, 4> remappedUVs;
+			for (int v = 0; v < 4; v++)
+			{
+				cornerPositions[v] = verts[QUAD_FACES[f][v]].m_pos;
+				remappedUVs[v] = faceUVs[QUAD_UV_REMAP[v]];
+			}
+			for (int v = 0; v < 4; v++)
+			{
+				for (int other = 0; other < v; other++)
+				{
+					if (cornerPositions[v] == cornerPositions[other])
+					{
+						remappedUVs[v] = remappedUVs[other];
+						break;
+					}
+				}
+			}
+
+			std::vector<FaceVertex> face;
+			for (int v = 0; v < 4; v++)
+			{
+				int slot = QUAD_FACES[f][v]; // p0..p8 index
+				const Vertex& vert = verts[slot];
+				face.push_back({
+					GetOrAddVertex(qi, slot, vert.m_pos, vert.GetColor(true)),
+					GetOrAddUV(remappedUVs[v]),
+					GetOrAddNormal(Vec3(0.0f, 1.0f, 0.0f))
+					});
+			}
+			fd.faces.push_back(face);
+		}
+
+	}
+
+	// --- Write vertex positions ---
+	file << std::fixed << std::setprecision(6);
+	for (const auto& [pos, c] : allVertices)
+	{
+		file << "v " << pos.x << " " << pos.y << " " << pos.z
+			<< " " << c.Red() << " " << c.Green() << " " << c.Blue() << "\n";
+	}
+	file << "\n";
+
+	// --- Write UVs ---
+	for (const Vec2& uv : allUVs)
+	{
+		file << "vt " << uv.x << " " << uv.y << "\n";
+	}
+	file << "\n";
+
+	// --- Write normals ---
+	for (const Vec3& n : allNormals)
+	{
+		file << "vn " << n.x << " " << n.y << " " << n.z << "\n";
+	}
+	file << "\n";
+
+	// --- Write MTL reference ---
+	std::string stem = objFile.stem().string();
+	bool hasMaterials = !m_materialToTexture.empty();
+	if (hasMaterials)
+	{
+		file << "mtllib " << stem << ".mtl\n\n";
+	}
+
+	// --- Write meshes (one per quadblock) ---
+	for (size_t qi = 0; qi < m_quadblocks.size(); qi++)
+	{
+		const Quadblock& qb = m_quadblocks[qi];
+		const FaceData& fd = quadblockFaces[qi];
+
+		file << "o " << qb.GetName() << "\n";
+
+		// Find this quadblock's material
+		std::string material;
+		for (const auto& [mat, quadFaces] : m_materialToQuadFaces)
+		{
+			for (auto quadface : quadFaces)
+			{
+				if (quadface.first == qi) { material = mat; break; }
+			}
+			if (!material.empty()) { break; }
+		}
+
+		if (!material.empty())
+		{
+
+		}
+
+		file << "s off\n"; // smoothing group, standard Blender export
+		size_t faceId = 0;
+		for (const std::vector<FaceVertex>& face : fd.faces)
+		{
+			file << "usemtl " << qb.GetMaterial(faceId) << "\n";
+			faceId++;
+			file << "f";
+			for (const FaceVertex& fv : face)
+			{
+				file << " " << fv.vi << "/" << fv.uvi << "/" << fv.ni;
+			}
+			file << "\n";
+		}
+		file << "\n";
+	}
+
+	file.close();
+
+	// --- Write MTL file ---
+	if (hasMaterials)
+	{
+		std::filesystem::path mtlPath = objFile.parent_path() / (stem + ".mtl");
+		std::ofstream mtl(mtlPath);
+		if (mtl.is_open())
+		{
+			for (const auto& [material, texture] : m_materialToTexture)
+			{
+				mtl << "newmtl " << material << "\n";
+				mtl << "Ka 1.000 1.000 1.000\n";
+				mtl << "Kd 1.000 1.000 1.000\n";
+				mtl << "Ks 0.000 0.000 0.000\n";
+				mtl << "illum 1\n";
+
+				const std::filesystem::path& texPath = texture.GetPath();
+				if (!texPath.empty() && std::filesystem::exists(texPath))
+				{
+					mtl << "map_Kd " << texPath.filename().string() << "\n";
+				}
+				mtl << "\n";
+			}
+			mtl.close();
+		}
+	}
+
+	return true;
+}
+
 bool Level::StartEmuIPC(const std::string& emulator)
 {
 	constexpr size_t PSX_RAM_SIZE = 0x800000;
