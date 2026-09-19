@@ -155,7 +155,7 @@ Texture::Texture(const Texture& top, const Texture& bottom, const std::string& n
 	if (stbi_write_png(m_path.string().c_str(), width, mergedHeight, 4, rgba.data(), width * 4))
 	{
 		m_blendMode = top.GetBlendMode();
-		if (!CreateTexture()) { ClearTexture(); }
+		if (!CreateTexture(false)) { ClearTexture(); }
 	}
 	else
 	{
