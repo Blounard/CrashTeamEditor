@@ -1,4 +1,5 @@
 #include "level.h"
+#include "ui.h"
 #include "psx_types.h"
 #include "io.h"
 #include "utils.h"
@@ -10,11 +11,17 @@
 #include "text3d.h"
 #include "minimap.h"
 
+
+#include <filesystem>
+#include <iostream>
 #include <fstream>
 #include <unordered_set>
+#include <array>
+#include <system_error>
 #include <set>
 #include <map>
 #include <algorithm>
+#include <cstring>
 #include <stb_image_write.h>
 
 bool Level::Load(const std::filesystem::path& filename, bool isLevel)
@@ -84,6 +91,13 @@ void Level::Clear(bool clearErrors)
 	m_splitLines[0] = 0.0;
 	m_splitLines[1] = 0.0;
 	m_jumpYSpeedCap = 0;
+	m_instances.clear();
+	m_instanceModels.clear();
+	m_spawntypes.clear();
+	m_spawntypesPosRot.clear();
+
+	m_openInstanceIndex = -1;
+	m_closeInstanceIndex = -1;
 	for (int i = 0; i < 3; i++)
 	{
 		m_botPaths[i].Clear();
@@ -209,6 +223,12 @@ Model* Level::GetFilterModel()
 	return m_models[LevelModels::FILTER];
 }
 
+Model* Level::GetInstancesModel()
+{
+	return m_models[LevelModels::INSTANCES];
+}
+
+
 bool Level::GenerateSpawn(float colSpacing, float rowSpacing, float centerOffset)
 {
 	if (m_checkpoints.size() < 2)
@@ -253,6 +273,103 @@ bool Level::GenerateSpawn(float colSpacing, float rowSpacing, float centerOffset
 			m_spawn[index].rot = rot;
 		}
 	}
+	return true;
+}
+
+std::string Level::GenerateUniqueInstanceName(const std::string& name) const
+{
+	std::string stripped = name;
+	size_t hashPos = stripped.rfind('#');
+	if (hashPos != std::string::npos && hashPos + 1 < stripped.size())
+	{
+		std::string suffix = stripped.substr(hashPos + 1);
+		if (!suffix.empty() && std::all_of(suffix.begin(), suffix.end(), ::isdigit))
+			stripped = stripped.substr(0, hashPos);
+	}
+
+	int maxN = 0;
+	for (const auto& inst : m_instances)
+	{
+		const std::string& n = inst.GetName();
+		if (n.size() > stripped.size() + 1 &&
+			n.compare(0, stripped.size(), stripped) == 0 &&
+			n[stripped.size()] == '#')
+		{
+			std::string suffix = n.substr(stripped.size() + 1);
+			if (!suffix.empty() && std::all_of(suffix.begin(), suffix.end(), ::isdigit))
+			{
+				int val = std::stoi(suffix);
+				if (val > maxN) maxN = val;
+			}
+		}
+	}
+
+	return stripped + "#" + std::to_string(maxN + 1);
+}
+
+bool Level::GenerateInstanceRow(int checkpointIndex, size_t instanceIndex, int numInstances, float spacing, bool deleteAfter)
+{
+	if (m_checkpoints.empty())
+		return false;
+	if (instanceIndex >= m_instances.size())
+		return false;
+	if (checkpointIndex < 0 || checkpointIndex >= static_cast<int>(m_checkpoints.size()))
+		return false;
+	if (numInstances < 1)
+		return false;
+
+	const Checkpoint& cp = m_checkpoints[checkpointIndex];
+	Vec3 center = cp.GetPos();
+
+	int down = cp.GetDown();
+	int up = cp.GetUp();
+	Vec3 forward;
+	if (down != NONE_CHECKPOINT_INDEX && down >= 0 && down < static_cast<int>(m_checkpoints.size()))
+		forward = m_checkpoints[down].GetPos() - center;
+	else if (up != NONE_CHECKPOINT_INDEX && up >= 0 && up < static_cast<int>(m_checkpoints.size()))
+		forward = center - m_checkpoints[up].GetPos();
+	else
+		forward = Vec3(0.0f, 0.0f, 1.0f);
+
+	float yaw = -std::atan2(forward.z, forward.x) * (180.0f / MATH_PI);
+	yaw = std::fmod(yaw, 360.0f);
+	forward.Normalize();
+	Vec3 right = forward.Cross(Vec3(0.0f, 1.0f, 0.0f));
+	right.Normalize();
+
+	Vec3 centerRot(0.0f, yaw, 0.0f);
+
+	std::vector<size_t> quadindexes;
+	for (size_t j = 0; j < m_quadblocks.size(); j++)
+	{
+		if (m_quadblocks[j].GetFlags() & QuadFlags::GROUND)
+			quadindexes.push_back(j);
+	}
+	SnapToClosestQuad(m_quadblocks, quadindexes, center, centerRot, Vec3(0.0f, 1.0f, 0.0f), -10.0f, 10.0f);
+	Instance original = m_instances[instanceIndex];
+	size_t insertPos = instanceIndex + 1;
+	for (int col = 0; col < numInstances; col++)
+	{
+		float lateralOffset = (col - (numInstances - 1) * 0.5f) * spacing;
+		Vec3 pos = center + right * lateralOffset;
+		Vec3 rot(0.0f, yaw, 0.0f);
+
+		Instance newInstance = original;
+		newInstance.SetName(GenerateUniqueInstanceName(original.GetName()));
+
+		SnapToClosestQuad(m_quadblocks, quadindexes, pos, rot, Vec3(0.0f, 1.0f, 0.0f), -10.0f, 10.0f);
+
+		newInstance.SetPos(pos);
+		newInstance.SetRot(rot);
+		
+		m_instances.insert(m_instances.begin() + insertPos + col, newInstance);
+	}
+
+	if (deleteAfter)
+	{
+		m_instances.erase(m_instances.begin() + instanceIndex);
+	}
+
 	return true;
 }
 
@@ -308,6 +425,43 @@ bool Level::ReOrderBSP()
 	}
 	return true;
 }
+
+bool Level::EmplaceInstanceBSP() //Update BSP BBox and InstancesIndexes. One Leaf for each Instance with collision
+{
+	std::vector<BSP*> nodes = m_bsp.GetTree();
+
+	for (size_t i = 0; i < m_instances.size(); i++)
+	{
+		const Instance& inst = m_instances[i];
+		if (!m_instanceModels[inst.GetModelKey()].IsValid())
+			continue;
+		const InstanceHitbox& settings = inst.GetHitbox();
+		if (!settings.enabled) 
+			continue; 
+
+		float bestDist = std::numeric_limits<float>::max();
+		BSP* closestLeaf = nullptr;
+		const Vec3 instCenter = inst.Center();
+		for (BSP* node : nodes)
+		{
+			if (node->IsBranch())
+				continue;
+			float dist = node->GetBoundingBox().Distance(instCenter);
+			if (dist < bestDist)
+			{
+				bestDist = dist;
+				closestLeaf = node;
+			}
+		}
+		if (closestLeaf != nullptr)
+		{
+			closestLeaf->UpdateBoundingBox(inst.ComputeBBox());
+			closestLeaf->GetInstanceIndexes().push_back(i);
+		}
+	}
+	return true;
+}
+
 
 bool Level::GenerateVisTreeLev()
 {
@@ -1255,13 +1409,59 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 
 	m_parentPath = levFile.parent_path();
 	m_name = levFile.filename().replace_extension().string() + "_edit";
-
-	uint32_t offPointerMap;
-	Read(file, offPointerMap);
+	std::filesystem::path modelCacheDir = levFile.parent_path() / (levFile.stem().string() + "_models");
 
 	std::streampos offLev = file.tellg();
 	PSX::LevHeader header = {};
 	Read(file, header);
+
+	if (header.offSpawnType_2 != 0)
+	{	
+		for (uint32_t i = 0; i < header.numSpawnType_2; i++)
+		{
+			std::vector<Vec3> spawntype;
+			file.seekg(offLev + std::streampos(header.offSpawnType_2 + i * sizeof(PSX::SpawnType2)));
+			PSX::SpawnType2 st2{};
+			Read(file, st2);
+			if (st2.offPos != 0)
+			{
+				for (uint32_t j = 0; j < st2.numCoord; j++)
+				{
+					file.seekg(offLev + std::streampos(st2.offPos + j * sizeof(PSX::Vec3)));
+					PSX::Vec3 pos{};
+					Read(file, pos);
+					Vec3 realPos = ConvertPSXVec3(pos, FP_ONE_GEO);
+					spawntype.push_back(realPos);
+				}
+			}
+			m_spawntypes.push_back(spawntype);
+		}
+	}
+
+	if (header.offSpawnType_2_posRot != 0)
+	{
+		for (uint32_t i = 0; i < header.numSpawnType_2_posRot; i++)
+		{
+			std::vector<Spawn> spawntypePosRot;
+			file.seekg(offLev + std::streampos(header.offSpawnType_2_posRot + i * sizeof(PSX::SpawnType2)));
+			PSX::SpawnType2 st2{};
+			Read(file, st2);
+			if (st2.offPos != 0)
+			{
+				for (uint32_t j = 0; j < st2.numCoord; j++)
+				{
+					file.seekg(offLev + std::streampos(st2.offPos + j * sizeof(PSX::Spawn)));
+					PSX::Spawn spwn{};
+					Read(file, spwn);
+					Spawn realSpwn{};
+					realSpwn.pos = ConvertPSXVec3(spwn.pos, FP_ONE_GEO);
+					realSpwn.rot = ConvertPSXAngle(spwn.rot);
+					spawntypePosRot.push_back(realSpwn);
+				}
+			}
+			m_spawntypesPosRot.push_back(spawntypePosRot);
+		}
+	}
 
 	m_configFlags = header.config;
 	m_clearColor = ConvertColor(header.clear);
@@ -1445,6 +1645,83 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		file.seekg(currentPosQuad);
 	}
 
+
+	std::set<uint32_t> parsedModelOffsets;
+	// 2nd pass : Find TextureLayouts from Instances, fill Layout Keys
+	if (header.offInstances != 0)
+	{
+		file.seekg(offLev + std::streampos(header.offInstances));
+		for (uint32_t i = 0; i < header.numInstances; i++)
+		{
+			PSX::InstDef inst{};
+			Read(file, inst);
+			if (inst.offModel != 0)
+			{
+				std::streampos currentPosInst = file.tellg();
+				file.seekg(offLev + std::streampos(inst.offModel));
+				PSX::Model model{};
+				Read(file, model);
+				if (parsedModelOffsets.contains(inst.offModel))
+				{
+					file.seekg(currentPosInst);
+					continue;
+				}
+				else
+				{
+					parsedModelOffsets.insert(inst.offModel);
+				}
+				if (model.offHeaders != 0 && model.numHeaders > 0)
+				{
+					for (uint32_t j = 0; j < model.numHeaders; j++)
+					{
+						file.seekg(offLev + std::streampos(model.offHeaders + j * sizeof(PSX::ModelHeader)));
+						PSX::ModelHeader modelHeader{};
+						Read(file, modelHeader);
+						if (modelHeader.offCommandList != 0 && modelHeader.offTexLayout != 0)
+						{
+							// --- Pass 1: scan command list to find how many texture layouts are actually used ---
+							file.seekg(offLev + std::streampos(modelHeader.offCommandList));
+							uint32_t colorCount = 0;
+							Read(file, colorCount);
+							uint32_t maxTexCoordIndex = 0;
+							while (true)
+							{
+								PSX::InstDrawCommand cmd{};
+								Read(file, cmd);
+								if (cmd.command == 0xFFFFFFFF) break;
+								if (cmd.texCoordIndex > maxTexCoordIndex)
+									maxTexCoordIndex = cmd.texCoordIndex;
+							}
+							// --- Pass 2: read each TextureLayout via the pointer array ---
+							for (uint32_t ti = 0; ti < maxTexCoordIndex; ti++)
+							{
+								file.seekg(offLev + std::streampos(modelHeader.offTexLayout + ti * sizeof(uint32_t)));
+								uint32_t offLayout = 0;
+								Read(file, offLayout);
+								if (offLayout == 0) continue;
+
+								file.seekg(offLev + std::streampos(offLayout));
+								PSX::TextureLayout layout{};
+								Read(file, layout);
+								//
+								LayoutKey key(layout);
+								if (!m_materialCache.contains(key))
+								{
+									std::string newMatName = "tex_model_" + std::to_string(texCounter++);
+									m_materialCache[key] = newMatName;
+								}
+								RawUV rawUV(layout);
+								m_textureToPixelBounds[key].Update(rawUV);
+							}
+						}
+					}
+				}
+				file.seekg(currentPosInst);
+			}
+		}
+	}
+
+
 	// 3rd pass : Create PNGs and Materials
 	for (const auto& [key, bounds] : m_textureToPixelBounds)
 	{
@@ -1452,6 +1729,288 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		Texture newTexture(key, bounds, vram, newMatName, tempDir);
 		m_materialToTexture[newMatName] = newTexture;
 	}
+	
+	// 4.1th pass : Create Models/Header with UVs and textures Assign QuadUVs to Models/Headers
+	std::unordered_map<uint32_t, size_t> offsetToModelKey;
+	if (header.offInstances != 0)
+	{
+		for (uint32_t i = 0; i < header.numInstances; i++)
+		{
+			file.seekg(offLev + std::streampos(header.offInstances + i * sizeof(PSX::InstDef)));
+			PSX::InstDef inst{};
+			Read(file, inst);
+			if (inst.offModel != 0)
+			{
+				file.seekg(offLev + std::streampos(inst.offModel));
+				PSX::Model model{};
+				Read(file, model);
+				std::string modelName(model.name, strnlen(model.name, sizeof(model.name)));
+				if (offsetToModelKey.contains(inst.offModel))
+					continue;
+					
+				size_t modelKey = GenerateUniqueModelKey();
+				offsetToModelKey[inst.offModel] = modelKey;
+				m_instanceModels[modelKey] = InstanceModel(model);
+				if (model.offHeaders != 0 && model.numHeaders > 0)
+				{
+					for (uint32_t j = 0; j < model.numHeaders; j++)
+					{
+						file.seekg(offLev + std::streampos(model.offHeaders + j * sizeof(PSX::ModelHeader)));
+						PSX::ModelHeader modelHeader{};
+						Read(file, modelHeader);
+						bool isAnimated = modelHeader.offAnimations != 0;
+
+						if ((modelHeader.numAnimations != 0) != isAnimated ||
+							modelHeader.offAnimtex != 0 ||							// still unsupported
+							modelHeader.offCommandList == 0 ||
+							modelHeader.offColors == 0 ||
+							(!isAnimated && modelHeader.offFrameData == 0) ||
+							(!isAnimated && modelHeader.offStaticDeltaArray != 0) ||// compressed static: still unsupported
+							(isAnimated && modelHeader.offFrameData != 0))			// ambiguous per RenderBucket_GetFrame
+						{
+							printf("Couldn't import model %s, offAnim 0x%x, numAnim %d, offCommand 0x%x, offAnimTex 0x%x, offColors 0x%x, offSDT 0x%x, offFrameData 0x%x\n",
+								modelName.c_str(), modelHeader.offAnimations, modelHeader.numAnimations, modelHeader.offCommandList, modelHeader.offAnimtex, modelHeader.offColors, modelHeader.offStaticDeltaArray, modelHeader.offFrameData);
+							m_instanceModels[modelKey].SetValid(false);
+							continue;
+						}
+							
+						Vec3 modelScale = ConvertPSXVec3(modelHeader.scale, FP_ONE_MODEL_SCALE);
+
+						// Step 1 : Decode all commands
+						file.seekg(offLev + std::streampos(modelHeader.offCommandList));
+						uint32_t colorCount = 0;
+						Read(file, colorCount);
+						std::vector<PSX::InstDrawCommand> commandList;
+						while (true)
+						{
+							PSX::InstDrawCommand cmd{};
+							Read(file, cmd);
+							if (cmd.command == 0xFFFFFFFF)
+								break;
+							else
+								commandList.push_back(cmd);			
+						}
+						int numVerts = 0;
+						for (PSX::InstDrawCommand& command : commandList)
+						{
+							if ((command.command & 0xFFFF0000) == 0) continue; // color-only, doesn't push
+							if (!command.readNextVertFromStackIndexFlag) numVerts++;
+						}
+
+						// Step 2: locate the source of the base / rest vertex data.
+						PSX::ModelFrame baseFrame{};
+						size_t baseFrameFileOffset = 0;
+						std::vector<PSX::ModelAnim> animHeaders;
+						std::vector<uint32_t> animOffsets;
+
+						if (!isAnimated)
+						{
+							baseFrameFileOffset = modelHeader.offFrameData;
+							file.seekg(offLev + std::streampos(baseFrameFileOffset));
+							Read(file, baseFrame);
+						}
+						else
+						{
+							if (modelHeader.numAnimations == 0) { m_instanceModels[modelKey].SetValid(false); continue; }
+							animOffsets.resize(modelHeader.numAnimations);
+							animHeaders.resize(modelHeader.numAnimations);
+							bool valid = true;
+							for (uint32_t a = 0; a < modelHeader.numAnimations; a++)
+							{
+								file.seekg(offLev + std::streampos(modelHeader.offAnimations + a * sizeof(uint32_t)));
+								Read(file, animOffsets[a]);
+								if (animOffsets[a] == 0) { valid = false; break; }
+								file.seekg(offLev + std::streampos(animOffsets[a]));
+								Read(file, animHeaders[a]);
+							}
+							if (!valid || animHeaders[0].offDeltaArray != 0)
+							{
+								m_instanceModels[modelKey].SetValid(false);
+								continue;
+							}
+							baseFrameFileOffset = animOffsets[0] + sizeof(PSX::ModelAnim);
+							file.seekg(offLev + std::streampos(baseFrameFileOffset));
+							Read(file, baseFrame);
+						}
+
+
+						// Decodes one frame's raw per-vertex positions from its own file offset.
+						auto DecodeFrameVertices = [&](size_t frameFileOffset, const PSX::ModelFrame& frame) -> std::vector<Vec3>
+							{
+								Vec3 origin = ConvertPSXVec3(frame.pos, FP_ONE_MODEL_ORIGIN);
+								std::vector<Vec3> raw(numVerts);
+								for (int vi = 0; vi < numVerts; vi++)
+								{
+									file.seekg(offLev + std::streampos(frameFileOffset + frame.vertexOffset + vi * sizeof(PSX::Vec3b)));
+									PSX::Vec3b vert;
+									Read(file, vert);
+									raw[vi] = (ConvertPSXVec3b(vert, 255) + origin) * modelScale;
+								}
+								return raw;
+							};
+
+
+						// Decode Vertices from base				
+						std::vector<Point> headerVertices;
+						for (Vec3 pos : DecodeFrameVertices(baseFrameFileOffset, baseFrame))
+						{
+							Point p{}; p.pos = pos;
+							headerVertices.push_back(p);
+						}
+
+						// Decode topology
+						std::vector<Point> stack(256);
+						std::vector<int> stackVertexIndex(256, -1);
+						int vertexIndex = 0;
+						int stripLength = 0;
+						Point temp[4] = {};
+						int tempVertexIndex[4] = { -1, -1, -1, -1 };
+						std::vector<Tri> triList;
+						std::vector<bool> triDoubleSided;
+						std::vector<std::array<int, 3>> triSourceVertexIndices;
+
+						for (PSX::InstDrawCommand& command : commandList)
+						{
+							if ((command.command & 0xFFFF0000) == 0) { continue; }
+							if (!command.readNextVertFromStackIndexFlag)
+							{
+								stack[command.stackWriteLocationIndex] = headerVertices[vertexIndex];
+								stackVertexIndex[command.stackWriteLocationIndex] = vertexIndex;
+								vertexIndex++;
+							}
+							temp[0] = temp[1]; temp[1] = temp[2]; temp[2] = temp[3];
+							temp[3] = stack[command.stackWriteLocationIndex];
+							tempVertexIndex[0] = tempVertexIndex[1];
+							tempVertexIndex[1] = tempVertexIndex[2];
+							tempVertexIndex[2] = tempVertexIndex[3];
+							tempVertexIndex[3] = stackVertexIndex[command.stackWriteLocationIndex];
+
+							int colorIdx = command.colorCoordIndex;
+							file.seekg(offLev + std::streampos(modelHeader.offColors + colorIdx * sizeof(uint32_t)));
+							PSX::Color psxCol;
+							Read(file, psxCol);
+							temp[3].color = ConvertColor(psxCol);
+
+							if (command.swapFlag) { temp[1] = temp[0]; tempVertexIndex[1] = tempVertexIndex[0]; }
+							if (command.resetFlag) { stripLength = 0; }
+
+							if (stripLength >= 2)
+							{
+								Tri tri{};
+								std::string texName = "default";
+								QuadUV uvs{};
+								int texIdx = command.texCoordIndex;
+								if (texIdx > 0)
+								{
+									file.seekg(offLev + std::streampos(modelHeader.offTexLayout + (texIdx - 1) * sizeof(uint32_t)));
+									uint32_t offLayout = 0;
+									Read(file, offLayout);
+									if (offLayout == 0) { stripLength++; continue; }
+									file.seekg(offLev + std::streampos(offLayout));
+									PSX::TextureLayout layout{};
+									Read(file, layout);
+									LayoutKey key(layout);
+									PixelBounds& bounds = m_textureToPixelBounds[key];
+									RawUV rawUV(layout);
+									uvs = ConvertUV(bounds, rawUV);
+									texName = m_materialCache[key];
+								}
+
+								tri.p[0].pos = temp[3].pos; tri.p[1].pos = temp[2].pos; tri.p[2].pos = temp[1].pos;
+								tri.p[0].color = temp[3].color; tri.p[1].color = temp[2].color; tri.p[2].color = temp[1].color;
+								tri.p[0].uv = uvs[2]; tri.p[1].uv = uvs[1]; tri.p[2].uv = uvs[0];
+								tri.texture = texName;
+								tri.doubleSided = command.noBackfaceFlag != 1;
+								triList.push_back(tri);
+
+								std::array<int, 3> src = { tempVertexIndex[3], tempVertexIndex[2], tempVertexIndex[1] };
+								if (command.normalFlipFlag)
+								{
+									Tri& last = triList.back();
+									std::swap(last.p[1].pos, last.p[2].pos);
+									std::swap(last.p[1].color, last.p[2].color);
+									std::swap(last.p[1].uv, last.p[2].uv);
+									std::swap(src[1], src[2]);
+								}
+								triSourceVertexIndices.push_back(src);
+							}
+							stripLength++;
+						}
+
+						// Decode all frames of animations
+						std::vector<ModelAnimation> animations;
+						if (!isAnimated)
+						{
+							ModelAnimation staticAnim{};
+							staticAnim.name = ""; 
+							staticAnim.interpolated = false;
+							staticAnim.frames.push_back(triList);
+							animations.push_back(std::move(staticAnim));
+						}
+						else
+						{
+							for (uint32_t a = 0; a < modelHeader.numAnimations; a++)
+							{
+								const PSX::ModelAnim& anim = animHeaders[a];
+								if (anim.offDeltaArray != 0)
+								{
+									printf("SKIPPING compressed animation '%.16s' on model %s\n", anim.name, modelName.c_str());
+									continue;
+								}
+
+								ModelAnimation animation{};
+								animation.name = std::string(anim.name, strnlen(anim.name, sizeof(anim.name)));
+								animation.interpolated = (anim.numFrames & PSX::ANIM_INTERPOLATED_BIT) != 0;
+								size_t numStoredFrames = PSX::StoredFrameCount(anim.numFrames);
+
+								for (size_t f = 0; f < numStoredFrames; f++)
+								{
+									size_t offFrame = animOffsets[a] + sizeof(PSX::ModelAnim) + f * anim.frameSize;
+									file.seekg(offLev + std::streampos(offFrame));
+									PSX::ModelFrame animFrame{};
+									Read(file, animFrame);
+									std::vector<Vec3> rawVerts = DecodeFrameVertices(offFrame, animFrame);
+									std::vector<Tri> frame = triList;
+									for (size_t t = 0; t < triSourceVertexIndices.size(); t++)
+										for (int c = 0; c < 3; c++)
+											frame[t].p[c].pos = rawVerts[triSourceVertexIndices[t][c]];
+									animation.frames.push_back(frame);
+								}
+								animations.push_back(std::move(animation));
+							}
+							if (animations.empty())
+							{
+								m_instanceModels[modelKey].SetValid(false);
+								continue;
+							}
+						}
+						m_instanceModels[modelKey].m_headers.emplace_back(modelHeader, baseFrame, colorCount, std::move(animations), isAnimated);
+					}
+				}
+			}
+		}
+	}
+	// Delete invalid models
+	std::vector<uint32_t> modelToDel;
+	for (auto& [offset, key] : offsetToModelKey)
+	{
+		if (!m_instanceModels[key].IsValid())
+			modelToDel.push_back(offset);
+	}
+	for (uint32_t& offset : modelToDel)
+	{
+		m_instanceModels.erase(offsetToModelKey[offset]);
+		offsetToModelKey.erase(offset);
+	}
+		
+
+	//Export model to modifiable state 
+	std::filesystem::create_directories(modelCacheDir);
+	for (auto& [key, model] : m_instanceModels)
+	{
+		model.Export(modelCacheDir, m_materialToTexture);
+	}
+	
 
 	std::map<uint32_t, std::vector<std::tuple<size_t, size_t>>> vertToQuad; // Map vertex absolute offset -> List of (quad, vert id) containing the vert.
 	// 4th pass : create quadblocks with material, UVs and texture	
@@ -1888,6 +2447,66 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		UpdateRenderBotData();
 	}
 
+	// Collect instance ptr
+	std::vector<uint32_t> instPtrs;
+	if (header.numInstances > 0 && header.offInstancePtrArray != 0)
+	{
+		file.seekg(offLev + std::streampos(header.offInstancePtrArray));
+		instPtrs.resize(header.numInstances);
+		for (uint32_t i = 0; i < header.numInstances; i++)
+		{
+			Read(file, instPtrs[i]);
+		}
+	}
+
+	// Load instances from .lev
+	std::unordered_map<uint32_t, size_t> offsetToInstancesID;
+	file.clear();
+	if (header.numInstances > 0 && header.offInstancePtrArray != 0)
+	{
+		for (uint32_t i = 0; i < header.numInstances; i++)
+		{
+			if (instPtrs[i] == 0) { break; } // shouldn't be continue ?
+
+			file.seekg(offLev + std::streampos(instPtrs[i]));
+			PSX::InstDef psxInst = {};
+			Read(file, psxInst);
+
+			if (!offsetToModelKey.contains(psxInst.offModel))
+				continue; // invalid model
+			
+			offsetToInstancesID[instPtrs[i]] = m_instances.size();
+			m_instances.emplace_back(psxInst, offsetToModelKey[psxInst.offModel]);
+		}
+	}
+
+	// Load instance hitbox data from BSP leaf offHitbox lists using file stream
+	if (!m_instances.empty())
+	{
+		std::vector<const BSP*> bspLeaves = m_bsp.GetLeaves();
+		for (const BSP* leaf : bspLeaves)
+		{
+			uint32_t offHitbox = leaf->GetOffHitbox();
+			if (offHitbox == 0) continue;
+
+			file.clear();
+			// Read hitbox entries from LEV using file stream
+			for (size_t hi = 0; ; hi++)
+			{
+				PSX::InstHitbox hitbox = {};
+				file.clear();
+				file.seekg(offLev + std::streampos(offHitbox) + static_cast<std::streamoff>(hi * sizeof(PSX::InstHitbox)));
+				if (!file.read(reinterpret_cast<char*>(&hitbox), sizeof(PSX::InstHitbox))) break;
+				if (hitbox.flags == 0 || hitbox.offInstDef == 0) break;
+
+				if (!offsetToInstancesID.contains(hitbox.offInstDef))
+					continue;
+				m_instances[offsetToInstancesID[hitbox.offInstDef]].SetHitbox(hitbox);
+			}
+		}
+	}
+
+
 	m_loaded = true;
 	file.close();
 	GenerateRenderLevData();
@@ -1922,6 +2541,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 
 	if (m_bsp.IsEmpty()) { GenerateBSP(); }
 	ReOrderBSP();
+	EmplaceInstanceBSP();
 
 	std::vector<const BSP*> bspNodes = static_cast<const BSP&>(m_bsp).GetTree();
 	std::set<size_t> bspIds;
@@ -2321,8 +2941,8 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	}
 
 	std::vector<uint32_t> visibleInstancesDummy;
-	visibleInstancesDummy.push_back(0);
-	visibleInstances.push_back({ visibleInstancesDummy, currOffset });
+	visibleInstancesDummy.push_back(0xFFFFFFFF);
+	visibleInstances.push_back({visibleInstancesDummy, currOffset});
 	currOffset += visibleInstancesDummy.size() * sizeof(uint32_t);
 
 
@@ -2347,7 +2967,10 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 			set.offVisibleBSPNodes = static_cast<uint32_t>(std::get<size_t>(visibleNodes[0]));
 			set.offVisibleQuadblocks = static_cast<uint32_t>(std::get<size_t>(visibleQuads[0]));
 		}
-		set.offVisibleInstances = static_cast<uint32_t>(std::get<size_t>(visibleInstances[0]));
+		if (orderedQuads.size() % 2 == 0 && quadCount == 0)
+			set.offVisibleInstances = static_cast<uint32_t>(0);
+		else
+			set.offVisibleInstances = static_cast<uint32_t>(1);
 		set.offVisibleExtra = static_cast<uint32_t>(std::get<size_t>(visibleExtra[0]));
 
 		size_t visibleSetIndex = 0;
@@ -2435,24 +3058,95 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	const size_t offOxideGhost = m_oxideGhost.empty() ? 0 : currOffset;
 	currOffset += m_oxideGhost.size();
 
-	// Note: extraHeader.offsets[MINIMAP] will be updated later after minimap data is serialized
+
+
+	// INSTANCE THAT NEED IT : flamejet (i assume the fire totem), orca, armadillo and plant
+
+	constexpr size_t SPAWN_META_ENTRY_COUNT = 20; // covers plant's metaArray[digit * 2 + 1] for digits 0-9
+	const std::vector<int16_t> spawnMeta(SPAWN_META_ENTRY_COUNT, 0);
+	const size_t offSpawnMeta = currOffset;
+	currOffset += spawnMeta.size() * sizeof(int16_t);
+
 	PSX::LevelExtraHeader extraHeader = {};
+	extraHeader.count = 0;
 	extraHeader.offsets[PSX::LevelExtra::MINIMAP] = 0;
-	extraHeader.offsets[PSX::LevelExtra::SPAWN] = 0;
+	extraHeader.offsets[PSX::LevelExtra::SPAWN] = static_cast<uint32_t>(offSpawnMeta);
 	extraHeader.offsets[PSX::LevelExtra::CAMERA_END_OF_RACE] = 0;
 	extraHeader.offsets[PSX::LevelExtra::CAMERA_DEMO] = 0;
 	extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST] = static_cast<uint32_t>(offTropyGhost);
 	extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST] = static_cast<uint32_t>(offOxideGhost);
 	extraHeader.offsets[PSX::LevelExtra::CREDITS] = 0;
+	// count = number of valid entries in offsets[]
 
-	// Determine count based on highest enabled entry index + 1
-	// Count represents the number of valid entries in the offsets array
-	if (offOxideGhost > 0) { extraHeader.count = PSX::LevelExtra::N_OXIDE_GHOST + 1; }
-	else if (offTropyGhost > 0) { extraHeader.count = PSX::LevelExtra::N_TROPY_GHOST + 1; }
-	// Note: minimap count will be set later if enabled and no ghosts present
-
+	if (extraHeader.offsets[PSX::LevelExtra::SPAWN] && extraHeader.count < PSX::LevelExtra::SPAWN + 1)
+		extraHeader.count = PSX::LevelExtra::SPAWN + 1;
+	if (extraHeader.offsets[PSX::LevelExtra::CAMERA_END_OF_RACE] && extraHeader.count < PSX::LevelExtra::CAMERA_END_OF_RACE + 1)
+		extraHeader.count = PSX::LevelExtra::CAMERA_END_OF_RACE + 1;
+	if (extraHeader.offsets[PSX::LevelExtra::CAMERA_DEMO] && extraHeader.count < PSX::LevelExtra::CAMERA_DEMO + 1)
+		extraHeader.count = PSX::LevelExtra::CAMERA_DEMO + 1;
+	if (extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST] && extraHeader.count < PSX::LevelExtra::N_TROPY_GHOST + 1)
+		extraHeader.count = PSX::LevelExtra::N_TROPY_GHOST + 1;
+	if (extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST] && extraHeader.count < PSX::LevelExtra::N_OXIDE_GHOST + 1)
+		extraHeader.count = PSX::LevelExtra::N_OXIDE_GHOST + 1;
+	if (extraHeader.offsets[PSX::LevelExtra::CREDITS] && extraHeader.count < PSX::LevelExtra::CREDITS + 1)
+		extraHeader.count = PSX::LevelExtra::CREDITS + 1;
 	const size_t offExtraHeader = currOffset;
 	currOffset += sizeof(extraHeader);
+
+	size_t offSpawnType = currOffset;
+	std::vector<PSX::SpawnType2> serializedSpawnTypeHeader;
+	std::vector<std::vector<PSX::Vec3>> serializedSpawnTypes;
+	serializedSpawnTypes.resize(m_spawntypes.size());
+	for (std::vector<Vec3>& spawnType : m_spawntypes)
+	{
+		PSX::SpawnType2 psxSpawnType{};
+		psxSpawnType.numCoord = static_cast<uint32_t>(spawnType.size());
+		serializedSpawnTypeHeader.push_back(psxSpawnType);
+		currOffset += sizeof(psxSpawnType);
+	}
+	int spawnTypePosCount = 0;
+	for (size_t i = 0; i < serializedSpawnTypeHeader.size(); i++)
+	{
+		serializedSpawnTypeHeader[i].offPos = static_cast<uint32_t>(currOffset);
+		std::vector<Vec3>& spawnType = m_spawntypes[i];
+		for (Vec3& pos : spawnType)
+		{
+			serializedSpawnTypes[i].push_back(ConvertVec3(pos, FP_ONE_GEO));
+			currOffset += sizeof(PSX::Vec3);
+			spawnTypePosCount++;
+		}
+	}
+	std::vector<uint16_t> spawnTypePosPadding;
+	if (spawnTypePosCount % 2)
+	{
+		spawnTypePosPadding.push_back(0);
+		currOffset += sizeof(uint16_t);
+	}
+
+	size_t offSpawnTypePosRot = currOffset;
+	std::vector<PSX::SpawnType2> serializedSpawnTypePosRotHeader;
+	std::vector<std::vector<PSX::Spawn>> serializedSpawnPosRotTypes;
+	serializedSpawnPosRotTypes.resize(m_spawntypesPosRot.size());
+	for (std::vector<Spawn>& spawnType : m_spawntypesPosRot)
+	{
+		PSX::SpawnType2 psxSpawnType{};
+		psxSpawnType.numCoord = static_cast<uint32_t>(spawnType.size());
+		serializedSpawnTypePosRotHeader.push_back(psxSpawnType);
+		currOffset += sizeof(psxSpawnType);
+	}
+	for (size_t i = 0; i < serializedSpawnTypePosRotHeader.size(); i++)
+	{
+		serializedSpawnTypePosRotHeader[i].offPos = static_cast<uint32_t>(currOffset);
+		std::vector<Spawn>& spawnType = m_spawntypesPosRot[i];
+		for (Spawn& spawn : spawnType)
+		{
+			PSX::Spawn psxSpawn{};
+			psxSpawn.pos = ConvertVec3(spawn.pos, FP_ONE_GEO);
+			psxSpawn.rot = ConvertAngle(spawn.rot);
+			serializedSpawnPosRotTypes[i].push_back(psxSpawn);
+			currOffset += sizeof(PSX::Spawn);
+		}
+	}
 
 	constexpr size_t BOT_PATH_COUNT = 3;
 	PSX::levAINavTable navTable{};
@@ -2466,7 +3160,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		if (m_botPaths[i].IsValid())
 		{
 			navTable.offAIPathArray[i] = static_cast<uint32_t>(currOffset);
-			serializedBotPaths.push_back(m_botPaths[i].Serialize());
+			serializedBotPaths.push_back(m_botPaths[i].Serialize(m_instances));
 			currOffset += serializedBotPaths.back().size();
 		}
 		else
@@ -2561,9 +3255,8 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 
 		// Update extraHeader to point to the minimap Map struct directly
 		extraHeader.offsets[PSX::LevelExtra::MINIMAP] = static_cast<uint32_t>(offMinimapStruct);
-		
-		// Set count if no ghosts are present (minimap is at index 0, so count = 1)
-		if (extraHeader.count == 0) { extraHeader.count = PSX::LevelExtra::MINIMAP + 1; }
+		if (extraHeader.offsets[PSX::LevelExtra::MINIMAP] && extraHeader.count < PSX::LevelExtra::MINIMAP + 1)
+			extraHeader.count = PSX::LevelExtra::MINIMAP + 1;
 	}
 	
 	// Skybox data serialization
@@ -2577,8 +3270,6 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		skyboxData = m_skybox.Serialize(offSkyboxData, skyboxPtrMapOffsets);
 		currOffset += skyboxData.size();
 	}
-
-	const size_t offPointerMap = currOffset;
 
 	header.offMeshInfo = static_cast<uint32_t>(offMeshInfo);
 	header.offAnimTex = static_cast<uint32_t>(offAnimData);
@@ -2605,6 +3296,10 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	header.offCheckpointNodes = static_cast<uint32_t>(offCheckpoints);
 	header.offVisMem = static_cast<uint32_t>(offVisMem);
 	header.offLevNavTable = static_cast<uint32_t>(offNavTable);
+	header.offSpawnType_2 = static_cast<uint32_t>(offSpawnType);
+	header.numSpawnType_2 = static_cast<uint32_t>(serializedSpawnTypeHeader.size());
+	header.offSpawnType_2_posRot = static_cast<uint32_t>(offSpawnTypePosRot);
+	header.numSpawnType_2_posRot = static_cast<uint32_t>(serializedSpawnTypePosRotHeader.size());
 	header.offWaterVertices = static_cast<uint32_t>(offWaterVertices);
 	header.numWaterVertices = static_cast<uint32_t>(waterVertices.size());
 	header.offEnvironmentMap = static_cast<uint32_t>(offEnvMapLayout);
@@ -2623,11 +3318,131 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		header.offSkybox = static_cast<uint32_t>(offSkyboxData);
 	}
 
-#define CALCULATE_OFFSET(s, m, b) static_cast<uint32_t>(offsetof(s, m) + b)
+	// Count unique models referenced by instances
+	std::unordered_set<size_t> uniqueModelKeys;
+	for (const Instance& inst : m_instances)
+	{
+		if (m_instanceModels[inst.GetModelKey()].IsValid())
+			uniqueModelKeys.insert(inst.GetModelKey());
+		else
+		{
+			printf("WARNING : Model %s, valid : %d, header size : %zu\n", 
+				m_instanceModels[inst.GetModelKey()].GetName().c_str(), m_instanceModels[inst.GetModelKey()].IsValid(), m_instanceModels[inst.GetModelKey()].m_headers.size());
+		}
+	}
+	header.numModels = static_cast<uint32_t>(uniqueModelKeys.size());
 
+	// Write Model data for each unique model
+	std::unordered_map<size_t, size_t> modelOffsets; // ModelKey -> Serialized ModelOffset
+	std::vector<size_t> modelOrder(uniqueModelKeys.begin(), uniqueModelKeys.end());
+	std::vector<std::vector<uint8_t>> serializedModels(modelOrder.size());
+	std::vector<std::vector<uint32_t>> modelPointerLocations(modelOrder.size());
+
+	for (size_t i = 0; i < modelOrder.size(); i++)
+	{
+		const size_t modelKey = modelOrder[i];
+
+		InstanceModel& model = m_instanceModels[modelKey];
+		const uint32_t offModel = static_cast<uint32_t>(currOffset);
+		modelOffsets[modelKey] = offModel;
+
+		serializedModels[i] = model.Serialize(offModel, m_materialToTexture, useRawTextures, matToKey, m_textureToPixelBounds, modelPointerLocations[i]);
+
+		currOffset += serializedModels[i].size();
+	}
+
+	// Write Model pointer array (NULL-terminated)
+	const size_t offModelList_ptrArray = currOffset;
+	currOffset += (uniqueModelKeys.size() + 1) * sizeof(uint32_t);
+	header.offModels = static_cast<uint32_t>(offModelList_ptrArray);
+
+	
+	
+
+	// Write InstDefs
+	size_t offInstDefArray = currOffset;
+	std::vector<size_t> instDefOffsets;
+	std::vector<std::vector<uint8_t>> serializedInstDef;
+	for (size_t i = 0; i < m_instances.size(); i++)
+	{
+		if (!m_instanceModels[m_instances[i].GetModelKey()].IsValid())
+			continue;
+
+		uint32_t offModel = static_cast<uint32_t>(modelOffsets[m_instances[i].GetModelKey()]);
+		serializedInstDef.push_back(m_instances[i].Serialize(offModel));
+		const size_t offInstDef = currOffset;
+		instDefOffsets.push_back(offInstDef);
+		currOffset += sizeof(PSX::InstDef);
+	}
+	header.numInstances = static_cast<uint32_t>(serializedInstDef.size());
+
+	// Write InstDef pointer array (NULL-terminated)
+	const size_t offInstDefList_ptrArray = currOffset;
+	currOffset += (instDefOffsets.size() + 1) * sizeof(uint32_t);
+
+	// Write second InstDef pointer array for visibility (NULL-terminated)
+	const size_t offInstDefList2_ptrArray = currOffset;
+	currOffset += (instDefOffsets.size() + 1) * sizeof(uint32_t);
+
+	// Write third InstDef pointer array for visibility even quadcount (NULL-terminated)
+	const size_t offInstDefList3_ptrArray = currOffset;
+	currOffset += (instDefOffsets.size() + 1) * sizeof(uint32_t);
+
+	// Update visible sets to point to InstDef list
+	bool first = true;
+	for (auto& set : visibleSets)
+	{
+		size_t index = visibleSetMap[set];
+		visibleSetMap.erase(set);
+		if (first && orderedQuads.size() % 2 == 0)
+			set.offVisibleInstances = static_cast<uint32_t>(offInstDefList3_ptrArray);
+		else 
+			set.offVisibleInstances = static_cast<uint32_t>(offInstDefList2_ptrArray);
+		visibleSetMap[set] = index;
+		first = false;
+	}
+
+	header.offInstances = (serializedInstDef.size() > 0) ? static_cast<uint32_t>(offInstDefArray) : 0;
+	header.offInstancePtrArray = static_cast<uint32_t>(offInstDefList_ptrArray);
+
+	struct LeafHitboxList
+	{
+		size_t leafFileOffset; // file offset of the BSP leaf node
+		size_t listFileOffset; // file offset of this hitbox list
+		std::vector<PSX::InstHitbox> entries;
+	};
+	std::vector<LeafHitboxList> leafHitboxLists;
+
+	size_t nodeFileOffset = offBSP;
+	for (size_t node = 0; node < serializedBSPs.size(); node++)
+	{
+		const size_t currNodeOffset = nodeFileOffset;
+		nodeFileOffset += serializedBSPs[node].size();
+		if (orderedBSPNodes[node]->IsBranch()) { continue; }
+
+		PSX::BSPLeaf* leaf = reinterpret_cast<PSX::BSPLeaf*>(serializedBSPs[node].data());
+		std::vector<PSX::InstHitbox> overlapping;
+		for (size_t instIndex : orderedBSPNodes[node]->GetInstanceIndexes())
+		{
+			overlapping.push_back(m_instances[instIndex].SerializeHitbox(static_cast<uint32_t>(instDefOffsets[instIndex])));
+		}
+		if (overlapping.empty()) { continue; }
+
+		leaf->offHitbox = static_cast<uint32_t>(currOffset);
+		leafHitboxLists.push_back({currNodeOffset, currOffset, std::move(overlapping)});
+		currOffset += leafHitboxLists.back().entries.size() * sizeof(PSX::InstHitbox) + sizeof(uint32_t); // entries + terminator
+	}
+	
+	size_t paddingSizeForMultOfFour = (4 - (currOffset % 4)) % 4;
+	currOffset += paddingSizeForMultOfFour;
+
+	const size_t offPointerMap = currOffset;
 	std::vector<uint32_t> pointerMap =
 	{
 		CALCULATE_OFFSET(PSX::LevHeader, offMeshInfo, offHeader),
+		CALCULATE_OFFSET(PSX::LevHeader, offInstances, offHeader),
+		CALCULATE_OFFSET(PSX::LevHeader, offModels, offHeader),
+		CALCULATE_OFFSET(PSX::LevHeader, offInstancePtrArray, offHeader),
 		CALCULATE_OFFSET(PSX::LevHeader, offExtra, offHeader),
 		CALCULATE_OFFSET(PSX::LevHeader, offCheckpointNodes, offHeader),
 		CALCULATE_OFFSET(PSX::LevHeader, offVisMem, offHeader),
@@ -2643,6 +3458,36 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		CALCULATE_OFFSET(PSX::VisualMem, offBSP[0], offVisMem),
 		CALCULATE_OFFSET(PSX::VisualMem, offOcean[0], offVisMem),
 	};
+
+	// Add InstDef.offModel pointers
+	for (size_t i = 0; i < instDefOffsets.size(); i++)
+	{
+		pointerMap.push_back(CALCULATE_OFFSET(PSX::InstDef, offModel, instDefOffsets[i]));
+	}
+
+	// Add pointer array entries
+	for (size_t i = 0; i < instDefOffsets.size(); i++)
+	{
+		pointerMap.push_back(static_cast<uint32_t>(offInstDefList_ptrArray + (i * sizeof(uint32_t))));
+		pointerMap.push_back(static_cast<uint32_t>(offInstDefList2_ptrArray + (i * sizeof(uint32_t))));
+		pointerMap.push_back(static_cast<uint32_t>(offInstDefList3_ptrArray + (i * sizeof(uint32_t))));
+	}
+
+	for (size_t i = 0; i < modelOrder.size(); i++)
+	{
+		pointerMap.push_back(static_cast<uint32_t>(offModelList_ptrArray + (i * sizeof(uint32_t))));
+	}
+
+	// Add model internal pointers to .lev patch table
+	for (size_t i = 0; i < modelOrder.size(); i++)
+	{
+		if (!m_instanceModels.contains(modelOrder[i]))
+			continue;
+		for (uint32_t loc : modelPointerLocations[i])
+		{
+			pointerMap.push_back(loc);
+		}
+	}
 	
 	// Add minimap header pointers to pointer map
 	if (!m_minimap.texture.IsEmpty())
@@ -2655,6 +3500,18 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	if (m_skybox.IsReady())
 	{
 		pointerMap.push_back(CALCULATE_OFFSET(PSX::LevHeader, offSkybox, offHeader));
+	}
+
+
+	// Add BSP-leaf hitbox pointers: each leaf's offHitbox field, plus the
+	// InstDef pointer inside every hitbox entry
+	for (const LeafHitboxList& list : leafHitboxLists)
+	{
+		pointerMap.push_back(CALCULATE_OFFSET(PSX::BSPLeaf, offHitbox, list.leafFileOffset));
+		for (size_t i = 0; i < list.entries.size(); i++)
+		{
+			pointerMap.push_back(CALCULATE_OFFSET(PSX::InstHitbox, offInstDef, list.listFileOffset + (i * sizeof(PSX::InstHitbox))));
+		}
 	}
 
 	// Every non-zero entry in the extra header is a pointer and must be relocated.
@@ -2689,7 +3546,9 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		if (orderedBSPNodes[i]->IsBranch()) { offCurrNode += serializedBSPs[i].size(); continue; }
 		size_t visMemListIndex = 2 * i + 1;
 		visMemBSPP1[visMemListIndex] = static_cast<uint32_t>(offCurrNode);
+		visMemBSPP1[visMemListIndex - 1] = static_cast<uint32_t>(offInstDefList2_ptrArray);
 		pointerMap.push_back(static_cast<uint32_t>(offVisMemBSPP1 + visMemListIndex * sizeof(uint32_t)));
+		pointerMap.push_back(static_cast<uint32_t>(offVisMemBSPP1 + (visMemListIndex - 1) * sizeof(uint32_t)));
 		pointerMap.push_back(CALCULATE_OFFSET(PSX::BSPLeaf, offQuads, offCurrNode));
 		offCurrNode += serializedBSPs[i].size();
 	}
@@ -2716,6 +3575,28 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		pointerMap.push_back(static_cast<uint32_t>(offset));
 	}
 
+	if (header.offSpawnType_2 != 0)
+	{
+		pointerMap.push_back(CALCULATE_OFFSET(PSX::LevHeader, offSpawnType_2, offHeader));
+		uint32_t i = 0;
+		for (PSX::SpawnType2 st2 : serializedSpawnTypeHeader)
+		{
+			pointerMap.push_back(CALCULATE_OFFSET(PSX::SpawnType2, offPos, offSpawnType + i * sizeof(PSX::SpawnType2) ));
+			i++;
+		}
+	}
+
+	if (header.offSpawnType_2_posRot != 0)
+	{
+		pointerMap.push_back(CALCULATE_OFFSET(PSX::LevHeader, offSpawnType_2_posRot, offHeader));
+		uint32_t i = 0;
+		for (PSX::SpawnType2 st2 : serializedSpawnTypePosRotHeader)
+		{
+			pointerMap.push_back(CALCULATE_OFFSET(PSX::SpawnType2, offPos, offSpawnTypePosRot + i * sizeof(PSX::SpawnType2)));
+			i++;
+		}
+	}
+
 	for (size_t i = 0; i < 3; i++)
 	{
 		if (m_botPaths[i].IsValid())
@@ -2727,6 +3608,10 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		pointerMap.push_back(CALCULATE_OFFSET(PSX::WaterVertex, offVertex, offWaterVertices + i * sizeof(PSX::WaterVertex)));
 		pointerMap.push_back(CALCULATE_OFFSET(PSX::WaterVertex, offOceanVertex, offWaterVertices + i * sizeof(PSX::WaterVertex)));
 	}
+  
+  #undef CALCULATE_OFFSET
+
+
 
 	const size_t pointerMapBytes = pointerMap.size() * sizeof(uint32_t);
 
@@ -2757,7 +3642,13 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	for (const std::vector<uint8_t>& serializedCheckpoint : serializedCheckpoints) { Write(file, serializedCheckpoint.data(), serializedCheckpoint.size()); }
 	if (!m_tropyGhost.empty()) { Write(file, m_tropyGhost.data(), m_tropyGhost.size()); }
 	if (!m_oxideGhost.empty()) { Write(file, m_oxideGhost.data(), m_oxideGhost.size()); }
+	Write(file, spawnMeta.data(), spawnMeta.size() * sizeof(int16_t));
 	Write(file, &extraHeader, sizeof(extraHeader));
+	for (PSX::SpawnType2 st2 : serializedSpawnTypeHeader) { Write(file, &st2, sizeof(st2)); }
+	for (auto& spawntypes : serializedSpawnTypes) { for (PSX::Vec3 pos : spawntypes) { Write(file, &pos, sizeof(pos)); } }
+	for (uint16_t pad : spawnTypePosPadding) { Write(file, &pad, sizeof(pad)); }
+	for (PSX::SpawnType2 st2 : serializedSpawnTypePosRotHeader) { Write(file, &st2, sizeof(st2)); }
+	for (auto& spawntypes : serializedSpawnPosRotTypes) { for (PSX::Spawn pos : spawntypes) { Write(file, &pos, sizeof(pos)); } }
 	Write(file, &navTable, sizeof(navTable));
 	for (const std::vector<uint8_t>& serializedBotPath : serializedBotPaths) { Write(file, serializedBotPath.data(), serializedBotPath.size()); }
 	Write(file, visMemNodesP1.data(), visMemNodesP1.size() * sizeof(uint32_t));
@@ -2767,6 +3658,62 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	Write(file, &visMem, sizeof(visMem));
 	if (!minimapData.empty()) { Write(file, minimapData.data(), minimapData.size()); }
 	if (!skyboxData.empty()) { Write(file, skyboxData.data(), skyboxData.size()); }
+
+	uint32_t nullTerm = 0;
+	// Write Model data
+	for (size_t i = 0; i < modelOrder.size(); i++)
+	{
+		if (!m_instanceModels.contains(modelOrder[i]))
+			continue;
+		Write(file, serializedModels[i].data(), serializedModels[i].size());
+	}
+	// Write Model pointer array (NULL-terminated, stored offsets - game adds 4 to get actual position)
+	for (const size_t modelKey : modelOrder)
+	{
+		uint32_t ptr = static_cast<uint32_t>(modelOffsets[modelKey]);
+		Write(file, &ptr, sizeof(ptr));
+	}
+	Write(file, &nullTerm, sizeof(nullTerm));
+
+	for (const std::vector<uint8_t>& inst : serializedInstDef) { Write(file, inst.data(), inst.size()); }
+	// Write InstDef pointer arrays (NULL-terminated, stored offsets - game adds 4 to get actual position)
+	for (size_t offset : instDefOffsets)
+	{
+		uint32_t ptr = static_cast<uint32_t>(offset);
+		Write(file, &ptr, sizeof(ptr));
+	}
+	
+	Write(file, &nullTerm, sizeof(nullTerm));
+
+	// Write second InstDef pointer array
+	for (size_t offset : instDefOffsets)
+	{
+		uint32_t ptr = static_cast<uint32_t>(offset);
+		Write(file, &ptr, sizeof(ptr));
+	}
+	Write(file, &nullTerm, sizeof(nullTerm));
+
+	// Write third InstDef pointer array
+	for (size_t offset : instDefOffsets)
+	{
+		uint32_t ptr = static_cast<uint32_t>(offset);
+		Write(file, &ptr, sizeof(ptr));
+	}
+	Write(file, &nullTerm, sizeof(nullTerm));
+
+	// Write BSP-leaf instance hitbox lists (each NULL-terminated)
+	for (const LeafHitboxList& list : leafHitboxLists)
+	{
+		Write(file, list.entries.data(), list.entries.size() * sizeof(PSX::InstHitbox));
+		Write(file, &nullTerm, sizeof(nullTerm));
+	}
+
+	uint32_t fourBytesOfZero = 0;
+	if (paddingSizeForMultOfFour > 0)
+	{
+		printf("WARNING: HAD TO PAD %zu BYTES\n", paddingSizeForMultOfFour);
+		Write(file, &fourBytesOfZero, paddingSizeForMultOfFour);
+	}
 	Write(file, &pointerMapBytes, sizeof(uint32_t));
 	Write(file, pointerMap.data(), pointerMapBytes);
 	file.close();
@@ -3147,12 +4094,12 @@ bool Level::SaveOBJ(const std::filesystem::path& objFile)
 		FaceData& fd = quadblockFaces[qi];
 		const Vertex* verts = qb.GetUnswizzledVertices();
 		static constexpr int QUAD_FACES[4][4] = {
-				{0, 3, 4, 1},
+				{0, 3, 4, 1}, 
 				{1, 4, 5, 2},
 				{3, 6, 7, 4},
 				{4, 7, 8, 5}
 		};
-		static constexpr int QUAD_UV_REMAP[4] = { 0, 2, 3, 1 };
+		static constexpr int QUAD_UV_REMAP[4] = { 0, 2, 3, 1 }; 
 
 		for (int f = 0; f < NUM_FACES_QUADBLOCK; f++)
 		{
@@ -3425,6 +4372,17 @@ bool Level::UpdateVRM()
 		for (size_t face = 0; face < NUM_FACES_QUADBLOCK + 1; face++)
 			usedMaterials.insert(quad.GetMaterial(face));
 	}
+	for (const Instance& inst : m_instances) // Model textures
+	{
+		InstanceModel& model = m_instanceModels[inst.GetModelKey()];
+		for (InstanceModelHeader& head : model.m_headers)
+		{
+			for (Tri& tri : head.GetGeometry())
+			{
+				usedMaterials.insert(tri.texture);
+			}
+		}
+	}
 
 	for (std::string material : usedMaterials)
 	{
@@ -3564,6 +4522,9 @@ void Level::InitModels(Renderer& renderer)
 
 	m_models[LevelModels::BOT] = m_models[LevelModels::LEVEL]->AddModel();
 	m_models[LevelModels::BOT]->SetRenderCondition([]() { return GuiRenderSettings::showBots; });
+
+	m_models[LevelModels::INSTANCES] = m_models[LevelModels::LEVEL]->AddModel();
+	m_models[LevelModels::INSTANCES]->SetRenderCondition([]() { return GuiRenderSettings::showInstances; });
 }
 
 void Level::GenerateRenderLevData()
@@ -3788,6 +4749,72 @@ void Level::UpdateRenderBotData()
 		Mesh::RenderFlags::DrawBackfaces | Mesh::RenderFlags::DontOverrideRenderFlags
 	);
 }
+
+
+
+void Level::GenerateRenderInstanceData()
+{
+	Model* instanceModel = m_models[LevelModels::INSTANCES];
+	if (!instanceModel) { return; }
+
+	instanceModel->ClearModels();
+
+	if (m_instances.empty())
+	{
+		instanceModel->GetMesh().Clear();
+		return;
+	}
+
+	constexpr float labelHeightOffset = 3.0f;
+
+	for (size_t i = 0; i < m_instances.size(); i++)
+	{
+		const Instance& inst = m_instances[i];
+		const Vec3& pos = inst.GetPos();
+		const size_t modelKey = inst.GetModelKey();
+
+		// Geometry child (always created, ensures stride = 2 per instance)
+		Model* childModel = instanceModel->AddModel();
+		if (true)
+		{
+			auto it = m_instanceModels.find(modelKey);
+			if (it != m_instanceModels.end())
+			{
+				InstanceModel& instModel = it->second;
+				std::vector<Primitive> primitives = instModel.GetGeometry();
+				/*for (Primitive prim : primitives) 
+				{ 
+					if (m_materialToTexture.contains(prim.texture))
+						prim.texture = m_materialToTexture[prim.texture].GetPath().string();
+				}*/
+				childModel->GetMesh().SetGeometry(primitives,
+					Mesh::RenderFlags::DrawBackfaces | Mesh::RenderFlags::DontOverrideRenderFlags);			
+			}
+		}
+		childModel->SetPosition(inst.GetPos());
+		childModel->SetRotationYXZ(inst.GetRot());
+		childModel->SetScale(inst.GetScale());
+
+		// Label with instance name
+		Model* label = instanceModel->AddModel();
+		std::string labelText = inst.GetName();
+		if (labelText.empty())
+			labelText = "Instance " + std::to_string(i + 1);
+		label->GetMesh().SetGeometry(labelText, Text3D::Align::CENTER, Color(static_cast<unsigned char>(0), static_cast<unsigned char>(200), static_cast<unsigned char>(200), static_cast<unsigned char>(255)));
+		Vec3 labelPos = pos;
+		labelPos.y += labelHeightOffset;
+		label->SetPosition(labelPos);
+	}
+
+	// Placeholder mesh so parent Model::IsReady() returns true
+	std::vector<Primitive> dummy;
+	dummy.push_back(Tri(Point(0,0,0,0,0,0), Point(0,0,0,0,0,0), Point(0,0,0,0,0,0)));
+	instanceModel->GetMesh().SetGeometry(
+		dummy,
+		Mesh::RenderFlags::DrawBackfaces | Mesh::RenderFlags::DontOverrideRenderFlags
+	);
+}
+
 
 void Level::GenerateRenderStartpointData()
 {

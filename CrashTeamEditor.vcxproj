@@ -32,6 +32,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\animtexture.cpp" />
+    <ClCompile Include="src\instance.cpp" />
     <ClCompile Include="src\shader_templates.cpp" />
     <ClCompile Include="src\settings.cpp" />
     <ClCompile Include="src\model.cpp" />
@@ -75,6 +76,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\animtexture.h" />
+    <ClInclude Include="src\instance.h" />
     <ClInclude Include="src\script.h" />
     <ClInclude Include="src\shader_templates.h" />
     <ClInclude Include="src\settings.h" />
@@ -108,6 +110,11 @@
     <ClInclude Include="src\bots.h" />
     <ClCompile Include="src\manual_third_party\khrplatform.h" />
     <ClCompile Include="src\manual_third_party\glad.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <CopyFileToFolders Include="level_instances_assets\**">
+      <DeploymentContent Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</DeploymentContent>
+    </CopyFileToFolders>
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
@@ -146,9 +153,11 @@
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="PythonEmbed.props" Condition="Exists('PythonEmbed.props')" />
   </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="PythonEmbed.props" Condition="Exists('PythonEmbed.props')" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -192,7 +201,7 @@ if exist "$(PYTHON_EMBED_HOME)\DLLs" xcopy "$(PYTHON_EMBED_HOME)\DLLs\*.dll" "%P
       <PreprocessorDefinitions>NOMINMAX;_USE_MATH_DEFINES;NDEBUG;_CONSOLE;CTE_EMBEDDED_BUILD;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)third_party\imgui\;$(SolutionDir)third_party\imgui\backends;$(SolutionDir)third_party\portable-file-dialogs\;$(SolutionDir)third_party\glfw\include\;$(SolutionDir)third_party\glm\glm\;$(SolutionDir)third_party\json\include\;$(SolutionDir)third_party\stb\;$(SolutionDir)src\;$(SolutionDir)third_party\pybind11\include\;$(PYTHON_INCLUDE_DIR)\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)third_party\imgui\;$(SolutionDir)third_party\imgui\backends;$(SolutionDir)third_party\portable-file-dialogs\;$(SolutionDir)third_party\glfw\include\;$(SolutionDir)third_party\glm\glm\;$(SolutionDir)third_party\json\include\;$(SolutionDir)third_party\stb\;$(SolutionDir)src\;$(SolutionDir)third_party\pybind11\include\;$(PYTHON_INCLUDE_DIR)\;$(SolutionDir)third_party\tinygltf;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>/wd4189 /wd4100 /wd4661 /wd4201 /bigobj %(AdditionalOptions)</AdditionalOptions>
       <OpenMPSupport>true</OpenMPSupport>
     </ClCompile>
@@ -221,6 +230,11 @@ if exist "$(PYTHON_EMBED_HOME)\DLLs" xcopy "$(PYTHON_EMBED_HOME)\DLLs\*.dll" "%P
   </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
+  <Target Name="PrintPythonPaths" BeforeTargets="ClCompile">
+    <Message Importance="high" Text="PYTHON_EMBED_HOME = '$(PYTHON_EMBED_HOME)'" />
+    <Message Importance="high" Text="PYTHON_HOME = '$(PYTHON_HOME)'" />
+    <Message Importance="high" Text="PYTHON_INCLUDE_DIR = '$(PYTHON_INCLUDE_DIR)'" />
+  </Target>
   <Target Name="AfterClean">
     <ItemGroup>
       <_PythonBundleDirs Include="$(OutDir)python;$(TargetDir)python" />

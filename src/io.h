@@ -38,6 +38,10 @@ void ReadBinaryFile(std::vector<uint8_t>& v, const std::filesystem::path& path);
 template<typename T> static inline void Read(std::ifstream& file, T& data)
 {
 	file.read(reinterpret_cast<char*>(&data), sizeof(data));
+	if (file.rdstate() != std::ios_base::goodbit) 
+	{ 
+		printf("Error : File not in correct state\n"); 
+	}
 }
 
 template<typename T> static inline void Write(std::ofstream& file, T* data, size_t size)

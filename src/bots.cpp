@@ -47,7 +47,7 @@ BotNode::BotNode(const PSX::NavFrame& frame)
 }
 
 
-std::vector<uint8_t> BotNode::Serialize(const Vec3& nextPos) const
+std::vector<uint8_t> BotNode::Serialize(const Vec3& nextPos, std::vector<Instance>& instances) const
 {
     PSX::NavFrame frame = {};
     std::vector<uint8_t> buffer(sizeof(frame));
@@ -82,6 +82,16 @@ std::vector<uint8_t> BotNode::Serialize(const Vec3& nextPos) const
         frame.specialBits |= static_cast<uint8_t>(m_splitLineID) & PSXBotNodeFlags2::SPECIAL_MASK;
     else
         frame.specialBits |= static_cast<uint8_t>(m_shadow) & PSXBotNodeFlags2::SPECIAL_MASK;
+
+    for (Instance& inst : instances)
+    {
+        if (inst.GetHitbox().enabled)
+        {
+            BoundingBox bbox = inst.ComputeBBox();
+            if (bbox.Distance(m_pos) < EPSILON)
+                frame.specialBits |= PSXBotNodeFlags2::INSTANCE_COLL;
+        }
+    }
 
     std::memcpy(buffer.data(), &frame, sizeof(frame));
     return buffer;
@@ -403,7 +413,7 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, const std::vector<Quadbl
     return true;
 }
 
-std::vector<uint8_t> BotPath::Serialize() const
+std::vector<uint8_t> BotPath::Serialize(std::vector<Instance>& instances) const
 {
     // Crash if called with invalid nodes. Never serialize empty path.
     PSX::NavHeader header = {};
@@ -421,13 +431,13 @@ std::vector<uint8_t> BotPath::Serialize() const
         int next_id = i == (m_nodes.size() - 2) ? 0 : i + 1; //2nd to last's next is the first. Last is handled differently
         const BotNode& node = m_nodes[i];
         const Vec3& nextPos = m_nodes[next_id].GetPos();
-        auto nodeBytes = node.Serialize(nextPos);
+        auto nodeBytes = node.Serialize(nextPos, instances);
         buffer.insert(buffer.end(), nodeBytes.begin(), nodeBytes.end());
     }
     //Placeholder behavior for the last. Need to investigate how it works. It doesn't seem to be the distance to first.
     const BotNode& node = m_nodes[m_nodes.size() - 1];
     const Vec3& nextPos = m_nodes[0].GetPos();
-    auto nodeBytes = node.Serialize(nextPos);
+    auto nodeBytes = node.Serialize(nextPos, instances);
     buffer.insert(buffer.end(), nodeBytes.begin(), nodeBytes.end());
     return buffer;
 }
