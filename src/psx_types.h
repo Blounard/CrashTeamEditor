@@ -10,6 +10,13 @@ namespace PSX
 {
 	static constexpr size_t MAX_NUM_PLAYERS = 4;
 
+	struct Vec3b //for vertices in ModelFrame Might need to check if it's signed or not
+	{
+		uint8_t x;
+		uint8_t y;
+		uint8_t z;
+  };
+
 	struct Vec3
 	{
 		int16_t x;
@@ -23,6 +30,8 @@ namespace PSX
 		uint32_t g : 8;
 		uint32_t b : 8;
 		uint32_t a : 8;
+
+		inline bool operator==(const Color& c) const { return r == c.r && g == c.g && b == c.b && a == c.a;}
 	};
 
 	struct Spawn
@@ -210,6 +219,133 @@ namespace PSX
 		uint32_t offVisMem; // 0x190
 		uint8_t footer[0x60]; // 0x194
 	};
+
+	struct InstDef // size 0x40
+	{
+		char name[0x10];
+		uint32_t offModel;	 // 0x10 (0x18 - 8)
+		Vec3 scale;			 // 0x14 (0x1c - 8)
+		int16_t maybeScaleMaybePadding;		
+		Color colorRGBA;	 // 0x1c (0x24 - 8)	
+		uint32_t flags;		 // 0x20 (0x28 - 8)
+		uint32_t unk24;
+		uint32_t unk28;	
+		uint32_t offInstance;// 0x2c	
+		Vec3 pos;			 // 0x30	
+		Vec3 rot;			 // 0x36
+		int32_t modelID;	 // 0x3c
+	};
+
+	// BSP-leaf instance hitbox entry (BSPLeaf::offHitbox points to a list of
+	// these, terminated by an entry whose flags == 0). Walked at runtime by
+	// COLL_FIXED_BSPLEAF_TestInstance: AABB broad-phase against the kart's
+	// bbox, then sphere test using center/halfExtentSq.
+	// Bit 0x80 of flags: set = trigger-only (pickups), clear = solid collision.
+	struct InstHitbox
+	{
+		uint32_t flags; // 0x0
+		PSX::BoundingBox bbox; // 0x4
+		PSX::Vec3 center; // 0x10
+		int16_t halfExtent; // 0x16
+		int16_t halfExtentSq; // 0x18
+		int16_t padding; // 0x1A
+		uint32_t offInstDef; // 0x1C
+		// 0x20 -- struct size
+	};
+
+	struct Model
+	{
+		char name[0x10]; // 0x0 name of model group, "oxide" for example
+		int16_t id; // 0x10 index of 2160 array
+		uint16_t numHeaders; // 0x12
+		uint32_t offHeaders; // 0x14
+	};
+
+
+	struct ModelHeader
+	{
+		char name[0x10]; // 0x0 name of model group, "oxide_hi" for example
+		uint32_t unk1; // 0x10
+		uint16_t maxDistanceLOD; // 0x14
+		uint16_t flags; // 0x16 ; 0x0 - normal 3D model ; 0x1 - always point north ; 0x2 - always point to camera (a.k.a. billboarding) (warppad numbers)
+		Vec3 scale; // 0x18
+		int16_t maybeScaleMaybePadding; // usually 0x0
+		uint32_t offCommandList; // 0x20
+		uint32_t offFrameData; // 0x24 Null if there are animations
+		uint32_t offTexLayout; // 0x28 , Array of TexLayout, count with commandList texCoordIndex
+		uint32_t offColors; // 0x2C CLUT = color lookup table
+		uint32_t offStaticDeltaArray; // 0x30
+		uint32_t numAnimations; // 0x34
+		uint32_t offAnimations; // 0x38 Points to an array of pointer of ModelAnim? Not directly pointing to the first ModelAnim ?
+		uint32_t offAnimtex; // 0x3C
+	};
+
+	//see https://github.com/CTR-tools/CTR-tools/blob/master/formats/txt_ctr.txt
+	// Format: slndkv?? iiiiiiii ccccccct tttttttt (bits 31->0, MSB->LSB)
+	struct InstDrawCommand
+	{
+		union {
+			uint32_t command;
+			struct {
+				uint32_t texCoordIndex : 9;                      // bits 0-8   (t: tex coord index, 0=no texture)
+				uint32_t colorCoordIndex : 7;                    // bits 9-15  (c: color coord index)
+				uint32_t stackWriteLocationIndex : 8;            // bits 16-23 (i: stack index)
+				uint32_t unk2 : 1;                               // bit 24     (?: unknown)
+				uint32_t unk1 : 1;                               // bit 25     (?: unknown)
+				uint32_t readNextVertFromStackIndexFlag : 1;     // bit 26     (v: read from stack vs array)
+				uint32_t colorFromScratchpadOrRamFlag : 1;       // bit 27     (k: scratchpad vs ram)
+				uint32_t noBackfaceFlag : 1;                     // bit 28     (d: cull backface)
+				uint32_t normalFlipFlag : 1;                     // bit 29     (n: flip normal)
+				uint32_t swapFlag : 1;                           // bit 30     (l: swap 1st vertex)
+				uint32_t resetFlag : 1;                          // bit 31     (s: new face block/reset)
+			};
+		};
+	};
+
+	struct ModelFrame
+	{
+		// origin
+		Vec3 pos;
+		int16_t maybePosMaybePadding; // usually 0x0
+		char unk16[16]; // sixteen 0x0
+		int vertexOffset; // usually 0x1C
+	};
+
+	// ModelAnim::numFrames encoding.
+	static constexpr uint16_t ANIM_INTERPOLATED_BIT = 0x8000;
+	static constexpr uint16_t ANIM_FRAME_COUNT_MASK = 0x7FFF;
+
+	struct ModelAnim
+	{
+		// 0x0 -- name of the animation
+		char name[0x10];
+
+		// 0x10
+		// Low 15 bits (ANIM_FRAME_COUNT_MASK) = logical frame count.
+		// ANIM_INTERPOLATED_BIT set = the game halves the frame index and blends
+		// frame[i] with frame[i+1], so roughly half as many frames are stored.
+		uint16_t numFrames;
+
+		// 0x12 -- byte stride between consecutive stored frames
+		int16_t frameSize;
+
+		// 0x14 -- per-vertex bit-width table, numVerts * uint32_t. Shared by every
+		// frame of this animation (which is why frameSize is constant).
+		// 0 => frames store uncompressed 3-byte vertices.
+		uint32_t offDeltaArray;
+
+		// 0x18 -- frames follow inline
+	};
+
+	// Number of frames actually stored for an animation. Derived by pushing the max
+	// reachable animFrame (count - 1) through RenderBucket_GetFrame: for interpolated
+	// animations both index parities land on the same highest touched frame.
+	inline size_t StoredFrameCount(uint16_t numFrames)
+	{
+		const size_t count = numFrames & ANIM_FRAME_COUNT_MASK;
+		return (numFrames & ANIM_INTERPOLATED_BIT) ? ((count >> 1) + 1) : count;
+	}
+
 
 	struct MeshInfo
 	{
@@ -448,7 +584,23 @@ namespace PSX
 
 	static_assert(sizeof(SkyboxVertex) == 0xc, "SkyboxVertex must be 0xc bytes");
 	static_assert(sizeof(Skybox) == 0x38, "Skybox header must be 0x38 bytes");
+	static_assert(sizeof(ModelFrame) == 0x1c, "ModelFrame must be 0x1c bytes");
+	static_assert(sizeof(ModelHeader) == 0x40, "ModelHeader must be 0x40 bytes");
+	static_assert(sizeof(ModelAnim) == 0x18, "ModelAnim must be 0x18 bytes");
 }
+
+template<>
+struct std::hash<PSX::Color>
+{
+	inline std::size_t operator()(const PSX::Color& key) const noexcept
+	{
+		uint32_t value = key.r | (key.g << 8) | (key.b << 16) | (key.a << 24);
+		std::size_t seed = 0;
+		HashCombine(seed, value);
+		return seed;
+	}
+};
+
 
 template<>
 struct std::hash<PSX::TextureLayout>
@@ -508,6 +660,8 @@ static constexpr int16_t FP_ONE = 0x1000;
 static constexpr int16_t FP_ONE_GEO = 64;
 static constexpr int16_t FP_ONE_CP = 8;
 static constexpr int16_t FP_ONE_SPLITPOINT = 32;
+static constexpr int16_t FP_ONE_MODEL_ORIGIN = 256;
+static constexpr int16_t FP_ONE_MODEL_SCALE = 1024; 
 
 static inline int16_t ConvertFloat(float x, int16_t one = FP_ONE) { return static_cast<int16_t>(std::round(x * static_cast<float>(one))); };
 static inline int16_t ConvertAngle(float x, int16_t one = FP_ONE) { return static_cast<int16_t>(std::round((x * static_cast<float>(FP_ONE)) / 360.0f)); }
@@ -554,12 +708,30 @@ static inline PSX::Vec3 ConvertVec3(const Vec3& v, int16_t one = FP_ONE)
 	return out;
 }
 
+static inline PSX::Vec3b ConvertVec3b(const Vec3& v, int16_t one = FP_ONE)
+{	// WARNING : NOT ALIGNED, Y AND Z ARE SWAPPED, USED BY MODELS
+	PSX::Vec3b out = {};
+	out.x = static_cast<uint8_t>(Clamp(static_cast<float>(ConvertFloat(v.x, one)),0.0f , 255.0f));
+	out.y = static_cast<uint8_t>(Clamp(static_cast<float>(ConvertFloat(v.z, one)), 0.0f, 255.0f));
+	out.z = static_cast<uint8_t>(Clamp(static_cast<float>(ConvertFloat(v.y, one)), 0.0f, 255.0f));
+	return out;
+}
+
 static inline Vec3 ConvertPSXVec3(const PSX::Vec3& v, int16_t one = FP_ONE)
 {
 	Vec3 out = {};
 	out.x = ConvertFP(v.x, one);
 	out.y = ConvertFP(v.y, one);
 	out.z = ConvertFP(v.z, one);
+	return out;
+}
+
+static inline Vec3 ConvertPSXVec3b(const PSX::Vec3b& v, int16_t one = FP_ONE)
+{ // WARNING : NOT ALIGNED, Y AND Z ARE SWAPPED, USED BY MODELS
+	Vec3 out = {};
+	out.x = ConvertFP(v.x, one);
+	out.y = ConvertFP(v.z, one);
+	out.z = ConvertFP(v.y, one);
 	return out;
 }
 
