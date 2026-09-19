@@ -4164,6 +4164,26 @@ bool Level::SaveOBJ(const std::filesystem::path& objFile)
 		{
 			QuadUV faceUVs = qb.GetQuadUV(f);
 			RotateFlip(faceUVs, qb.GetFaceRotateFlip(f));
+			// Remap UVs to avoid degenerated blender's rendering when degenerated UVs
+			std::array<Vec3, 4> cornerPositions;
+			std::array<Vec2, 4> remappedUVs;
+			for (int v = 0; v < 4; v++)
+			{
+				cornerPositions[v] = verts[QUAD_FACES[f][v]].m_pos;
+				remappedUVs[v] = faceUVs[QUAD_UV_REMAP[v]];
+			}
+			for (int v = 0; v < 4; v++)
+			{
+				for (int other = 0; other < v; other++)
+				{
+					if (cornerPositions[v] == cornerPositions[other])
+					{
+						remappedUVs[v] = remappedUVs[other];
+						break;
+					}
+				}
+			}
+
 			std::vector<FaceVertex> face;
 			for (int v = 0; v < 4; v++)
 			{
@@ -4171,7 +4191,7 @@ bool Level::SaveOBJ(const std::filesystem::path& objFile)
 				const Vertex& vert = verts[slot];
 				face.push_back({
 					GetOrAddVertex(qi, slot, vert.m_pos, vert.GetColor(true)),
-					GetOrAddUV(faceUVs[QUAD_UV_REMAP[v]]),
+					GetOrAddUV(remappedUVs[v]),
 					GetOrAddNormal(Vec3(0.0f, 1.0f, 0.0f))
 					});
 			}
