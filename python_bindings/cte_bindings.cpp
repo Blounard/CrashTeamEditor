@@ -65,7 +65,7 @@ std::string FormatVertex(const Vertex& vertex)
 {
 	std::ostringstream oss;
 	oss << "<cte.Vertex pos=" << FormatVec3(vertex.m_pos)
-		<< " normal=" << FormatVec3(vertex.m_normal) << ">";
+		<< ">";
 	return oss.str();
 }
 
@@ -194,7 +194,6 @@ void init_crashteameditor(py::module_& m)
 	py::class_<Vertex> vertex(m, "Vertex");
 	vertex.def(py::init<>())
 		.def_readwrite("pos", &Vertex::m_pos)
-		.def_readwrite("normal", &Vertex::m_normal)
 		.def("get_color", &Vertex::GetColor, py::arg("high") = true)
 		.def("to_geometry", &Vertex::ToGeometry, py::arg("high_color") = true)
 		.def("__repr__", [](const Vertex& v) { return FormatVertex(v); });

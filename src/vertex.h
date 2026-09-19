@@ -31,7 +31,6 @@ public:
 
 public:
 	Vec3 m_pos;
-	Vec3 m_normal;
 
 private:
 	uint16_t m_flags;
