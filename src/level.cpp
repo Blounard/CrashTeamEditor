@@ -2523,7 +2523,8 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		PSX::Icon topIcon = {};
 		strncpy_s(topIcon.name, sizeof(topIcon.name), "minimap-top", _TRUNCATE);
 		topIcon.globalIconArrayIndex = PSX::ICON_INDEX_MAP_TOP;
-		topIcon.texLayout = m_minimap.texture.Serialize(topUV);
+		if (!useRawTextures)
+			topIcon.texLayout = m_minimap.texture.Serialize(topUV);
 		size_t topIconOffset = minimapData.size();
 		minimapData.resize(minimapData.size() + sizeof(PSX::Icon));
 		memcpy(&minimapData[topIconOffset], &topIcon, sizeof(PSX::Icon));
@@ -2533,7 +2534,8 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		PSX::Icon bottomIcon = {};
 		strncpy_s(bottomIcon.name, sizeof(bottomIcon.name), "minimap-bot", _TRUNCATE);
 		bottomIcon.globalIconArrayIndex = PSX::ICON_INDEX_MAP_BOTTOM;
-		bottomIcon.texLayout = m_minimap.texture.Serialize(bottomUV);
+		if (!useRawTextures)
+			bottomIcon.texLayout = m_minimap.texture.Serialize(bottomUV);
 		size_t bottomIconOffset = minimapData.size();
 		minimapData.resize(minimapData.size() + sizeof(PSX::Icon));
 		memcpy(&minimapData[bottomIconOffset], &bottomIcon, sizeof(PSX::Icon));
