@@ -11,6 +11,7 @@
 #include "texture.h"
 #include "ui.h"
 #include "script.h"
+#include "minimap.h"
 
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
@@ -861,7 +862,81 @@ void Level::RenderUI(Renderer& renderer)
 				{
 					m_splitLines[1] = m_rendererQueryPoint.y;
 				}
+				ImGui::TreePop();
+			}
 
+			if (ImGui::TreeNode("Minimap"))
+			{
+				bool boundsChanged = false;
+				static std::string previewMatNameMinimap = "";
+
+				ImGui::InputInt("Target Height##minimap", &MinimapSettings::textureHeight);
+				ImGui::Checkbox("Use checkpoint quads##minimap", &MinimapSettings::checkpointQuads);
+				ImGui::Checkbox("Use checkpoint pathable quads##minimap", &MinimapSettings::checkpointPathableQuads);
+				const char* orientationModes[] = { "0°", "90°", "180°", "270°", "Auto" };
+				int selectOrientation = MinimapSettings::orientation;
+				if (ImGui::Combo("Relative rotation##minimapsettings", &selectOrientation, orientationModes, 5))
+				{
+					MinimapSettings::orientation = selectOrientation;
+				}
+				if (ImGui::TreeNode("Materials##minimapsettings"))
+				{
+					if (ImGui::BeginCombo("##minimapmatcombo", previewMatNameMinimap.c_str()))
+					{
+						for (const auto& [material, indexes] : m_materialToQuadFaces)
+						{
+							if (ImGui::Selectable(material.c_str()))
+							{
+								previewMatNameMinimap = material;
+							}
+						}
+						ImGui::EndCombo();
+					}
+					ImGui::SameLine();
+					if (ImGui::Button("Add Material##minimapsettinbgd"))
+						MinimapSettings::materials.insert(previewMatNameMinimap);
+					std::vector<std::string> toDel;
+					for (const std::string& matName : MinimapSettings::materials)
+					{
+						ImGui::Text(matName.c_str());
+						ImGui::SameLine();
+						if (!m_materialToQuadFaces.contains(matName) || ImGui::Button(("Delete##minimapsettingsmaterial" + matName).c_str()))
+							toDel.push_back(matName);
+					}
+					for (const std::string& matName : toDel)
+						MinimapSettings::materials.erase(matName);
+					ImGui::TreePop();
+				}
+
+
+				if (ImGui::Button("AutoGenerate##minimap"))
+				{
+					GenerateMinimap();
+					boundsChanged = true;
+				}
+
+				ImGui::Separator();
+				ImGui::Text("World Bounds:");
+				if (ImGui::InputFloat("World Start X", &m_minimap.worldBox.min.x, 1.0f, 10.0f, "%.2f")) boundsChanged = true;
+				if (ImGui::InputFloat("World Start Y", &m_minimap.worldBox.min.z, 1.0f, 10.0f, "%.2f")) boundsChanged = true;
+				if (ImGui::InputFloat("World End X", &m_minimap.worldBox.max.x, 1.0f, 10.0f, "%.2f")) boundsChanged = true;
+				if (ImGui::InputFloat("World End Y", &m_minimap.worldBox.max.z, 1.0f, 10.0f, "%.2f")) boundsChanged = true;
+				ImGui::Separator();
+				int currentOrientation = static_cast<int>(m_minimap.orientationMode);
+				if (ImGui::Combo("Relative rotation", &currentOrientation, orientationModes, 4))
+				{
+					m_minimap.orientationMode = static_cast<MinimapOrientation>(currentOrientation);
+				}
+				ImGui::SetItemTooltip("Determines minimap clockwise rotation relative to the world\n It doesnt affect texture orientation, it affects how the driver icon moves on the minimap");
+
+				ImGui::Separator();
+				ImGui::Text("Minimap Texture : Odd Height Recommended");
+				m_minimap.texture.RenderUI();
+
+				if (boundsChanged && GuiRenderSettings::showMinimapBounds)
+				{
+					GenerateRenderMinimapBoundsData();
+				}
 				ImGui::TreePop();
 			}
 
@@ -1387,6 +1462,12 @@ void Level::RenderUI(Renderer& renderer)
 					checkboxPair("Show BSP", &GuiRenderSettings::showBspRectTree, "Show Vis Tree", &GuiRenderSettings::showVisTree);
 					unsigned skyboxRenderChanged = checkboxPair("Show Skybox", &GuiRenderSettings::showSkybox, "Show BotNodes", &GuiRenderSettings::showBots);
 					if (skyboxRenderChanged & REND_FLAGS_COLUMN_0) { GenerateRenderSkyboxData(); }
+					ImGui::TableNextRow();
+					ImGui::TableSetColumnIndex(0);
+					unsigned minimapBoundsChanged = checkboxPair("Show Intances", &GuiRenderSettings::showInstances, "Show Minimap Bounds", &GuiRenderSettings::showMinimapBounds);
+
+					if (minimapBoundsChanged & REND_FLAGS_COLUMN_0) { GenerateRenderSkyboxData(); }
+					if (minimapBoundsChanged & REND_FLAGS_COLUMN_1) { GenerateRenderMinimapBoundsData(); }
 
 					ImGui::EndTable();
 				}

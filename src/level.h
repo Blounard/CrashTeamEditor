@@ -13,6 +13,7 @@
 #include "animtexture.h"
 #include "model.h"
 #include "vistree.h"
+#include "minimap.h"
 #include "skybox.h"
 #include "settings.h"
 
@@ -38,7 +39,9 @@ namespace LevelModels
 	static constexpr size_t FILTER = 6;
 	static constexpr size_t SKYBOX = 7;
 	static constexpr size_t BOT = 8;
-	static constexpr size_t COUNT = 9;
+	static constexpr size_t INSTANCES = 9;
+	static constexpr size_t MINIMAP_BOUNDS = 10;
+	static constexpr size_t COUNT = 11;
 };
 
 class Level
@@ -90,7 +93,7 @@ private:
 	bool GenerateCheckpoints();
 	bool ReOrderBSP();
 	bool GenerateOceanVertices();
-	
+	bool GenerateMinimap();
 	void OpenHotReloadWindow();
 	void RenderUI(Renderer& renderer);
 
@@ -100,6 +103,7 @@ private:
 	void UpdateFilterRenderData(const Quadblock& qb);
 	void GenerateRenderBspData();
 	void GenerateRenderStartpointData();
+	void GenerateRenderMinimapBoundsData();
 	void GenerateRenderSkyboxData();
 	void GenerateRenderSelectedBlockData(const Quadblock& quadblock, const Vec3& queryPoint);
 	bool UpdateAnimTextures(float deltaTime);
@@ -140,6 +144,7 @@ private:
 	std::vector<AnimTexture> m_animTextures;
 	BitMatrix m_bspVis;
 	std::vector<uint8_t> m_vrm;
+	Minimap m_minimap;
 	Skybox m_skybox;
 	BotPath m_botPaths[3];
 	Texture m_envMapTex;

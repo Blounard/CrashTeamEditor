@@ -8,12 +8,14 @@
 #include "renderer.h"
 #include "vistree.h"
 #include "text3d.h"
+#include "minimap.h"
 
 #include <fstream>
 #include <unordered_set>
 #include <set>
 #include <map>
 #include <algorithm>
+#include <stb_image_write.h>
 
 bool Level::Load(const std::filesystem::path& filename, bool isLevel)
 {
@@ -76,6 +78,7 @@ void Level::Clear(bool clearErrors)
 	m_saveScript = false;
 	m_vrm.clear();
 	m_lastAnimTextureCount = 0;
+	m_minimap = {};
 	DeleteMaterials(this);
 	m_skybox.Clear();
 	m_splitLines[0] = 0.0;
@@ -658,10 +661,219 @@ bool Level::GenerateOceanVertices()
 }
 
 
+// Helper functions for GenerateMinimap (calculate how much area a triangle cover within a square)
+// AI
+template <typename InsideFn, typename IntersectFn>
+void ClipHalfPlane(std::vector<Vec2>& poly, InsideFn inside, IntersectFn intersect)
+{
+	if (poly.empty()) { return; }
+	std::vector<Vec2> out;
+	out.reserve(poly.size() + 1);
+	for (size_t i = 0; i < poly.size(); i++)
+	{
+		const Vec2& curr = poly[i];
+		const Vec2& prev = poly[(i + poly.size() - 1) % poly.size()];
+		const bool currIn = inside(curr);
+		const bool prevIn = inside(prev);
+		if (currIn)
+		{
+			if (!prevIn) { out.push_back(intersect(prev, curr)); }
+			out.push_back(curr);
+		}
+		else if (prevIn)
+		{
+			out.push_back(intersect(prev, curr));
+		}
+	}
+	poly = std::move(out);
+}
+float ClipTriangleToBoxArea(Vec2 p0, Vec2 p1, Vec2 p2, float x0, float y0, float x1, float y1)
+{
+	std::vector<Vec2> poly = { p0, p1, p2 };
+
+	ClipHalfPlane(poly, [&](const Vec2& p) { return p.x >= x0; },
+		[&](const Vec2& a, const Vec2& b) { const float t = (x0 - a.x) / (b.x - a.x); return Vec2{ x0, a.y + t * (b.y - a.y) }; });
+	ClipHalfPlane(poly, [&](const Vec2& p) { return p.x <= x1; },
+		[&](const Vec2& a, const Vec2& b) { const float t = (x1 - a.x) / (b.x - a.x); return Vec2{ x1, a.y + t * (b.y - a.y) }; });
+	ClipHalfPlane(poly, [&](const Vec2& p) { return p.y >= y0; },
+		[&](const Vec2& a, const Vec2& b) { const float t = (y0 - a.y) / (b.y - a.y); return Vec2{ a.x + t * (b.x - a.x), y0 }; });
+	ClipHalfPlane(poly, [&](const Vec2& p) { return p.y <= y1; },
+		[&](const Vec2& a, const Vec2& b) { const float t = (y1 - a.y) / (b.y - a.y); return Vec2{ a.x + t * (b.x - a.x), y1 }; });
+	if (poly.size() < 3) { return 0.0; }
+	float area2 = 0.0;
+	for (size_t i = 0; i < poly.size(); i++)
+	{
+		const Vec2& a = poly[i];
+		const Vec2& b = poly[(i + 1) % poly.size()];
+		area2 += (a.x * b.y) - (b.x * a.y);
+	}
+	return std::fabs(area2) * 0.5f;
+}
+
+bool Level::GenerateMinimap()
+{
+	int targetHeight = MinimapSettings::textureHeight;
+	if (targetHeight < 3)
+	{
+		printf("WARNING: MinimapConfig targetHeight (%d) too small once padding is reserved, using 3 instead\n", targetHeight);
+		targetHeight = 3;
+	}
+	const int contentHeight = targetHeight - 1;
+
+	// Build quad list to use for the minimap 
+	std::vector<size_t> usedQuadIds;
+	for (size_t i = 0; i < m_quadblocks.size(); i++)
+	{
+		if (MinimapSettings::checkpointQuads && m_quadblocks[i].GetCheckpoint() != -1)
+			usedQuadIds.push_back(i);
+		else if (MinimapSettings::checkpointPathableQuads && m_quadblocks[i].GetCheckpointPathable() && m_quadblocks[i].GetCheckpointStatus())
+			usedQuadIds.push_back(i);
+		else
+		{
+			for (size_t f = 0; f < NUM_FACES_QUADBLOCK + 1; f++)
+			{
+				if (MinimapSettings::materials.contains(m_quadblocks[i].GetMaterial(f)))
+				{
+					usedQuadIds.push_back(i);
+					break;
+				}
+			}
+		}
+	}
+	if (usedQuadIds.empty()) return false;
+
+	// Build Triangle list
+	std::vector<Tri> tris;
+	for (size_t i : usedQuadIds)
+	{
+		for (const std::array<size_t, 3>&face : m_quadblocks[i].GetTriFacesIndexes())
+		{
+			const std::array<Vec3, 3> f = m_quadblocks[i].GetTriFace(face[0], face[1], face[2]);
+			Tri t;
+			for (int j = 0; j < 3; j++) { t.p[j].pos = f[j]; }
+			tris.push_back(t);
+		}
+	}
+
+	// Build Bounding Box
+	m_minimap.worldBox = BoundingBox::Empty();
+	for (const Tri& t : tris)
+	{
+		for (int i = 0; i < 3; i++)
+			m_minimap.worldBox.Expand(t.p[i].pos);
+	}
+
+	const float spanX = m_minimap.worldBox.AxisLength().x;
+	const float spanZ = m_minimap.worldBox.AxisLength().z;
+
+	// World -> pixel mapping
+	if (static_cast<MinimapOrientation>(MinimapSettings::orientation) == MinimapOrientation::AUTO)
+		if (spanX > spanZ)
+			m_minimap.orientationMode = MinimapOrientation::DOWN;
+		else
+			m_minimap.orientationMode = MinimapOrientation::RIGHT;
+	else
+		m_minimap.orientationMode = static_cast<MinimapOrientation>(MinimapSettings::orientation);
+
+	const bool swapped = (m_minimap.orientationMode == MinimapOrientation::DOWN || m_minimap.orientationMode == MinimapOrientation::UP);
+	const float colSpanWorld = swapped ? spanZ : spanX;
+	const float rowSpanWorld = swapped ? spanX : spanZ;
+	constexpr float minimapStretchX = 1.6f;
+	const int contentWidth = std::max(1, static_cast<int>(std::lround(contentHeight * (colSpanWorld * minimapStretchX) / rowSpanWorld)));
+	const int targetWidth = contentWidth + 1; // One extra column reserved the same way as the padding row (see below).
+
+	auto toPixelSpace = [&](const Vec3& worldPos) // Convert World Pos to Pixel coordinate on the image
+		{
+			float x = worldPos.x, z = worldPos.z;
+			float colFrac = 0.0, rowFrac = 0.0;
+			switch (m_minimap.orientationMode)
+			{
+			case MinimapOrientation::RIGHT: colFrac = (x - m_minimap.worldBox.min.x) / spanX; rowFrac = (z - m_minimap.worldBox.min.z) / spanZ; break;
+			case MinimapOrientation::DOWN:  colFrac = (m_minimap.worldBox.max.z - z) / spanZ; rowFrac = (x - m_minimap.worldBox.min.x) / spanX; break;
+			case MinimapOrientation::LEFT:  colFrac = (m_minimap.worldBox.max.x - x) / spanX; rowFrac = (m_minimap.worldBox.max.z - z) / spanZ; break;
+			case MinimapOrientation::UP:    colFrac = (z - m_minimap.worldBox.min.z) / spanZ; rowFrac = (m_minimap.worldBox.max.x - x) / spanX; break;
+			}
+			Vec2 res{};
+			res.x = colFrac * contentWidth;
+			res.y = rowFrac * contentHeight;
+			return res;
+		};
+
+	// Coverage calculation
+	std::vector<float> coverage(static_cast<size_t>(targetWidth) * targetHeight, 0.0);
+	for (const Tri& t : tris)
+	{
+		Vec2 p0 = toPixelSpace(t.p[0].pos);
+		Vec2 p1 = toPixelSpace(t.p[1].pos);
+		Vec2 p2 = toPixelSpace(t.p[2].pos);
+
+		const int pxMin = Clamp(static_cast<int>(std::floor(std::min({ p0.x, p1.x, p2.x }))), 0, contentWidth - 1);
+		const int pxMax = Clamp(static_cast<int>(std::floor(std::max({ p0.x, p1.x, p2.x }))), 0, contentWidth - 1);
+		const int pyMin = Clamp(static_cast<int>(std::floor(std::min({ p0.y, p1.y, p2.y }))), 0, contentHeight - 1);
+		const int pyMax = Clamp(static_cast<int>(std::floor(std::max({ p0.y, p1.y, p2.y }))), 0, contentHeight - 1);
+		for (int py = pyMin; py <= pyMax; py++)
+		{
+			for (int px = pxMin; px <= pxMax; px++)
+			{
+				const float area = ClipTriangleToBoxArea(p0, p1, p2, static_cast<float>(px), static_cast<float>(py), static_cast<float>(px + 1), static_cast<float>(py + 1));
+				if (area > 0.0) { coverage[static_cast<size_t>(py) * targetWidth + px] += area; } // This assume quads don't overlap for the formula to be correct.
+			}
+		}
+	}
+
+	const float extCol = colSpanWorld / static_cast<float>(contentWidth);
+	const float extRow = rowSpanWorld / static_cast<float>(contentHeight);
+	switch (m_minimap.orientationMode)
+	{
+	case MinimapOrientation::RIGHT: m_minimap.worldBox.max.x += extCol; m_minimap.worldBox.max.z += extRow; break;
+	case MinimapOrientation::DOWN:  m_minimap.worldBox.min.z -= extCol; m_minimap.worldBox.max.x += extRow; break;
+	case MinimapOrientation::LEFT:  m_minimap.worldBox.min.x -= extCol; m_minimap.worldBox.min.z -= extRow; break;
+	case MinimapOrientation::UP:    m_minimap.worldBox.max.z += extCol; m_minimap.worldBox.min.x -= extRow; break;
+	}
+
+	// Colors
+	std::vector<uint8_t> rgba(coverage.size() * 4);
+	for (size_t i = 0; i < coverage.size(); i++)
+	{
+		constexpr int colorCount = 16;
+		int level = std::min(static_cast<int>(coverage[i] * colorCount), colorCount - 1);
+		uint8_t color = static_cast<uint8_t>(Clamp(std::round(level * 255.0f / (colorCount - 1)), 0.0f, 255.0f));
+		uint8_t r = color;
+		uint8_t g = color;
+		uint8_t b = color;
+		uint8_t a;
+		if (color == 255)
+			a = 255;
+		else if (color == 0)
+			a = 0;
+		else
+			a = 128;
+		rgba[i * 4 + 0] = r;
+		rgba[i * 4 + 1] = g;
+		rgba[i * 4 + 2] = b;
+		rgba[i * 4 + 3] = a;
+	}
+
+	const std::filesystem::path pngPath = GetParentPath() / ("auto-minimap.png");
+	if (!stbi_write_png(pngPath.string().c_str(), targetWidth, targetHeight, 4, rgba.data(), targetWidth * 4))
+	{
+		printf("ERROR: Failed to write minimap PNG\n");
+		return false;
+	}
+
+	m_minimap.texture = Texture(pngPath);
+	if (m_minimap.texture.IsEmpty())
+	{
+		printf("ERROR: Failed to load generated minimap texture %s\n", pngPath.string().c_str());
+		return false;
+	}
+	m_minimap.texture.SetBlendMode(static_cast<uint16_t>(PSX::BlendMode::ADDITIVE));
+	return true;
+}
 
 enum class PresetHeader : unsigned
 {
-	SPAWN, LEVEL, PATH, MATERIAL, TURBO_PAD, ANIM_TEXTURES, SCRIPT
+	SPAWN, LEVEL, PATH, MATERIAL, TURBO_PAD, ANIM_TEXTURES, SCRIPT, MINIMAP
 };
 
 bool Level::LoadPreset(const std::filesystem::path& filename)
@@ -838,6 +1050,13 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 	{
 		m_pythonScript = json["script"];
 	}
+	else if (header == PresetHeader::MINIMAP)
+	{
+		if (json.contains("minimap"))
+		{
+			m_minimap = json["minimap"];
+		}
+	}
 	else
 	{
 		m_logMessage += "\nFailed loaded preset: " + filename.string();
@@ -946,6 +1165,12 @@ bool Level::SavePreset(const std::filesystem::path& path)
 		scriptJson["script"] = m_pythonScript;
 		SaveJSON(dirPath / "script.json", scriptJson);
 	}
+
+	nlohmann::json minimapJson = {};
+	minimapJson["header"] = PresetHeader::MINIMAP;
+	minimapJson["minimap"] = m_minimap;
+	SaveJSON(dirPath / "minimap.json", minimapJson);
+	
 	return true;
 }
 
@@ -1085,6 +1310,49 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 		PixelBounds waterBound{};
 		waterBound.Update(RawUV(m_rawWaterLayout));
 		m_envMapTex = Texture(waterkey, waterBound, vram, "envMap", tempDir);
+	}
+	//ICONS
+	std::vector<PSX::Icon> levelIcons;
+	Texture minimapTop; Texture minimapBottom; Texture minimapMerged;
+	if (header.offIconsLookup != 0)
+	{
+		PSX::LevelIconHeader levelIconHeader{};
+		file.seekg(offLev + std::streampos(header.offIconsLookup));
+		Read(file, levelIconHeader);
+		if (levelIconHeader.offFirstIcon != 0)
+		{
+			for (int32_t iconId = 0; iconId < levelIconHeader.numIcon; iconId++)
+			{
+				file.seekg(offLev + std::streampos(levelIconHeader.offFirstIcon + iconId * sizeof(PSX::Icon)));
+				PSX::Icon icon{};
+				Read(file, icon);
+				levelIcons.push_back(icon);
+			}
+		}
+
+		for (PSX::Icon& icon : levelIcons)
+		{
+			if (icon.globalIconArrayIndex == PSX::ICON_INDEX_MAP_TOP)
+			{
+				LayoutKey mapKey(icon.texLayout);
+				PixelBounds bounds{};
+				bounds.Update(RawUV(icon.texLayout));
+				mapKey.blendMode = PSX::BlendMode::ADDITIVE; // Blend mode is not used for rendering minimaps, additive alwyas used ? (or a minimap specific one).
+				minimapTop = Texture(mapKey, bounds, vram, "minimap_top", tempDir);
+			}
+			if (icon.globalIconArrayIndex == PSX::ICON_INDEX_MAP_BOTTOM)
+			{
+				LayoutKey mapKey(icon.texLayout);
+				PixelBounds bounds{};
+				bounds.Update(RawUV(icon.texLayout));
+				mapKey.blendMode = PSX::BlendMode::ADDITIVE;
+				minimapBottom = Texture(mapKey, bounds, vram, "minimap_bottom", tempDir);
+			}
+		}
+		if (!minimapTop.IsEmpty() && !minimapBottom.IsEmpty())
+		{
+			minimapMerged = Texture(minimapTop, minimapBottom, "minimap", tempDir);
+		}
 	}
 
 	// Load textures, AnimTex, and Quadblocks
@@ -1536,6 +1804,16 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 			file.seekg(offLev + std::streampos(extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST]));
 			m_oxideGhost.resize(GHOST_DATA_FILESIZE);
 			file.read(reinterpret_cast<char*>(m_oxideGhost.data()), GHOST_DATA_FILESIZE);
+		}
+
+		// Read minimap
+		if (extraHeader.count > PSX::LevelExtra::MINIMAP && extraHeader.offsets[PSX::LevelExtra::MINIMAP] != 0)
+		{
+			file.seekg(offLev + std::streampos(extraHeader.offsets[PSX::LevelExtra::MINIMAP]));
+			PSX::Minimap minimap{};
+			Read(file, minimap);
+			m_minimap = ConvertMinimap(minimap);
+			m_minimap.texture = minimapMerged;
 		}
 	}
 
@@ -2152,13 +2430,8 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	const size_t offOxideGhost = m_oxideGhost.empty() ? 0 : currOffset;
 	currOffset += m_oxideGhost.size();
 
+	// Note: extraHeader.offsets[MINIMAP] will be updated later after minimap data is serialized
 	PSX::LevelExtraHeader extraHeader = {};
-	if (offTropyGhost > 0)
-	{
-		if (offOxideGhost > 0) { extraHeader.count = PSX::LevelExtra::COUNT; }
-		else { extraHeader.count = PSX::LevelExtra::N_OXIDE_GHOST; }
-	}
-	else { extraHeader.count = 0; }
 	extraHeader.offsets[PSX::LevelExtra::MINIMAP] = 0;
 	extraHeader.offsets[PSX::LevelExtra::SPAWN] = 0;
 	extraHeader.offsets[PSX::LevelExtra::CAMERA_END_OF_RACE] = 0;
@@ -2166,6 +2439,12 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	extraHeader.offsets[PSX::LevelExtra::N_TROPY_GHOST] = static_cast<uint32_t>(offTropyGhost);
 	extraHeader.offsets[PSX::LevelExtra::N_OXIDE_GHOST] = static_cast<uint32_t>(offOxideGhost);
 	extraHeader.offsets[PSX::LevelExtra::CREDITS] = 0;
+
+	// Determine count based on highest enabled entry index + 1
+	// Count represents the number of valid entries in the offsets array
+	if (offOxideGhost > 0) { extraHeader.count = PSX::LevelExtra::N_OXIDE_GHOST + 1; }
+	else if (offTropyGhost > 0) { extraHeader.count = PSX::LevelExtra::N_TROPY_GHOST + 1; }
+	// Note: minimap count will be set later if enabled and no ghosts present
 
 	const size_t offExtraHeader = currOffset;
 	currOffset += sizeof(extraHeader);
@@ -2215,6 +2494,71 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	const size_t offVisMem = currOffset;
 	currOffset += sizeof(visMem);
 
+	// Minimap data serialization
+	size_t offMinimapStruct = 0;
+	size_t offLevelIconHeader = 0;
+	size_t offMinimapIcons = 0;
+	std::vector<uint8_t> minimapData;
+	std::vector<size_t> minimapPtrMapOffsets;
+
+	if (!m_minimap.texture.IsEmpty())
+	{
+		// Map struct - this is what extraHeader.offsets[MINIMAP] will point to
+		offMinimapStruct = currOffset;
+		PSX::Minimap mapStruct = ConvertMinimap(m_minimap);
+		size_t mapStructOffset = minimapData.size();
+		minimapData.resize(minimapData.size() + sizeof(PSX::Minimap));
+		memcpy(&minimapData[mapStructOffset], &mapStruct, sizeof(PSX::Minimap));
+		currOffset += sizeof(PSX::Minimap);
+
+		// Icon structs (top and bottom minimap textures)
+		offMinimapIcons = currOffset;
+
+		// IMPORTANT NOTE : WE NEED TOP AND BOTTOM TEXTURE TO BE THE SAME SIZE, BUT MINIMAP HAVE ODD HEIGHT : 
+		// WHAT ND DID IS ADD 1 ROW OF PIXEL AT THE BOTTOM OF THE TOP TEXTURE 
+		QuadUV topUV = {{Vec2(0.0f, 0.0f), Vec2(1.0f, 0.0f), Vec2(0.0f, 0.5001f), Vec2(1.0f, 0.5001f)}};
+		QuadUV bottomUV = {{Vec2(0.0f, 0.4999f), Vec2(1.0f, 0.4999f), Vec2(0.0f, 1.0f), Vec2(1.0f, 1.0f)}};
+
+		// Top icon
+		PSX::Icon topIcon = {};
+		strncpy_s(topIcon.name, sizeof(topIcon.name), "minimap-top", _TRUNCATE);
+		topIcon.globalIconArrayIndex = PSX::ICON_INDEX_MAP_TOP;
+		topIcon.texLayout = m_minimap.texture.Serialize(topUV);
+		size_t topIconOffset = minimapData.size();
+		minimapData.resize(minimapData.size() + sizeof(PSX::Icon));
+		memcpy(&minimapData[topIconOffset], &topIcon, sizeof(PSX::Icon));
+		currOffset += sizeof(PSX::Icon);
+
+		// Bottom icon
+		PSX::Icon bottomIcon = {};
+		strncpy_s(bottomIcon.name, sizeof(bottomIcon.name), "minimap-bot", _TRUNCATE);
+		bottomIcon.globalIconArrayIndex = PSX::ICON_INDEX_MAP_BOTTOM;
+		bottomIcon.texLayout = m_minimap.texture.Serialize(bottomUV);
+		size_t bottomIconOffset = minimapData.size();
+		minimapData.resize(minimapData.size() + sizeof(PSX::Icon));
+		memcpy(&minimapData[bottomIconOffset], &bottomIcon, sizeof(PSX::Icon));
+		currOffset += sizeof(PSX::Icon);
+
+		// LevelIconHeader struct (pointed to by header.offIconsLookup)
+		offLevelIconHeader = currOffset;
+		PSX::LevelIconHeader levelIconHeader = {};
+		levelIconHeader.numIcon = 2;
+		levelIconHeader.offFirstIcon = static_cast<uint32_t>(offMinimapIcons);
+		levelIconHeader.numIconGroup = 0;
+		levelIconHeader.offFirstIconGroupPtr = 0;
+		size_t levelIconHeaderOffset = minimapData.size();
+		minimapData.resize(minimapData.size() + sizeof(PSX::LevelIconHeader));
+		memcpy(&minimapData[levelIconHeaderOffset], &levelIconHeader, sizeof(PSX::LevelIconHeader));
+		minimapPtrMapOffsets.push_back(currOffset + offsetof(PSX::LevelIconHeader, offFirstIcon)); // Pointer to first icon
+		currOffset += sizeof(PSX::LevelIconHeader);
+
+		// Update extraHeader to point to the minimap Map struct directly
+		extraHeader.offsets[PSX::LevelExtra::MINIMAP] = static_cast<uint32_t>(offMinimapStruct);
+		
+		// Set count if no ghosts are present (minimap is at index 0, so count = 1)
+		if (extraHeader.count == 0) { extraHeader.count = PSX::LevelExtra::MINIMAP + 1; }
+	}
+	
 	// Skybox data serialization
 	size_t offSkyboxData = 0;
 	std::vector<uint8_t> skyboxData;
@@ -2258,6 +2602,14 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	header.numWaterVertices = static_cast<uint32_t>(waterVertices.size());
 	header.offEnvironmentMap = static_cast<uint32_t>(offEnvMapLayout);
 
+
+	// Set minimap pointers in header if enabled
+	if (!m_minimap.texture.IsEmpty())
+	{
+		header.offIconsLookup = static_cast<uint32_t>(offLevelIconHeader);
+		header.offIcons = static_cast<uint32_t>(offMinimapIcons);
+	}
+
 	// Set skybox pointer in header if enabled
 	if (m_skybox.IsReady())
 	{
@@ -2284,6 +2636,13 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		CALCULATE_OFFSET(PSX::VisualMem, offBSP[0], offVisMem),
 		CALCULATE_OFFSET(PSX::VisualMem, offOcean[0], offVisMem),
 	};
+	
+	// Add minimap header pointers to pointer map
+	if (!m_minimap.texture.IsEmpty())
+	{
+		pointerMap.push_back(CALCULATE_OFFSET(PSX::LevHeader, offIconsLookup, offHeader));
+		pointerMap.push_back(CALCULATE_OFFSET(PSX::LevHeader, offIcons, offHeader));
+	}
 
 	// Add skybox header pointer to pointer map
 	if (m_skybox.IsReady())
@@ -2291,8 +2650,14 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		pointerMap.push_back(CALCULATE_OFFSET(PSX::LevHeader, offSkybox, offHeader));
 	}
 
-	if (offTropyGhost != 0) { pointerMap.push_back(CALCULATE_OFFSET(PSX::LevelExtraHeader, offsets[PSX::LevelExtra::N_TROPY_GHOST], offExtraHeader)); }
-	if (offOxideGhost != 0) { pointerMap.push_back(CALCULATE_OFFSET(PSX::LevelExtraHeader, offsets[PSX::LevelExtra::N_OXIDE_GHOST], offExtraHeader)); }
+	// Every non-zero entry in the extra header is a pointer and must be relocated.
+	// Previously only the two ghost entries were registered, so any other offset the
+	// editor started writing would reach the game as a raw file offset.
+	for (size_t i = 0; i < PSX::LevelExtra::COUNT; i++)
+	{
+		if (extraHeader.offsets[i] == 0) { continue; }
+		pointerMap.push_back(static_cast<uint32_t>(offExtraHeader + offsetof(PSX::LevelExtraHeader, offsets) + (i * sizeof(uint32_t))));
+	}
 
 	for (size_t i = 0; i < animPtrMapOffsets.size(); i++)
 	{
@@ -2332,6 +2697,12 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 		offCurrVisibleSet += sizeof(PSX::VisibleSet);
 	}
 
+	// Add minimap internal pointers to pointer map
+	for (size_t offset : minimapPtrMapOffsets)
+	{
+		pointerMap.push_back(static_cast<uint32_t>(offset));
+	}
+	
 	// Add skybox internal pointers to pointer map
 	for (size_t offset : skyboxPtrMapOffsets)
 	{
@@ -2387,7 +2758,7 @@ bool Level::SaveLEV(const std::filesystem::path& path, bool useRawTextures)
 	Write(file, visMemBSPP1.data(), visMemBSPP1.size() * sizeof(uint32_t));
 	Write(file, visMemOceanP1.data(), visMemOceanP1.size() * sizeof(uint32_t));
 	Write(file, &visMem, sizeof(visMem));
-	// Write skybox data if present
+	if (!minimapData.empty()) { Write(file, minimapData.data(), minimapData.size()); }
 	if (!skyboxData.empty()) { Write(file, skyboxData.data(), skyboxData.size()); }
 	Write(file, &pointerMapBytes, sizeof(uint32_t));
 	Write(file, pointerMap.data(), pointerMapBytes);
@@ -2894,7 +3265,26 @@ bool Level::UpdateVRM()
 			textures.push_back(tex);
 	}
 
+	// Add minimap textures if enabled
+	if (!m_minimap.texture.IsEmpty())
+	{
+		Texture* tex = &m_minimap.texture;
+		bool foundEqual = false;
+		for (Texture* addedTexture : textures)
+		{
+			if (*tex == *addedTexture)
+			{
+				copyTextureAttributes.push_back({ addedTexture, tex });
+				foundEqual = true;
+				break;
+			}
+		}
+		if (!foundEqual)
+			textures.push_back(tex);
+	}
+
 	m_vrm = PackVRM(textures);
+
 	if (m_vrm.empty()) { return false; }
 
 	for (auto& [from, to] : copyTextureAttributes)
@@ -2944,6 +3334,8 @@ void Level::InitModels(Renderer& renderer)
 	m_models[LevelModels::FILTER] = m_models[LevelModels::LEVEL]->AddModel();
 	m_models[LevelModels::FILTER]->SetRenderCondition([]() { return GuiRenderSettings::filterActive; });
 
+	m_models[LevelModels::MINIMAP_BOUNDS] = m_models[LevelModels::LEVEL]->AddModel();
+	m_models[LevelModels::MINIMAP_BOUNDS]->SetRenderCondition([]() { return GuiRenderSettings::showMinimapBounds; });
 	m_models[LevelModels::SKYBOX] = m_models[LevelModels::LEVEL]->AddModel();
 	m_models[LevelModels::SKYBOX]->SetRenderCondition([]() { return GuiRenderSettings::showSkybox; });
 
@@ -3189,6 +3581,28 @@ void Level::GenerateRenderStartpointData()
 	}
 
 	m_models[LevelModels::SPAWN]->GetMesh().SetGeometry(spawnsTriangles, Mesh::RenderFlags::DrawBackfaces | Mesh::RenderFlags::DontOverrideRenderFlags);
+}
+
+void Level::GenerateRenderMinimapBoundsData()
+{
+	if (!m_models[LevelModels::MINIMAP_BOUNDS]) { return; }
+
+	if (m_minimap.texture.IsEmpty())
+	{
+		m_models[LevelModels::MINIMAP_BOUNDS]->GetMesh().Clear();
+		return;
+	}
+
+	// Magenta color for minimap bounds
+	Color c = Color(static_cast<unsigned char>(255), static_cast<unsigned char>(0), static_cast<unsigned char>(255));
+
+	std::vector<Primitive> triangles = m_minimap.worldBox.ToGeometry();
+	for (Primitive& primitive : triangles)
+	{
+		for (unsigned i = 0; i < primitive.pointCount; i++) { primitive.p[i].color = c; }
+	}
+
+	m_models[LevelModels::MINIMAP_BOUNDS]->GetMesh().SetGeometry(triangles, Mesh::RenderFlags::DrawWireframe | Mesh::RenderFlags::DontOverrideRenderFlags);
 }
 
 void Level::GenerateRenderSkyboxData()
