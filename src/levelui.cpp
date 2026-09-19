@@ -1553,7 +1553,8 @@ void Texture::RenderUI()
 	RenderUI({}, dummyQuadblocks, []() {});
 }
 
-bool AnimTexture::RenderUI(std::vector<std::string>& animTexNames, std::vector<Quadblock>& quadblocks, const std::map<std::string, std::vector<std::pair<size_t, size_t>>>& materialMap, const std::string& query, std::vector<AnimTexture>& newTextures) {
+bool AnimTexture::RenderUI(std::vector<std::string>& animTexNames, std::vector<Quadblock>& quadblocks, const std::map<std::string, std::vector<std::pair<size_t, size_t>>>& materialMap, const std::string& query, std::vector<AnimTexture>& newTextures) 
+{
 	bool ret = true;
 	if (ImGui::TreeNode(m_name.c_str()))
 	{
@@ -1615,7 +1616,7 @@ bool AnimTexture::RenderUI(std::vector<std::string>& animTexNames, std::vector<Q
 		}
 		if (ImGui::TreeNode("Textures"))
 		{
-			for (Texture& tex : m_textures) { tex.RenderUI(); }
+			for (Texture& tex : m_textures) { ImGui::PushID(tex.GetPath().string().c_str()); tex.RenderUI(); ImGui::PopID(); }
 			ImGui::TreePop();
 		}
 		if (ImGui::TreeNode("Manage"))
