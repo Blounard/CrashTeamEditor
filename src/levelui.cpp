@@ -3045,7 +3045,7 @@ void Texture::RenderUI()
 	RenderUI({}, dummyQuadblocks, []() {});
 }
 
-bool AnimTexture::RenderUI(std::vector<std::string>& animTexNames, std::vector<Quadblock>& quadblocks, const std::map<std::string, std::vector<std::pair<size_t, size_t>>>& materialMap, const std::string& query, std::vector<AnimTexture>& newTextures)
+bool AnimTexture::RenderUI(std::vector<std::string>& animTexNames, std::vector<Quadblock>& quadblocks, const std::map<std::string, std::vector<std::pair<size_t, size_t>>>& materialMap, const std::string& query, std::vector<AnimTexture>& newTextures) 
 {
 	bool ret = true;
 	if (ImGui::TreeNode(m_name.c_str()))
