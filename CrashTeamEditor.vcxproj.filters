@@ -203,6 +203,9 @@
     <ClInclude Include="src\material.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\minimap.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="src\skybox.h">
       <Filter>Header Files</Filter>
     </ClInclude>
