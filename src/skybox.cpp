@@ -329,7 +329,7 @@ bool Skybox::RenderUI()
 	if (ImGui::Button("Browse##selectskybox"))
 	{
 		auto selection = pfd::open_file("Select Skybox OBJ", ".",
-			{"OBJ Files", "*.obj", "All Files", "*"}).result();
+			{ "OBJ Files", "*.obj", "All Files", "*" }).result();
 		if (!selection.empty())
 		{
 			if (LoadOBJ(selection.front()))

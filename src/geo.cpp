@@ -75,7 +75,7 @@ float BoundingBox::SemiPerimeter() const
 float BoundingBox::NormL(int power) const
 {
 	Vec3 dist = max - min;
-	return static_cast<float>(std::pow(std::pow(dist.x, power) + std::pow(dist.y, power) + std::pow(dist.z, power), 1.0f/static_cast<float>(power)));
+	return static_cast<float>(std::pow(std::pow(dist.x, power) + std::pow(dist.y, power) + std::pow(dist.z, power), 1.0f / static_cast<float>(power)));
 }
 
 float BoundingBox::MaxAxisLength() const
@@ -112,7 +112,7 @@ float BoundingBox::Distance(const BoundingBox& other) const
 	return Vec3(dx, dy, dz).Length();
 }
 
-BoundingBox BoundingBox::Union(const BoundingBox& other) const 
+BoundingBox BoundingBox::Union(const BoundingBox& other) const
 {
 	BoundingBox box{};
 	box.min.x = std::min(min.x, other.min.x); box.max.x = std::max(max.x, other.max.x);
@@ -121,7 +121,7 @@ BoundingBox BoundingBox::Union(const BoundingBox& other) const
 	return box;
 }
 
-BoundingBox BoundingBox::Intersect(const BoundingBox& other) const 
+BoundingBox BoundingBox::Intersect(const BoundingBox& other) const
 {
 	BoundingBox result{};
 	result.min.x = std::max(min.x, other.min.x);
@@ -241,10 +241,10 @@ Vec3 Quaternion::operator*(const Vec3& v) const
 	return v + (t * w) + qv.Cross(t);
 }
 
-Vec3 Quaternion::ToEulerYXZ() const  
+Vec3 Quaternion::ToEulerYXZ() const
 {
 	float r00 = 1 - 2 * (y * y + z * z);
-	float r01 = 2 * (x * y - w * z); 
+	float r01 = 2 * (x * y - w * z);
 	float r02 = 2 * (x * z + w * y);
 	float r10 = 2 * (x * y + w * z);
 	float r11 = 1 - 2 * (x * x + z * z);
@@ -599,7 +599,7 @@ std::vector<Vec3> LoadGhostPath(const std::filesystem::path& path, float startTi
 		{
 			// opcode-less velocity packet (5 bytes: dx, dy, dz, rot_y, rot_z)
 			if (offset + 5 > stream.size())
-				break; 
+				break;
 			const uint8_t* p = &stream[offset];
 			const int8_t dx = static_cast<int8_t>(firstByte);
 			const int8_t dy = static_cast<int8_t>(p[1]);
@@ -628,7 +628,7 @@ std::vector<Vec3> ComputeYaw(const std::vector<Vec3>& pos, bool loop)
 		Vec3 delta = next - curr;
 		if ((i + 1) == nodeCount && !loop)
 			delta = pos[i] - pos[i - 1];
-		
+
 		Vec3 forwardVec = delta - up * (up.Dot(delta));
 		if (forwardVec.LengthSquared() > EPSILON)
 		{
@@ -642,43 +642,48 @@ std::vector<Vec3> ComputeYaw(const std::vector<Vec3>& pos, bool loop)
 	return rots;
 }
 
-std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist, bool loop) 
+std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist, bool loop)
 {
 
 	int numPoint = static_cast<int>(pos.size());
 	if (numPoint < 2 || dist <= 0.0f) return pos;
 
-	auto catmullRomAlpha = [](const Vec3& p0, const Vec3& p1, const Vec3& p2, const Vec3& p3, float t, float alpha = 0.5f) -> Vec3 {
-		auto getT = [alpha](float t, const Vec3& p0, const Vec3& p1) -> float {
-			float d = (p1 - p0).Length();
-			return t + std::pow(std::max(d, EPSILON), alpha);
-			};
+	auto catmullRomAlpha = [](const Vec3& p0, const Vec3& p1, const Vec3& p2, const Vec3& p3, float t, float alpha = 0.5f) -> Vec3 
+		{
+			auto getT = [alpha](float t, const Vec3& p0, const Vec3& p1) -> float 
+				{
+					float d = (p1 - p0).Length();
+					return t + std::pow(std::max(d, EPSILON), alpha);
+				};
 
-		const float t0 = 0.0f;
-		const float t1 = getT(t0, p0, p1);
-		const float t2 = getT(t1, p1, p2);
-		const float t3 = getT(t2, p2, p3);
+			const float t0 = 0.0f;
+			const float t1 = getT(t0, p0, p1);
+			const float t2 = getT(t1, p1, p2);
+			const float t3 = getT(t2, p2, p3);
 
-		const float s = t1 + t * (t2 - t1);
+			const float s = t1 + t * (t2 - t1);
 
-		const Vec3 A1 = p0 * ((t1 - s) / (t1 - t0)) + p1 * ((s - t0) / (t1 - t0));
-		const Vec3 A2 = p1 * ((t2 - s) / (t2 - t1)) + p2 * ((s - t1) / (t2 - t1));
-		const Vec3 A3 = p2 * ((t3 - s) / (t3 - t2)) + p3 * ((s - t2) / (t3 - t2));
+			const Vec3 A1 = p0 * ((t1 - s) / (t1 - t0)) + p1 * ((s - t0) / (t1 - t0));
+			const Vec3 A2 = p1 * ((t2 - s) / (t2 - t1)) + p2 * ((s - t1) / (t2 - t1));
+			const Vec3 A3 = p2 * ((t3 - s) / (t3 - t2)) + p3 * ((s - t2) / (t3 - t2));
 
-		const Vec3 B1 = A1 * ((t2 - s) / (t2 - t0)) + A2 * ((s - t0) / (t2 - t0));
-		const Vec3 B2 = A2 * ((t3 - s) / (t3 - t1)) + A3 * ((s - t1) / (t3 - t1));
+			const Vec3 B1 = A1 * ((t2 - s) / (t2 - t0)) + A2 * ((s - t0) / (t2 - t0));
+			const Vec3 B2 = A2 * ((t3 - s) / (t3 - t1)) + A3 * ((s - t1) / (t3 - t1));
 
-		return B1 * ((t2 - s) / (t2 - t1)) + B2 * ((s - t1) / (t2 - t1));
+			return B1 * ((t2 - s) / (t2 - t1)) + B2 * ((s - t1) / (t2 - t1));
 		};
 
-	auto getPoint = [&](int i) -> const Vec3& {
-		if (loop) {
-			return pos[((i % numPoint) + numPoint) % numPoint];
-		}
-		else {
-			int clamped = std::clamp(i, 0, numPoint - 1);
-			return pos[clamped];
-		}
+	auto getPoint = [&](int i) -> const Vec3& 
+		{
+			if (loop) 
+			{
+				return pos[((i % numPoint) + numPoint) % numPoint];
+			}
+			else 
+			{
+				int clamped = std::clamp(i, 0, numPoint - 1);
+				return pos[clamped];
+			}
 		};
 
 	// 1. Generate Dense Samples
@@ -687,18 +692,20 @@ std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist, b
 	denseSamples.reserve(numPoint * stepsPerSegment);
 
 	const int segmentCount = loop ? numPoint : (numPoint - 1);
-	for (int i = 0; i < segmentCount; i++) {
+	for (int i = 0; i < segmentCount; i++) 
+	{
 		const Vec3& p0 = getPoint(i - 1);
 		const Vec3& p1 = getPoint(i);
 		const Vec3& p2 = getPoint(i + 1);
 		const Vec3& p3 = getPoint(i + 2);
-		for (int step = 0; step < stepsPerSegment; step++) {
+		for (int step = 0; step < stepsPerSegment; step++) 
+		{
 			float t = (float)step / (float)stepsPerSegment;
 			denseSamples.push_back(catmullRomAlpha(p0, p1, p2, p3, t));
 		}
 	}
 
-	
+
 	if (loop)
 		denseSamples.push_back(denseSamples.front());
 	else
@@ -711,26 +718,22 @@ std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist, b
 	// We start by adding the first point
 	result.push_back(denseSamples.front());
 
-	for (size_t i = 1; i < denseSamples.size(); i++) {
+	for (size_t i = 1; i < denseSamples.size(); i++) 
+	{
 		Vec3 segment = denseSamples[i] - denseSamples[i - 1];
 		float segLen = segment.Length();
 		if (segLen <= 0.00001f) continue;
 
 		accumulated += segLen;
 
-		while (accumulated >= dist) {
+		while (accumulated >= dist) 
+		{
 			float overshot = accumulated - dist;
 			float ratio = (segLen - overshot) / segLen;
 			Vec3 newPoint = denseSamples[i - 1] + segment * ratio;
-
 			result.push_back(newPoint);
-
-			// Prepare for next potential point in same segment
 			accumulated = overshot;
-			// In a loop, we usually don't want the last point to overlap the first.
-			// If the last point is extremely close to the first, you might want to break.
 		}
 	}
-
 	return result;
 }

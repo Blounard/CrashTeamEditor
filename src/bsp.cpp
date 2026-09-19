@@ -37,7 +37,6 @@ BSP::BSP()
 {
 	m_parent = nullptr;
 	m_id = FindAvailableID();
-	m_idFlag = 0;
 	m_node = BSPNode::BRANCH;
 	m_axis = AxisSplit::NONE;
 	m_splitPoint = 0.0f;
@@ -54,7 +53,6 @@ BSP::BSP(BSPNode type, const std::vector<size_t>& quadblockIndexes, BSP* parent,
 	bool isLeaf = type == BSPNode::LEAF;
 	m_parent = parent;
 	m_id = FindAvailableID();
-	m_idFlag = 0;
 	m_node = type;
 	m_axis = AxisSplit::NONE;
 	m_splitPoint = 0.0f;
@@ -122,8 +120,8 @@ void BSP::PopulateLeaf(PSX::BSPLeaf& leaf, std::vector<BSP*>& bspArray, std::vec
 	m_splitPoint = 0.0f;
 	m_flags = leaf.flag;
 	m_offHitbox = leaf.offHitbox;
-	m_left = nullptr; 
-	m_right = nullptr; 
+	m_left = nullptr;
+	m_right = nullptr;
 	m_bbox = BoundingBox();
 	m_bbox.min = ConvertPSXVec3(leaf.bbox.min, FP_ONE_GEO);
 	m_bbox.max = ConvertPSXVec3(leaf.bbox.max, FP_ONE_GEO);
@@ -131,13 +129,13 @@ void BSP::PopulateLeaf(PSX::BSPLeaf& leaf, std::vector<BSP*>& bspArray, std::vec
 	for (size_t i = 0; i < leaf.numQuads; i++)
 	{
 		uint32_t relative_offset = leaf.offQuads - offQuadblocks;
-		m_quadblockIndexes.push_back(i + relative_offset/sizeof(PSX::Quadblock));
+		m_quadblockIndexes.push_back(i + relative_offset / sizeof(PSX::Quadblock));
 	}
 	for (size_t i : m_quadblockIndexes)
 	{
 		if (i < quadblocks.size())
-		{ 
-			quadblocks[i].SetBSPID(m_id); 
+		{
+			quadblocks[i].SetBSPID(m_id);
 			if (m_flags & BSPFlags::WATER)
 				quadblocks[i].SetWater(true);
 		}
@@ -268,7 +266,7 @@ const BSP* BSP::GetParent() const
 const std::vector<const BSP*> BSP::GetTree() const
 {
 	size_t i = 0;
-	std::vector<const BSP*> bspNodes = {this};
+	std::vector<const BSP*> bspNodes = { this };
 	while (i < bspNodes.size())
 	{
 		const BSP* currNode = bspNodes[i++];
@@ -328,7 +326,7 @@ void BSP::SetParent(BSP* parent)
 
 void BSP::Clear()
 {
-	std::vector<BSP*> vBSP = {this};
+	std::vector<BSP*> vBSP = { this };
 	size_t currIndex = 0;
 	while (currIndex < vBSP.size())
 	{
@@ -351,7 +349,7 @@ bool BSP::SplitLeafGeometry(const std::vector<Quadblock>& quadblocks, const Axis
 {
 	// Split a leaf using axis and midpoint.
 	// Do nothing if it's a branch, or the midpoint doesn't split into 2 non empty leaves.
-	if (IsBranch()) { return false; } 
+	if (IsBranch()) { return false; }
 
 	std::vector<size_t> left_quad_indexes;
 	std::vector<size_t> right_quad_indexes;
@@ -368,28 +366,15 @@ bool BSP::SplitLeafGeometry(const std::vector<Quadblock>& quadblocks, const Axis
 			right_quad_indexes.push_back(quad_index);
 	}
 
-	if (left_quad_indexes.empty() || right_quad_indexes.empty()) { return false;}
+	if (left_quad_indexes.empty() || right_quad_indexes.empty()) { return false; }
 
 	m_node = BSPNode::BRANCH;
 	m_flags &= ~BSPFlags::LEAF;
 	m_axis = axis;
 	m_splitPoint = midpoint;
 
-	m_left = new BSP(BSPNode::LEAF, left_quad_indexes, this, quadblocks);	
+	m_left = new BSP(BSPNode::LEAF, left_quad_indexes, this, quadblocks);
 	m_right = new BSP(BSPNode::LEAF, right_quad_indexes, this, quadblocks);
-
-	//printf("Split : %d -> %d + %d\n", m_quadblockIndexes.size(), left_quad_indexes.size(), right_quad_indexes.size());
-	//float parent;
-	//float left;
-	//float right;
-	//switch (axis)
-	//{
-	//case AxisSplit::X: parent = m_bbox.AxisLength().x; left = m_left->m_bbox.AxisLength().x; right = m_right->m_bbox.AxisLength().x;  break;
-	//case AxisSplit::Y: parent = m_bbox.AxisLength().y; left = m_left->m_bbox.AxisLength().y; right = m_right->m_bbox.AxisLength().y;  break;
-	//case AxisSplit::Z: parent = m_bbox.AxisLength().z; left = m_left->m_bbox.AxisLength().z; right = m_right->m_bbox.AxisLength().z;  break;
-	//default: return false; // Invalid axis
-	//}
-	//printf("Split %.2f -> %.2f + %.2f\n\n", parent, left, right);
 
 	return true;
 }
@@ -412,13 +397,13 @@ bool BSP::SplitLeafMaterial(const std::vector<Quadblock>& quadblocks)
 	int c = 0;
 	for (auto& [mat, indexes] : materialGroups)
 	{
-		if (c%2)
+		if (c % 2)
 			left_quad_indexes.insert(left_quad_indexes.end(), indexes.begin(), indexes.end());
 		else
 			right_quad_indexes.insert(right_quad_indexes.end(), indexes.begin(), indexes.end());
 		c++;
 	}
-	if (left_quad_indexes.empty() || right_quad_indexes.empty()) 
+	if (left_quad_indexes.empty() || right_quad_indexes.empty())
 		return false;
 
 	m_node = BSPNode::BRANCH;
@@ -434,7 +419,6 @@ bool BSP::SplitLeafMaterial(const std::vector<Quadblock>& quadblocks)
 
 	return true;
 }
-
 
 bool BSP::SplitLeafWater(const std::vector<Quadblock>& quadblocks)
 {
@@ -463,7 +447,6 @@ bool BSP::SplitLeafWater(const std::vector<Quadblock>& quadblocks)
 
 	return true;
 }
-
 
 void BSP::MergeBranch()
 {
@@ -511,7 +494,7 @@ bool BSP::FindBestSplit(const std::vector<Quadblock>& quadblocks, AxisSplit& out
 
 	for (AxisSplit axis : allowedAxis)
 	{
-		float candidate = ProjectionAxis(m_bbox.Midpoint(), axis);	
+		float candidate = ProjectionAxis(m_bbox.Midpoint(), axis);
 
 		float cost = 0.0f;
 		if (SplitLeafGeometry(quadblocks, axis, candidate))
@@ -581,7 +564,7 @@ std::vector<uint8_t> BSP::Serialize(size_t offQuads, const std::vector<Quadblock
 
 void BSP::ComputeBoundingBox(const std::vector<Quadblock>& quadblocks)
 {
-	if (m_quadblockIndexes.empty()) { return ; }
+	if (m_quadblockIndexes.empty()) { return; }
 
 	Vec3 min = Vec3(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
 	Vec3 max = Vec3(-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max(), -std::numeric_limits<float>::max());
@@ -593,7 +576,7 @@ void BSP::ComputeBoundingBox(const std::vector<Quadblock>& quadblocks)
 		min.y = std::min(min.y, quadBbox.min.y); max.y = std::max(max.y, quadBbox.max.y);
 		min.z = std::min(min.z, quadBbox.min.z); max.z = std::max(max.z, quadBbox.max.z);
 	}
-	m_bbox = {min, max};
+	m_bbox = { min, max };
 }
 
 void BSP::UpdateBoundingBox(const BoundingBox& bbox)
@@ -615,7 +598,6 @@ bool BSP::IsInvisible(const std::vector<Quadblock>& quadblocks)
 	return true;
 }
 
-
 bool BSP::HasWater(const std::vector<Quadblock>& quadblocks) const
 {
 	// Check if all quads in the node are invisible
@@ -627,7 +609,6 @@ bool BSP::HasWater(const std::vector<Quadblock>& quadblocks) const
 	return false;
 }
 
-
 std::vector<uint8_t> BSP::SerializeBranch(const std::vector<Quadblock>& quadblocks) const
 {
 	PSX::BSPBranch branch = {};
@@ -636,7 +617,7 @@ std::vector<uint8_t> BSP::SerializeBranch(const std::vector<Quadblock>& quadbloc
 	branch.id = static_cast<uint16_t>(m_id);
 	branch.bbox.min = ConvertVec3(m_bbox.min, FP_ONE_GEO);
 	branch.bbox.max = ConvertVec3(m_bbox.max, FP_ONE_GEO);
-	branch.axis = {0, 0, 0};
+	branch.axis = { 0, 0, 0 };
 	switch (m_axis)
 	{
 	case AxisSplit::X: branch.axis.x = 0x1000; break;
@@ -654,10 +635,10 @@ std::vector<uint8_t> BSP::SerializeBranch(const std::vector<Quadblock>& quadbloc
 			if (m_left->IsInvisible(quadblocks))
 				branch.leftChild |= BSPID::INVISIBLE;
 		}
-			
+
 	}
-	else 
-		branch.leftChild = BSPID::EMPTY; 
+	else
+		branch.leftChild = BSPID::EMPTY;
 
 	if (m_right)
 	{

@@ -132,7 +132,7 @@ static void GetPotentialLeavesRecursive(
 	// If this is a leaf node, add it's LeafWithDistance
 	if (!node->IsBranch())
 	{
-		result.push_back({node->GetQuadblockIndexes(), tmax});
+		result.push_back({ node->GetQuadblockIndexes(), tmax });
 		return;
 	}
 
@@ -250,9 +250,9 @@ static float GetLeafDistanceSquared(const BSP& leaf1, const BSP& leaf2)
 	const BoundingBox& a = leaf1.GetBoundingBox();
 	const BoundingBox& b = leaf2.GetBoundingBox();
 
-	float dx = std::max({0.0f, b.min.x - a.max.x, a.min.x - b.max.x});
-	float dy = std::max({0.0f, b.min.y - a.max.y, a.min.y - b.max.y});
-	float dz = std::max({0.0f, b.min.z - a.max.z, a.min.z - b.max.z});
+	float dx = std::max({ 0.0f, b.min.x - a.max.x, a.min.x - b.max.x });
+	float dy = std::max({ 0.0f, b.min.y - a.max.y, a.min.y - b.max.y });
+	float dz = std::max({ 0.0f, b.min.z - a.max.z, a.min.z - b.max.z });
 	return (dx * dx + dy * dy + dz * dz);
 }
 

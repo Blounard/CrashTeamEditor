@@ -13,7 +13,7 @@ class BitMatrix
 {
 public:
 	BitMatrix() : m_width(0), m_height(0) {};
-	BitMatrix(size_t width, size_t height) : m_width(width), m_height(height), m_data(width * height, 0) {}
+	BitMatrix(size_t width, size_t height) : m_width(width), m_height(height), m_data(width* height, 0) {}
 
 	bool Get(size_t x, size_t y) const;
 	size_t GetWidth() const;

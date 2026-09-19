@@ -148,7 +148,7 @@ std::vector<Checkpoint> Path::GeneratePath(size_t pathStartIndex, std::vector<Qu
 		Find the midpoint of the quad group, then find the closest vertex to
 		this midpoint. Repeat this process until you're neighboring the end path.
 	*/
-	
+
 	// Build Neighbours list
 	std::vector<std::vector<size_t>> neighbours(quadblocks.size());
 	for (size_t i = 0; i < quadblocks.size(); i++)
@@ -209,7 +209,7 @@ std::vector<Checkpoint> Path::GeneratePath(size_t pathStartIndex, std::vector<Qu
 					toVisit.push_back(neighbourID);
 				}
 			}
-		}	
+		}
 	}
 	bool endQuadFound = true;
 	for (const size_t index : m_quadIndexesEnd)
@@ -327,7 +327,7 @@ std::vector<Checkpoint> Path::GeneratePath(size_t pathStartIndex, std::vector<Qu
 				}
 				if (!checkpoints.empty()) { distStart += (lastChunkVertex - chunkVertex).Length(); }
 				distStarts.push_back(distStart);
-				checkpoints.emplace_back(currCheckpointIndex, chunkVertex, ""); 
+				checkpoints.emplace_back(currCheckpointIndex, chunkVertex, "");
 				checkpoints.back().SetColor(m_color);
 				checkpoints.back().UpdateUp(currCheckpointIndex + 1);
 				checkpoints.back().UpdateDown(currCheckpointIndex - 1);

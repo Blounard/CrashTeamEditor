@@ -4,10 +4,7 @@
 #include "quadblock.h"
 #include "settings.h"
 
-
 #include <vector>
-
-
 
 enum class BSPNode
 {
@@ -110,7 +107,6 @@ private:
 
 private:
 	size_t m_id;
-	size_t m_idFlag;
 	BSPNode m_node;
 	AxisSplit m_axis;
 	float m_splitPoint;

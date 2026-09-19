@@ -30,12 +30,12 @@ bool GuiRenderSettings::showMinimapBounds = false;
 bool GuiRenderSettings::showSkybox = true;
 bool GuiRenderSettings::showInstances = true;
 Color GuiRenderSettings::defaultFilterColor = Color(static_cast<unsigned char>(255), static_cast<unsigned char>(128), static_cast<unsigned char>(0));
-Color GuiRenderSettings::selectedCheckpointColor = Color(static_cast<unsigned char>(0), static_cast < unsigned char>(255), static_cast < unsigned char>(255));
+Color GuiRenderSettings::selectedCheckpointColor = Color(static_cast<unsigned char>(0), static_cast <unsigned char>(255), static_cast <unsigned char>(255));
 int GuiRenderSettings::renderType = 0;
 int GuiRenderSettings::bspTreeTopDepth = 0;
 int GuiRenderSettings::bspTreeBottomDepth = 0;
 int GuiRenderSettings::bspTreeMaxDepth = 0;
-const std::vector<const char*> GuiRenderSettings::renderTypeLabels = { "Default", "Texture", "Vertex Color", "Normals"};
+const std::vector<const char*> GuiRenderSettings::renderTypeLabels = { "Default", "Texture", "Vertex Color", "Normals" };
 
 int MinimapSettings::textureHeight = 87;
 int MinimapSettings::orientation = 4;

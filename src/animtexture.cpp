@@ -27,7 +27,6 @@ AnimTexture::AnimTexture(const std::filesystem::path& path, const std::vector<st
 	if (!ReadAnimation(path)) { ClearAnimation(); }
 }
 
-
 AnimTexture::AnimTexture(const PSX::AnimTex& animTex, const std::string& animName, const std::filesystem::path& tempDir,
 	const std::array<std::vector<std::pair<std::string, QuadUV>>, NUM_FACES_QUADBLOCK>& faceFrames,
 	const std::unordered_map<std::string, Texture>& materialToTexture)
@@ -76,31 +75,29 @@ AnimTexture::AnimTexture(const PSX::AnimTex& animTex, const std::string& animNam
 		int vOffset = static_cast<int>(frameIdx * 9) + 1;
 		int vtOffset = static_cast<int>(frameIdx * 16) + 1;
 		int vnOffset = static_cast<int>(frameIdx * 3) + 1;
-		// TODO VERIFY FACE ORDER : quadblock constructor should put face0 from obj to face0 in quadblock. So face0 should be correct to start with...
-		// 
 
-	// Face 0: Top-Left Quadrant (Reversed: 3 -> 4 -> 1 -> 0)
+		// Face 0
 		objFile << "usemtl " << faceFrames[0][frameIdx].first << "\n";
 		objFile << "f " << (vOffset + 3) << "/" << (vtOffset + 2) << "/" << (vnOffset + 0) << " "
 			<< (vOffset + 4) << "/" << (vtOffset + 3) << "/" << (vnOffset + 0) << " "
 			<< (vOffset + 1) << "/" << (vtOffset + 1) << "/" << (vnOffset + 0) << " "
 			<< (vOffset + 0) << "/" << (vtOffset + 0) << "/" << (vnOffset + 0) << "\n";
 
-		// Face 1: Top-Right Quadrant (Reversed: 4 -> 5 -> 2 -> 1)
+		// Face 1
 		objFile << "usemtl " << faceFrames[1][frameIdx].first << "\n";
 		objFile << "f " << (vOffset + 4) << "/" << (vtOffset + 6) << "/" << (vnOffset + 1) << " "
 			<< (vOffset + 5) << "/" << (vtOffset + 7) << "/" << (vnOffset + 1) << " "
 			<< (vOffset + 2) << "/" << (vtOffset + 5) << "/" << (vnOffset + 1) << " "
 			<< (vOffset + 1) << "/" << (vtOffset + 4) << "/" << (vnOffset + 1) << "\n";
 
-		// Face 2: Bottom-Left Quadrant (Reversed: 6 -> 7 -> 4 -> 3)
+		// Face 2
 		objFile << "usemtl " << faceFrames[2][frameIdx].first << "\n";
 		objFile << "f " << (vOffset + 6) << "/" << (vtOffset + 10) << "/" << (vnOffset + 2) << " "
 			<< (vOffset + 7) << "/" << (vtOffset + 11) << "/" << (vnOffset + 2) << " "
 			<< (vOffset + 4) << "/" << (vtOffset + 9) << "/" << (vnOffset + 2) << " "
 			<< (vOffset + 3) << "/" << (vtOffset + 8) << "/" << (vnOffset + 2) << "\n";
 
-		// Face 3: Bottom-Right Quadrant (Reversed: 7 -> 8 -> 5 -> 4)
+		// Face 3
 		objFile << "usemtl " << faceFrames[3][frameIdx].first << "\n";
 		objFile << "f " << (vOffset + 7) << "/" << (vtOffset + 14) << "/" << (vnOffset + 2) << " "
 			<< (vOffset + 8) << "/" << (vtOffset + 15) << "/" << (vnOffset + 2) << " "
@@ -323,16 +320,16 @@ void AnimTexture::ClearAnimation()
 	m_lastAppliedMaterialName.clear();
 }
 
-void AnimTexture::SetStartFrame(int frame) 
-{ 
-	m_startAtFrame = frame; 
-	m_renderDirty = true; 
+void AnimTexture::SetStartFrame(int frame)
+{
+	m_startAtFrame = frame;
+	m_renderDirty = true;
 }
 
-void AnimTexture::SetDuration(int duration) 
-{ 
+void AnimTexture::SetDuration(int duration)
+{
 	m_duration = duration;
-	m_renderDirty = true; 
+	m_renderDirty = true;
 }
 
 void AnimTexture::SetDefaultParams()
