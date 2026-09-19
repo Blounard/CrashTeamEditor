@@ -1411,6 +1411,9 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	m_name = levFile.filename().replace_extension().string() + "_edit";
 	std::filesystem::path modelCacheDir = levFile.parent_path() / (levFile.stem().string() + "_models");
 
+	uint32_t offPointerMap;
+	Read(file, offPointerMap);
+
 	std::streampos offLev = file.tellg();
 	PSX::LevHeader header = {};
 	Read(file, header);
