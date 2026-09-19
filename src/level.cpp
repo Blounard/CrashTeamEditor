@@ -2545,6 +2545,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	m_loaded = true;
 	file.close();
 	GenerateRenderLevData();
+	GenerateRenderInstanceData();
 	return true;
 }
 
