@@ -2513,6 +2513,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 	m_loaded = true;
 	file.close();
 	GenerateRenderLevData();
+	GenerateRenderInstanceData();
 	return true;
 }
 
@@ -4785,11 +4786,11 @@ void Level::GenerateRenderInstanceData()
 			{
 				InstanceModel& instModel = it->second;
 				std::vector<Primitive> primitives = instModel.GetGeometry();
-				/*for (Primitive prim : primitives) 
+				for (Primitive& prim : primitives) 
 				{ 
 					if (m_materialToTexture.contains(prim.texture))
 						prim.texture = m_materialToTexture[prim.texture].GetPath().string();
-				}*/
+				}
 				childModel->GetMesh().SetGeometry(primitives,
 					Mesh::RenderFlags::DrawBackfaces | Mesh::RenderFlags::DontOverrideRenderFlags);			
 			}
