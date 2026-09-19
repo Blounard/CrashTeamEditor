@@ -48,6 +48,7 @@ class Level
 {
 public:
 	bool Load(const std::filesystem::path& filename, bool isLevel);
+	bool SaveOBJ(const std::filesystem::path& objFile);
 	bool SaveLEV(const std::filesystem::path& path, bool useRawTextures);
 	bool IsLoaded() const;
 	bool HasRawTexture() const; 
