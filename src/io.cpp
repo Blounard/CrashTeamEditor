@@ -264,3 +264,35 @@ void AnimTexture::ToJson(nlohmann::json& json, const std::vector<Quadblock>& qua
 	for (const Texture& tex : m_textures) { blendModes.push_back(tex.GetBlendMode()); }
 	json["blendModes"] = blendModes;
 }
+
+void Quadblock::ToJson(nlohmann::json& json) const
+{
+	json["checkpointPathable"] = m_checkpointPathable;
+	json["checkpointStatus"] = m_checkpointStatus;
+	json["visTreeTransparent"] = m_visTreeTransparent;
+	json["drawOrderHigh"] = m_drawOrderHigh;
+	json["checkpointIndex"] = m_checkpointIndex;
+	json["doubleSided"] = m_doubleSided;
+	json["flags"] = m_flags;
+	json["terrain"] = m_terrain;
+	json["water"] = m_water;
+	json["downforce"] = m_downforce;
+	json["weatherIntensity"] = m_weatherIntensity;
+	json["weatherVanishRate"] = m_weatherVanishRate;
+}
+
+void Quadblock::FromJson(const nlohmann::json& json)
+{
+	if (json.contains("checkpointPathable")) { json.at("checkpointPathable").get_to(m_checkpointPathable); }
+	if (json.contains("checkpointStatus")) { json.at("checkpointStatus").get_to(m_checkpointStatus); }
+	if (json.contains("visTreeTransparent")) { json.at("visTreeTransparent").get_to(m_visTreeTransparent); }
+	if (json.contains("drawOrderHigh")) { json.at("drawOrderHigh").get_to(m_drawOrderHigh); }
+	if (json.contains("checkpointIndex")) { json.at("checkpointIndex").get_to(m_checkpointIndex); }
+	if (json.contains("doubleSided")) { json.at("doubleSided").get_to(m_doubleSided); }
+	if (json.contains("flags")) { json.at("flags").get_to(m_flags); }
+	if (json.contains("terrain")) { json.at("terrain").get_to(m_terrain); }
+	if (json.contains("water")) { json.at("water").get_to(m_water); }
+	if (json.contains("downforce")) { json.at("downforce").get_to(m_downforce); }
+	if (json.contains("weatherIntensity")) { json.at("weatherIntensity").get_to(m_weatherIntensity); }
+	if (json.contains("weatherVanishRate")) { json.at("weatherVanishRate").get_to(m_weatherVanishRate); }
+}

@@ -1349,6 +1349,16 @@ bool Level::SavePreset(const std::filesystem::path& path)
 		minimapJson["minimap"] = m_minimap;
 		SaveJSON(dirPath / "minimap.json", minimapJson);
 	}
+
+	nlohmann::json quadblockJson = {};
+	quadblockJson["header"] = PresetHeader::QUADBLOCK;
+	quadblockJson["quadblocks"] = nlohmann::json::object();
+	for (const Quadblock& quadblock : m_quadblocks)
+	{
+		quadblockJson["quadblocks"][quadblock.GetName()] = nlohmann::json();
+		quadblock.ToJson(quadblockJson["quadblocks"][quadblock.GetName()]);
+	}
+	SaveJSON(dirPath / "quadblock.json", quadblockJson);
 	
 	return true;
 }
