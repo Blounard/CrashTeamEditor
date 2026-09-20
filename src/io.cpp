@@ -296,3 +296,23 @@ void Quadblock::FromJson(const nlohmann::json& json)
 	if (json.contains("weatherIntensity")) { json.at("weatherIntensity").get_to(m_weatherIntensity); }
 	if (json.contains("weatherVanishRate")) { json.at("weatherVanishRate").get_to(m_weatherVanishRate); }
 }
+
+void Checkpoint::ToJson(nlohmann::json& json) const
+{
+	json["pos"] = m_pos;
+	json["distToFinish"] = m_distToFinish;
+	json["up"] = m_up;
+	json["down"] = m_down;
+	json["left"] = m_left;
+	json["right"] = m_right;
+}
+
+void Checkpoint::FromJson(const nlohmann::json& json)
+{
+	if (json.contains("pos")) { json.at("pos").get_to(m_pos); }
+	if (json.contains("distToFinish")) { json.at("distToFinish").get_to(m_distToFinish); }
+	if (json.contains("up")) { json.at("up").get_to(m_up); }
+	if (json.contains("down")) { json.at("down").get_to(m_down); }
+	if (json.contains("left")) { json.at("left").get_to(m_left); }
+	if (json.contains("right")) { json.at("right").get_to(m_right); }
+}

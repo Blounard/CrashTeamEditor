@@ -1032,7 +1032,7 @@ bool Level::GenerateMinimap()
 
 enum class PresetHeader : unsigned
 {
-	SPAWN, LEVEL, PATH, MATERIAL, TURBO_PAD, ANIM_TEXTURES, SCRIPT, MINIMAP, QUADBLOCK
+	SPAWN, LEVEL, PATH, MATERIAL, TURBO_PAD, ANIM_TEXTURES, SCRIPT, MINIMAP, QUADBLOCK, CHECKPOINT
 };
 
 bool Level::LoadPreset(const std::filesystem::path& filename)
@@ -1073,6 +1073,23 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 					GenerateRenderSkyboxData();
 				}
 			}
+		}
+	}
+	else if (header == PresetHeader::CHECKPOINT)
+	{
+		if (json.contains("checkpoints"))
+		{
+			m_checkpoints.clear();
+			const nlohmann::json& checkpointsJson = json["checkpoints"];
+			int index = 0;
+			for (const nlohmann::json& cpJson : checkpointsJson)
+			{
+				Checkpoint checkpoint(index);
+				checkpoint.FromJson(cpJson);
+				m_checkpoints.push_back(checkpoint);
+				index++;
+			}
+			UpdateRenderCheckpointData();
 		}
 	}
 	else if (header == PresetHeader::PATH)
@@ -1359,6 +1376,20 @@ bool Level::SavePreset(const std::filesystem::path& path)
 		quadblock.ToJson(quadblockJson["quadblocks"][quadblock.GetName()]);
 	}
 	SaveJSON(dirPath / "quadblock.json", quadblockJson);
+
+	if (!m_checkpoints.empty())
+	{
+		nlohmann::json checkpointJson = {};
+		checkpointJson["header"] = PresetHeader::CHECKPOINT;
+		checkpointJson["checkpoints"] = nlohmann::json::array();
+		for (const Checkpoint& checkpoint : m_checkpoints)
+		{
+			nlohmann::json cpJson = nlohmann::json();
+			checkpoint.ToJson(cpJson);
+			checkpointJson["checkpoints"].push_back(cpJson);
+		}
+		SaveJSON(dirPath / "checkpoint.json", checkpointJson);
+	}
 	
 	return true;
 }

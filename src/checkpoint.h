@@ -6,6 +6,7 @@
 
 #include <string>
 #include <vector>
+#include <nlohmann/json.hpp>
 
 static constexpr int NONE_CHECKPOINT_INDEX = std::numeric_limits<int>::max();
 static const std::string DEFAULT_UI_CHECKBOX_LABEL = "None";
@@ -36,6 +37,8 @@ public:
 	void UpdateInvalidCheckpoints(const std::vector<int>& invalidIndexes);
 	std::vector<uint8_t> Serialize() const;
 	void RenderUI(size_t numCheckpoints, const std::vector<Quadblock>& quadblocks);
+	void ToJson(nlohmann::json& json) const;
+	void FromJson(const nlohmann::json& json);
 
 private:
 	int m_index;
