@@ -137,6 +137,24 @@ void from_json(const nlohmann::json& json, Minimap& minimap)
 	}
 }
 
+void to_json(nlohmann::json& json, const InstanceHitbox& hitbox)
+{
+	json["enabled"] = hitbox.enabled;
+	json["preset"] = hitbox.preset;
+	json["flags"] = hitbox.flags;
+	json["halfExtent"] = hitbox.halfExtent;
+	json["yOffset"] = hitbox.yOffset;
+}
+
+void from_json(const nlohmann::json& json, InstanceHitbox& hitbox)
+{
+	if (json.contains("enabled")) { json.at("enabled").get_to(hitbox.enabled); }
+	if (json.contains("preset")) { json.at("preset").get_to(hitbox.preset); }
+	if (json.contains("flags")) { json.at("flags").get_to(hitbox.flags); }
+	if (json.contains("halfExtent")) { json.at("halfExtent").get_to(hitbox.halfExtent); }
+	if (json.contains("yOffset")) { json.at("yOffset").get_to(hitbox.yOffset); }
+}
+
 void ReadBinaryFile(std::vector<uint8_t>& v, const std::filesystem::path& path)
 {
 	std::ifstream file(path, std::ios::binary);
@@ -315,4 +333,29 @@ void Checkpoint::FromJson(const nlohmann::json& json)
 	if (json.contains("down")) { json.at("down").get_to(m_down); }
 	if (json.contains("left")) { json.at("left").get_to(m_left); }
 	if (json.contains("right")) { json.at("right").get_to(m_right); }
+}
+
+void Instance::ToJson(nlohmann::json& json) const
+{
+	json["name"] = m_name;
+	json["scale"] = m_scale;
+	json["pos"] = m_pos;
+	json["rot"] = m_rot;
+	json["modelID"] = static_cast<int16_t>(m_modelID);
+	json["color"] = m_color;
+	json["modelKey"] = m_modelKey;
+	json["flags"] = m_flags;
+	json["hitbox"] = m_hitbox;
+}
+
+void Instance::FromJson(const nlohmann::json& json)
+{
+	if (json.contains("name")) { json.at("name").get_to(m_name); }
+	if (json.contains("scale")) { json.at("scale").get_to(m_scale); }
+	if (json.contains("pos")) { json.at("pos").get_to(m_pos); }
+	if (json.contains("rot")) { json.at("rot").get_to(m_rot); }
+	if (json.contains("modelID")) { m_modelID = static_cast<ModelId>(json.at("modelID").get<int16_t>()); }
+	if (json.contains("color")) { json.at("color").get_to(m_color); }
+	if (json.contains("flags")) { json.at("flags").get_to(m_flags); }
+	if (json.contains("hitbox")) { json.at("hitbox").get_to(m_hitbox); }
 }

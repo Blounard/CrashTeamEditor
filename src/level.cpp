@@ -1032,7 +1032,7 @@ bool Level::GenerateMinimap()
 
 enum class PresetHeader : unsigned
 {
-	SPAWN, LEVEL, PATH, MATERIAL, TURBO_PAD, ANIM_TEXTURES, SCRIPT, MINIMAP, QUADBLOCK, CHECKPOINT
+	SPAWN, LEVEL, PATH, MATERIAL, TURBO_PAD, ANIM_TEXTURES, SCRIPT, MINIMAP, QUADBLOCK, CHECKPOINT, INSTANCE
 };
 
 bool Level::LoadPreset(const std::filesystem::path& filename)
@@ -1250,6 +1250,40 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 			m_minimap = json["minimap"];
 		}
 	}
+	else if (header == PresetHeader::INSTANCE)
+	{
+		if (json.contains("models") && json.contains("instances"))
+		{
+			std::unordered_map<size_t, size_t> oldToNewModelKey;
+			for (const auto& [keyStr, pathValue] : json["models"].items())
+			{
+				const size_t oldKey = static_cast<size_t>(std::stoull(keyStr));
+				const std::filesystem::path metadataPath = filename.parent_path() / pathValue.get<std::string>(); // Todo use relative path instead of absolute
+
+				InstanceModel model(metadataPath, m_materialToTexture);
+				if (!model.IsValid()) { continue; }
+
+				const size_t newKey = GenerateUniqueModelKey();
+				oldToNewModelKey[oldKey] = newKey;
+				m_instanceModels.emplace(newKey, model);
+			}
+
+			for (const nlohmann::json& instJson : json["instances"])
+			{
+				size_t newKey = 0;
+				if (instJson.contains("modelKey"))
+				{
+					const size_t oldModelKey = instJson.at("modelKey").get<size_t>();
+					if (oldToNewModelKey.contains(oldModelKey))
+						newKey = oldToNewModelKey[oldModelKey];
+				}
+				Instance instance(newKey);
+				instance.FromJson(instJson);
+				m_instances.push_back(instance);
+			}
+		}
+		GenerateRenderInstanceData();
+	}
 	else
 	{
 		m_logMessage += "\nFailed loaded preset: " + filename.string();
@@ -1389,6 +1423,34 @@ bool Level::SavePreset(const std::filesystem::path& path)
 			checkpointJson["checkpoints"].push_back(cpJson);
 		}
 		SaveJSON(dirPath / "checkpoint.json", checkpointJson);
+	}
+
+	if (!m_instances.empty() || !m_instanceModels.empty())
+	{
+		std::filesystem::path instanceDir = dirPath / "Instance";
+		if (!std::filesystem::exists(instanceDir)) { std::filesystem::create_directory(instanceDir); }
+
+		nlohmann::json instanceJson = {};
+		instanceJson["header"] = PresetHeader::INSTANCE;
+
+		nlohmann::json modelsJson = nlohmann::json::object();
+		for (auto& [key, model] : m_instanceModels)
+		{
+			model.Export(instanceDir, m_materialToTexture);
+			modelsJson[std::to_string(key)] = (std::filesystem::path("Instance") / model.GetName() / "metadata.json").string();
+		}
+		instanceJson["models"] = modelsJson;
+
+		nlohmann::json instancesArray = nlohmann::json::array();
+		for (const Instance& instance : m_instances)
+		{
+			nlohmann::json instJson = nlohmann::json();
+			instance.ToJson(instJson);
+			instancesArray.push_back(instJson);
+		}
+		instanceJson["instances"] = instancesArray;
+
+		SaveJSON(dirPath / "instance.json", instanceJson);
 	}
 	
 	return true;
