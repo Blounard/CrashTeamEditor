@@ -1032,7 +1032,7 @@ bool Level::GenerateMinimap()
 
 enum class PresetHeader : unsigned
 {
-	SPAWN, LEVEL, PATH, MATERIAL, TURBO_PAD, ANIM_TEXTURES, SCRIPT, MINIMAP
+	SPAWN, LEVEL, PATH, MATERIAL, TURBO_PAD, ANIM_TEXTURES, SCRIPT, MINIMAP, QUADBLOCK
 };
 
 bool Level::LoadPreset(const std::filesystem::path& filename)
@@ -1169,6 +1169,23 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 			}
 		}
 	}
+
+	else if (header == PresetHeader::QUADBLOCK)
+	{
+		if (json.contains("quadblocks"))
+		{
+			const nlohmann::json& quadblocksJson = json["quadblocks"];
+			for (Quadblock& quadblock : m_quadblocks)
+			{
+				const std::string& quadName = quadblock.GetName();
+				if (quadblocksJson.contains(quadName))
+				{
+					quadblock.FromJson(quadblocksJson[quadName]);
+				}
+			}
+		}
+	}
+
 	else if (header == PresetHeader::ANIM_TEXTURES)
 	{
 		if (json.contains("animCount"))
@@ -1325,10 +1342,13 @@ bool Level::SavePreset(const std::filesystem::path& path)
 		SaveJSON(dirPath / "script.json", scriptJson);
 	}
 
-	nlohmann::json minimapJson = {};
-	minimapJson["header"] = PresetHeader::MINIMAP;
-	minimapJson["minimap"] = m_minimap;
-	SaveJSON(dirPath / "minimap.json", minimapJson);
+	if (!m_minimap.texture.IsEmpty())
+	{
+		nlohmann::json minimapJson = {};
+		minimapJson["header"] = PresetHeader::MINIMAP;
+		minimapJson["minimap"] = m_minimap;
+		SaveJSON(dirPath / "minimap.json", minimapJson);
+	}
 	
 	return true;
 }
