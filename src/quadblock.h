@@ -188,8 +188,10 @@ public:
 	std::vector<uint8_t> Serialize(size_t id, size_t offTextures, const std::vector<size_t>& vertexIndexes) const;
 	bool RenderUI(size_t checkpointCount, bool& resetBsp);
 	Vec3 ComputeNormalVector(size_t id0, size_t id1, size_t id2) const;
-	void ToJson(nlohmann::json& json) const;
-	void FromJson(const nlohmann::json& json);
+	void ToJsonMetadata(nlohmann::json& json) const;
+	void FromJsonMetadata(const nlohmann::json& json);
+	void ToJsonGeometry(nlohmann::json& json) const;
+	void FromJsonGeometry(const nlohmann::json& json);
 
 private:
 	void ResetUVs();

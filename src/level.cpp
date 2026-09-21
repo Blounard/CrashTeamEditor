@@ -1032,7 +1032,7 @@ bool Level::GenerateMinimap()
 
 enum class PresetHeader : unsigned
 {
-	SPAWN, LEVEL, PATH, MATERIAL, TURBO_PAD, ANIM_TEXTURES, SCRIPT, MINIMAP, QUADBLOCK, CHECKPOINT, INSTANCE
+	SPAWN, LEVEL, PATH, MATERIAL, TURBO_PAD, ANIM_TEXTURES, SCRIPT, MINIMAP, QUADBLOCK, CHECKPOINT, INSTANCE, GEOMETRY
 };
 
 bool Level::LoadPreset(const std::filesystem::path& filename)
@@ -1197,7 +1197,7 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 				const std::string& quadName = quadblock.GetName();
 				if (quadblocksJson.contains(quadName))
 				{
-					quadblock.FromJson(quadblocksJson[quadName]);
+					quadblock.FromJsonMetadata(quadblocksJson[quadName]);
 				}
 			}
 		}
@@ -1283,6 +1283,47 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 			}
 		}
 		GenerateRenderInstanceData();
+	}
+	else if (header == PresetHeader::GEOMETRY)
+	{
+		m_bsp.Clear();
+		m_bspVis.Clear();
+		ResetAllBSPID();
+		m_bsp.SetId(0);
+		for (Quadblock& quad : m_quadblocks) { quad.SetBSPID(0); }
+
+		if (json.contains("quadblocks"))
+		{
+			const nlohmann::json& geoQuadblocksJson = json["quadblocks"];
+			for (Quadblock& quadblock : m_quadblocks)
+			{
+				const std::string& quadName = quadblock.GetName();
+				if (geoQuadblocksJson.contains(quadName))
+				{
+					quadblock.FromJsonGeometry(geoQuadblocksJson[quadName]);
+				}
+			}
+		}
+
+		if (json.contains("bsp"))
+		{
+			m_bsp.FromJson(json["bsp"]);
+			std::unordered_map<size_t, std::vector<size_t>> bspIdToQuadIndexes;
+			for (size_t i = 0; i < m_quadblocks.size(); i++)
+			{
+				bspIdToQuadIndexes[m_quadblocks[i].GetBSPID()].push_back(i);
+			}
+			for (BSP* node : m_bsp.GetTree())
+			{
+				node->SetQuadblockIndexes(bspIdToQuadIndexes[node->GetId()], m_quadblocks);
+			}
+			m_bsp.PopulateBranchQuadIndexes();
+		}
+
+		if (json.contains("visTree"))
+		{
+			m_bspVis.FromJson(json["visTree"]);
+		}
 	}
 	else
 	{
@@ -1407,7 +1448,7 @@ bool Level::SavePreset(const std::filesystem::path& path)
 	for (const Quadblock& quadblock : m_quadblocks)
 	{
 		quadblockJson["quadblocks"][quadblock.GetName()] = nlohmann::json();
-		quadblock.ToJson(quadblockJson["quadblocks"][quadblock.GetName()]);
+		quadblock.ToJsonMetadata(quadblockJson["quadblocks"][quadblock.GetName()]);
 	}
 	SaveJSON(dirPath / "quadblock.json", quadblockJson);
 
@@ -1452,7 +1493,25 @@ bool Level::SavePreset(const std::filesystem::path& path)
 
 		SaveJSON(dirPath / "instance.json", instanceJson);
 	}
-	
+
+	if (m_bsp.IsValid())
+	{
+		nlohmann::json geometryJson = {};
+		geometryJson["header"] = PresetHeader::GEOMETRY;
+		nlohmann::json geoQuadblocksJson = nlohmann::json::object();
+		for (const Quadblock& quadblock : m_quadblocks)
+		{
+			geoQuadblocksJson[quadblock.GetName()] = nlohmann::json();
+			quadblock.ToJsonGeometry(geoQuadblocksJson[quadblock.GetName()]);
+		}
+		geometryJson["quadblocks"] = geoQuadblocksJson;
+		geometryJson["bsp"] = nlohmann::json();
+		m_bsp.ToJson(geometryJson["bsp"]);
+		geometryJson["visTree"] = nlohmann::json();
+		m_bspVis.ToJson(geometryJson["visTree"]);
+		SaveJSON(dirPath / "geometry.json", geometryJson);
+	}
+
 	return true;
 }
 

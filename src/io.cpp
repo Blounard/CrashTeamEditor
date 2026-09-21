@@ -283,7 +283,7 @@ void AnimTexture::ToJson(nlohmann::json& json, const std::vector<Quadblock>& qua
 	json["blendModes"] = blendModes;
 }
 
-void Quadblock::ToJson(nlohmann::json& json) const
+void Quadblock::ToJsonMetadata(nlohmann::json& json) const
 {
 	json["checkpointPathable"] = m_checkpointPathable;
 	json["checkpointStatus"] = m_checkpointStatus;
@@ -299,7 +299,7 @@ void Quadblock::ToJson(nlohmann::json& json) const
 	json["weatherVanishRate"] = m_weatherVanishRate;
 }
 
-void Quadblock::FromJson(const nlohmann::json& json)
+void Quadblock::FromJsonMetadata(const nlohmann::json& json)
 {
 	if (json.contains("checkpointPathable")) { json.at("checkpointPathable").get_to(m_checkpointPathable); }
 	if (json.contains("checkpointStatus")) { json.at("checkpointStatus").get_to(m_checkpointStatus); }
@@ -313,6 +313,34 @@ void Quadblock::FromJson(const nlohmann::json& json)
 	if (json.contains("downforce")) { json.at("downforce").get_to(m_downforce); }
 	if (json.contains("weatherIntensity")) { json.at("weatherIntensity").get_to(m_weatherIntensity); }
 	if (json.contains("weatherVanishRate")) { json.at("weatherVanishRate").get_to(m_weatherVanishRate); }
+}
+
+void Quadblock::ToJsonGeometry(nlohmann::json& json) const
+{
+	json["bspID"] = m_bspID;
+	json["bbox"] = m_bbox;
+	json["hasRawNormalData"] = m_hasRawNormalData;
+	if (m_hasRawNormalData)
+	{
+		json["triNormalVecBitshift"] = m_triNormalVecBitshift;
+		json["triNormalVecDividend"] = std::vector<int16_t>(m_triNormalVecDividend, m_triNormalVecDividend + 10);
+	}
+}
+
+void Quadblock::FromJsonGeometry(const nlohmann::json& json)
+{
+	if (json.contains("bspID")) { json.at("bspID").get_to(m_bspID); }
+	if (json.contains("bbox")) { json.at("bbox").get_to(m_bbox); }
+	if (json.contains("hasRawNormalData")) { json.at("hasRawNormalData").get_to(m_hasRawNormalData); }
+	if (m_hasRawNormalData)
+	{
+		if (json.contains("triNormalVecBitshift")) { json.at("triNormalVecBitshift").get_to(m_triNormalVecBitshift); }
+		if (json.contains("triNormalVecDividend"))
+		{
+			const std::vector<int16_t> dividend = json.at("triNormalVecDividend").get<std::vector<int16_t>>();
+			for (size_t i = 0; i < dividend.size() && i < 10; i++) { m_triNormalVecDividend[i] = dividend[i]; }
+		}
+	}
 }
 
 void Checkpoint::ToJson(nlohmann::json& json) const
@@ -358,4 +386,68 @@ void Instance::FromJson(const nlohmann::json& json)
 	if (json.contains("color")) { json.at("color").get_to(m_color); }
 	if (json.contains("flags")) { json.at("flags").get_to(m_flags); }
 	if (json.contains("hitbox")) { json.at("hitbox").get_to(m_hitbox); }
+}
+
+void BSP::ToJson(nlohmann::json& json) const
+{
+	json["id"] = m_id;
+	json["node"] = static_cast<int>(m_node);
+	json["axis"] = static_cast<int>(m_axis);
+	json["splitPoint"] = m_splitPoint;
+	json["flags"] = m_flags;
+	json["bbox"] = m_bbox;
+
+	if (m_left)
+	{ 
+		json["left"] = nlohmann::json(); 
+		m_left->ToJson(json["left"]);
+	}
+	if (m_right)
+	{ 
+		json["right"] = nlohmann::json(); 
+		m_right->ToJson(json["right"]);
+	}
+}
+
+void BSP::FromJson(const nlohmann::json& json)
+{
+	if (json.contains("id")) { json.at("id").get_to(m_id); }
+	if (json.contains("node")) { m_node = static_cast<BSPNode>(json.at("node").get<int>()); }
+	if (json.contains("axis")) { m_axis = static_cast<AxisSplit>(json.at("axis").get<int>()); }
+	if (json.contains("splitPoint")) { json.at("splitPoint").get_to(m_splitPoint); }
+	if (json.contains("flags")) { json.at("flags").get_to(m_flags); }
+	if (json.contains("bbox")) { json.at("bbox").get_to(m_bbox); }
+
+	if (json.contains("left"))
+	{
+		m_left = new BSP();
+		m_left->FromJson(json.at("left"));
+		m_left->SetParent(this);
+	}
+	if (json.contains("right"))
+	{
+		m_right = new BSP();
+		m_right->FromJson(json.at("right"));
+		m_right->SetParent(this);
+	}
+}
+
+void BitMatrix::ToJson(nlohmann::json& json) const
+{
+	json["width"] = m_width;
+	json["height"] = m_height;
+	json["data"] = m_data;
+}
+
+void BitMatrix::FromJson(const nlohmann::json& json)
+{
+	if (json.contains("width")) { json.at("width").get_to(m_width); }
+	if (json.contains("height")) { json.at("height").get_to(m_height); }
+	m_data.assign(m_width * m_height, 0);
+
+	if (json.contains("data"))
+	{
+		std::vector<uint8_t> data = json.at("data").get<std::vector<uint8_t>>();
+		if (data.size() == m_data.size()) { m_data = data; }
+	}
 }

@@ -5,7 +5,11 @@
 #include "quadblock.h"
 #include "animtexture.h"
 #include "minimap.h"
+#include "checkpoint.h"
 #include "instance.h"
+#include "bsp.h"
+#include "vistree.h"
+
 
 #include <nlohmann/json.hpp>
 
@@ -15,6 +19,9 @@
 
 void to_json(nlohmann::json& json, const Vec3& v);
 void from_json(const nlohmann::json& json, Vec3& v);
+
+void to_json(nlohmann::json& json, const BoundingBox& bbox);
+void from_json(const nlohmann::json& json, BoundingBox& bbox);
 
 void to_json(nlohmann::json& json, const Color& c);
 void from_json(const nlohmann::json& json, Color& c);
