@@ -107,12 +107,7 @@ void UI::MainMenu()
 				}
 				if (ImGui::MenuItem("Save"))
 				{
-					auto selection = pfd::select_folder("Presets Root Directory", m_lev.GetParentPath().string(), pfd::opt::force_path).result();
-					if (!selection.empty())
-					{
-						const std::filesystem::path path = selection + "\\";
-						m_lev.SavePreset(path);
-					}
+					m_lev.OpenSavePresetWindow();
 				}
 				ImGui::EndMenu();
 			}

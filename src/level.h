@@ -103,6 +103,7 @@ private:
 	bool GenerateOceanVertices();
 	bool GenerateMinimap();
 	void OpenHotReloadWindow();
+	void OpenSavePresetWindow();
 	void RenderUI(Renderer& renderer);
 
 	void InitModels(Renderer& renderer);
@@ -123,6 +124,7 @@ private:
 	bool m_saveScript;
 	bool m_showLogWindow;
 	bool m_showHotReloadWindow;
+	bool m_showSavePresetWindow;
 	bool m_loaded;
 
 	std::vector<std::tuple<std::string, std::string>> m_invalidQuadblocks;

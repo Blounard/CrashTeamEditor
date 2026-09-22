@@ -94,3 +94,17 @@ float InstanceLoadPathSettings::posSnapDist = 8.0f;
 float InstanceLoadPathSettings::radius = 10.0f;
 bool InstanceLoadPathSettings::loop = true;
 bool InstanceLoadPathSettings::rolling = true;
+
+bool SavePresetSettings::spawn = true;
+bool SavePresetSettings::level = true;
+bool SavePresetSettings::path = true;
+bool SavePresetSettings::material = true;
+bool SavePresetSettings::turboPad = true;
+bool SavePresetSettings::animTex = true;
+bool SavePresetSettings::script = true;
+bool SavePresetSettings::minimap = true;
+bool SavePresetSettings::quadblock = false;
+bool SavePresetSettings::checkpoint = false;
+bool SavePresetSettings::instance = true;
+bool SavePresetSettings::geometry = false;
+bool SavePresetSettings::bot = true;

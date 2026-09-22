@@ -995,6 +995,40 @@ void Level::RenderUI(Renderer& renderer)
 		ImGui::End();
 	}
 
+
+	if (m_showSavePresetWindow)
+	{
+		if (ImGui::Begin("Save Presets", &m_showSavePresetWindow))
+		{
+
+			ImGui::Checkbox("Spawn", &SavePresetSettings::spawn);
+			ImGui::Checkbox("Level", &SavePresetSettings::level);
+			ImGui::Checkbox("Path", &SavePresetSettings::path);
+			ImGui::Checkbox("Material", &SavePresetSettings::material);
+			ImGui::Checkbox("TurboPad", &SavePresetSettings::turboPad);
+			ImGui::Checkbox("Animated Textures", &SavePresetSettings::animTex);
+			ImGui::Checkbox("Script", &SavePresetSettings::script);
+			ImGui::Checkbox("Minimap", &SavePresetSettings::minimap);
+			ImGui::Checkbox("Quadblock", &SavePresetSettings::quadblock);
+			ImGui::Checkbox("Checkpoint", &SavePresetSettings::checkpoint);
+			ImGui::Checkbox("Instance", &SavePresetSettings::instance);
+			ImGui::Checkbox("Geometry", &SavePresetSettings::geometry);
+			ImGui::Checkbox("Bot", &SavePresetSettings::bot);
+
+			if (ImGui::Button("Save Selected"))
+			{
+				auto selection = pfd::select_folder("Presets Root Directory", GetParentPath().string(), pfd::opt::force_path).result();
+				if (!selection.empty())
+				{
+					const std::filesystem::path path = selection + "\\";
+					SavePreset(path);
+				}
+				m_showSavePresetWindow = false;
+			}
+		}
+		ImGui::End();
+	}
+
 	if (!m_loaded) { return; }
 
 	if (ImGui::BeginMainMenuBar())

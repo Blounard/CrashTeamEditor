@@ -49,10 +49,16 @@ void Level::OpenHotReloadWindow()
 	m_showHotReloadWindow = true;
 }
 
+void Level::OpenSavePresetWindow()
+{
+	m_showSavePresetWindow = true;
+}
+
 void Level::Clear(bool clearErrors)
 {
 	m_loaded = false;
 	m_showHotReloadWindow = false;
+	m_showSavePresetWindow = false;
 	for (size_t i = 0; i < NUM_DRIVERS; i++) { m_spawn[i] = Spawn(); }
 	for (size_t i = 0; i < NUM_GRADIENT; i++) { m_skyGradient[i] = ColorGradient(); }
 	if (clearErrors)
@@ -1032,7 +1038,7 @@ bool Level::GenerateMinimap()
 
 enum class PresetHeader : unsigned
 {
-	SPAWN, LEVEL, PATH, MATERIAL, TURBO_PAD, ANIM_TEXTURES, SCRIPT, MINIMAP, QUADBLOCK, CHECKPOINT, INSTANCE, GEOMETRY
+	SPAWN, LEVEL, PATH, MATERIAL, TURBO_PAD, ANIM_TEXTURES, SCRIPT, MINIMAP, QUADBLOCK, CHECKPOINT, INSTANCE, GEOMETRY, BOT
 };
 
 bool Level::LoadPreset(const std::filesystem::path& filename, bool autoLoad)
@@ -1352,34 +1358,43 @@ bool Level::SavePreset(const std::filesystem::path& path)
 			pathFile << std::setw(4) << json << std::endl;
 		};
 
-	nlohmann::json spawnJson = {};
-	spawnJson["header"] = PresetHeader::SPAWN;
-	spawnJson["spawn"] = m_spawn;
-	SaveJSON(dirPath / "spawn.json", spawnJson);
-
-	nlohmann::json levelJson = {};
-	levelJson["header"] = PresetHeader::LEVEL;
-	levelJson["configFlags"] = m_configFlags;
-	levelJson["skyGradient"] = m_skyGradient;
-	levelJson["clearColor"] = m_clearColor;
-	levelJson["stars"] = m_stars;
-	levelJson["jumpYSpeedCap"] = m_jumpYSpeedCap;
-	levelJson["splitLines"] = { m_splitLines[0], m_splitLines[1] };
-	levelJson["weather"] = m_weather;
-	if (!m_skybox.m_objPath.empty()) { levelJson["skyboxObjPath"] = m_skybox.m_objPath.string(); }
-	SaveJSON(dirPath / "level.json", levelJson);
-
-	nlohmann::json pathJson = {};
-	pathJson["header"] = PresetHeader::PATH;
-	pathJson["pathCount"] = m_checkpointPaths.size();
-	for (size_t i = 0; i < m_checkpointPaths.size(); i++)
+	if (SavePresetSettings::spawn)
 	{
-		pathJson["path" + std::to_string(i)] = nlohmann::json();
-		m_checkpointPaths[i].ToJson(pathJson["path" + std::to_string(i)], m_quadblocks);
+		nlohmann::json spawnJson = {};
+		spawnJson["header"] = PresetHeader::SPAWN;
+		spawnJson["spawn"] = m_spawn;
+		SaveJSON(dirPath / "spawn.json", spawnJson);
 	}
-	SaveJSON(dirPath / "path.json", pathJson);
 
-	if (!m_materialToTexture.empty())
+	if (SavePresetSettings::level)
+	{
+		nlohmann::json levelJson = {};
+		levelJson["header"] = PresetHeader::LEVEL;
+		levelJson["configFlags"] = m_configFlags;
+		levelJson["skyGradient"] = m_skyGradient;
+		levelJson["clearColor"] = m_clearColor;
+		levelJson["stars"] = m_stars;
+		levelJson["jumpYSpeedCap"] = m_jumpYSpeedCap;
+		levelJson["splitLines"] = { m_splitLines[0], m_splitLines[1] };
+		levelJson["weather"] = m_weather;
+		if (!m_skybox.m_objPath.empty()) { levelJson["skyboxObjPath"] = m_skybox.m_objPath.string(); }
+		SaveJSON(dirPath / "level.json", levelJson);
+	}
+
+	if (SavePresetSettings::path)
+	{
+		nlohmann::json pathJson = {};
+		pathJson["header"] = PresetHeader::PATH;
+		pathJson["pathCount"] = m_checkpointPaths.size();
+		for (size_t i = 0; i < m_checkpointPaths.size(); i++)
+		{
+			pathJson["path" + std::to_string(i)] = nlohmann::json();
+			m_checkpointPaths[i].ToJson(pathJson["path" + std::to_string(i)], m_quadblocks);
+		}
+		SaveJSON(dirPath / "path.json", pathJson);
+	}
+
+	if (SavePresetSettings::material && !m_materialToTexture.empty())
 	{
 		nlohmann::json materialJson = {};
 		materialJson["header"] = PresetHeader::MATERIAL;
@@ -1409,7 +1424,7 @@ bool Level::SavePreset(const std::filesystem::path& path)
 		SaveJSON(dirPath / "material.json", materialJson);
 	}
 
-	if (!m_animTextures.empty())
+	if (SavePresetSettings::animTex && !m_animTextures.empty())
 	{
 		nlohmann::json animJson = {};
 		animJson["header"] = PresetHeader::ANIM_TEXTURES;
@@ -1422,23 +1437,26 @@ bool Level::SavePreset(const std::filesystem::path& path)
 		SaveJSON(dirPath / "animtex.json", animJson);
 	}
 
-	std::unordered_set<std::string> turboPads;
-	nlohmann::json turboPadJson = {};
-	for (const Quadblock& quadblock : m_quadblocks)
+	if (SavePresetSettings::turboPad)
 	{
-		if (quadblock.GetTurboPadIndex() == TURBO_PAD_INDEX_NONE) { continue; }
-		const std::string& quadName = quadblock.GetName();
-		turboPads.insert(quadName);
-		turboPadJson[quadName + "_trigger"] = quadblock.GetTrigger();
-	}
-	if (!turboPads.empty())
-	{
-		turboPadJson["header"] = PresetHeader::TURBO_PAD;
-		turboPadJson["turbopads"] = turboPads;
-		SaveJSON(dirPath / "turbopad.json", turboPadJson);
+		std::unordered_set<std::string> turboPads;
+		nlohmann::json turboPadJson = {};
+		for (const Quadblock& quadblock : m_quadblocks)
+		{
+			if (quadblock.GetTurboPadIndex() == TURBO_PAD_INDEX_NONE) { continue; }
+			const std::string& quadName = quadblock.GetName();
+			turboPads.insert(quadName);
+			turboPadJson[quadName + "_trigger"] = quadblock.GetTrigger();
+		}
+		if (!turboPads.empty())
+		{
+			turboPadJson["header"] = PresetHeader::TURBO_PAD;
+			turboPadJson["turbopads"] = turboPads;
+			SaveJSON(dirPath / "turbopad.json", turboPadJson);
+		}
 	}
 
-	if (m_saveScript)
+	if (SavePresetSettings::script)
 	{
 		nlohmann::json scriptJson = {};
 		scriptJson["header"] = PresetHeader::SCRIPT;
@@ -1446,7 +1464,7 @@ bool Level::SavePreset(const std::filesystem::path& path)
 		SaveJSON(dirPath / "script.json", scriptJson);
 	}
 
-	if (!m_minimap.texture.IsEmpty())
+	if (SavePresetSettings::minimap && !m_minimap.texture.IsEmpty())
 	{
 		nlohmann::json minimapJson = {};
 		minimapJson["header"] = PresetHeader::MINIMAP;
@@ -1454,17 +1472,20 @@ bool Level::SavePreset(const std::filesystem::path& path)
 		SaveJSON(dirPath / "minimap.json", minimapJson);
 	}
 
-	nlohmann::json quadblockJson = {};
-	quadblockJson["header"] = PresetHeader::QUADBLOCK;
-	quadblockJson["quadblocks"] = nlohmann::json::object();
-	for (const Quadblock& quadblock : m_quadblocks)
+	if (SavePresetSettings::quadblock)
 	{
-		quadblockJson["quadblocks"][quadblock.GetName()] = nlohmann::json();
-		quadblock.ToJsonMetadata(quadblockJson["quadblocks"][quadblock.GetName()]);
+		nlohmann::json quadblockJson = {};
+		quadblockJson["header"] = PresetHeader::QUADBLOCK;
+		quadblockJson["quadblocks"] = nlohmann::json::object();
+		for (const Quadblock& quadblock : m_quadblocks)
+		{
+			quadblockJson["quadblocks"][quadblock.GetName()] = nlohmann::json();
+			quadblock.ToJsonMetadata(quadblockJson["quadblocks"][quadblock.GetName()]);
+		}
+		SaveJSON(dirPath / "quadblock.json", quadblockJson);
 	}
-	SaveJSON(dirPath / "quadblock.json", quadblockJson);
 
-	if (!m_checkpoints.empty())
+	if (SavePresetSettings::checkpoint && !m_checkpoints.empty())
 	{
 		nlohmann::json checkpointJson = {};
 		checkpointJson["header"] = PresetHeader::CHECKPOINT;
@@ -1478,7 +1499,7 @@ bool Level::SavePreset(const std::filesystem::path& path)
 		SaveJSON(dirPath / "checkpoint.json", checkpointJson);
 	}
 
-	if (!m_instances.empty() || !m_instanceModels.empty())
+	if (SavePresetSettings::instance && (!m_instances.empty() || !m_instanceModels.empty()))
 	{
 		std::filesystem::path instanceDir = dirPath / "Instance";
 		if (!std::filesystem::exists(instanceDir)) { std::filesystem::create_directory(instanceDir); }
@@ -1506,7 +1527,7 @@ bool Level::SavePreset(const std::filesystem::path& path)
 		SaveJSON(dirPath / "instance.json", instanceJson);
 	}
 
-	if (m_bsp.IsValid())
+	if (SavePresetSettings::geometry && m_bsp.IsValid())
 	{
 		nlohmann::json geometryJson = {};
 		geometryJson["header"] = PresetHeader::GEOMETRY;
