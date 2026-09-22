@@ -1119,69 +1119,76 @@ bool Level::LoadPreset(const std::filesystem::path& filename, bool autoLoad)
 			std::vector<std::string> materials = json["materials"];
 			for (const std::string& material : materials)
 			{
-				if (m_materialToQuadFaces.contains(material))
+				if (!m_materialToTexture.contains(material)) { continue; }
+
+				if (json.contains(material + "_blendMode"))
 				{
-					if (json.contains(material + "_terrain"))
-					{
-						m_propTerrain.SetPreview(material, json[material + "_terrain"]);
-						m_propTerrain.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
-					if (json.contains(material + "_quadflags"))
-					{
-						m_propQuadFlags.SetPreview(material, json[material + "_quadflags"]);
-						m_propQuadFlags.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
-					if (json.contains(material + "_drawflags"))
-					{
-						m_propDoubleSided.SetPreview(material, json[material + "_drawflags"]);
-						m_propDoubleSided.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
-					if (json.contains(material + "_checkpoint"))
-					{
-						m_propCheckpoints.SetPreview(material, json[material + "_checkpoint"]);
-						m_propCheckpoints.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
-					if (json.contains(material + "_trigger"))
-					{
-						QuadblockTrigger trigger = json[material + "_trigger"];
-						m_propTurboPads.GetBackup(material) = trigger;
-						m_propTurboPads.GetPreview(material) = trigger;
-					}
-					if (json.contains(material + "_speedImpact"))
-					{
-						m_propSpeedImpact.SetPreview(material, json[material + "_speedImpact"]);
-						m_propSpeedImpact.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
-					if (json.contains(material + "_weatherIntensity"))
-					{
-						m_propWeatherIntensity.SetPreview(material, json[material + "_weatherIntensity"]);
-						m_propWeatherIntensity.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
-					if (json.contains(material + "_weatherVanishRate"))
-					{
-						m_propWeatherVanishRate.SetPreview(material, json[material + "_weatherVanishRate"]);
-						m_propWeatherVanishRate.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
-					if (json.contains(material + "_checkpointPathable"))
-					{
-						m_propCheckpointPathable.SetPreview(material, json[material + "_checkpointPathable"]);
-						m_propCheckpointPathable.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
-					if (json.contains(material + "_visTreeTransparent"))
-					{
-						m_propVisTreeTransparent.SetPreview(material, json[material + "_visTreeTransparent"]);
-						m_propVisTreeTransparent.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
-					if (json.contains(material + "_drawOrderHigh"))
-					{
-						m_propDrawOrderHigh.SetPreview(material, json[material + "_drawOrderHigh"]);
-						m_propDrawOrderHigh.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
-					if (json.contains(material + "_water"))
-					{
-						m_propWater.SetPreview(material, json[material + "_water"]);
-						m_propWater.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
+					uint16_t blendMode = json[material + "_blendMode"];
+					m_materialToTexture[material].SetBlendMode(blendMode);
+				}
+
+				if (!m_materialToQuadFaces.contains(material)) { continue; }
+
+				if (json.contains(material + "_terrain"))
+				{
+					m_propTerrain.SetPreview(material, json[material + "_terrain"]);
+					m_propTerrain.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+				}
+				if (json.contains(material + "_quadflags"))
+				{
+					m_propQuadFlags.SetPreview(material, json[material + "_quadflags"]);
+					m_propQuadFlags.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+				}
+				if (json.contains(material + "_drawflags"))
+				{
+					m_propDoubleSided.SetPreview(material, json[material + "_drawflags"]);
+					m_propDoubleSided.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+				}
+				if (json.contains(material + "_checkpoint"))
+				{
+					m_propCheckpoints.SetPreview(material, json[material + "_checkpoint"]);
+					m_propCheckpoints.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+				}
+				if (json.contains(material + "_trigger"))
+				{
+					QuadblockTrigger trigger = json[material + "_trigger"];
+					m_propTurboPads.GetBackup(material) = trigger;
+					m_propTurboPads.GetPreview(material) = trigger;
+				}
+				if (json.contains(material + "_speedImpact"))
+				{
+					m_propSpeedImpact.SetPreview(material, json[material + "_speedImpact"]);
+					m_propSpeedImpact.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+				}
+				if (json.contains(material + "_weatherIntensity"))
+				{
+					m_propWeatherIntensity.SetPreview(material, json[material + "_weatherIntensity"]);
+					m_propWeatherIntensity.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+				}
+				if (json.contains(material + "_weatherVanishRate"))
+				{
+					m_propWeatherVanishRate.SetPreview(material, json[material + "_weatherVanishRate"]);
+					m_propWeatherVanishRate.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+				}
+				if (json.contains(material + "_checkpointPathable"))
+				{
+					m_propCheckpointPathable.SetPreview(material, json[material + "_checkpointPathable"]);
+					m_propCheckpointPathable.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+				}
+				if (json.contains(material + "_visTreeTransparent"))
+				{
+					m_propVisTreeTransparent.SetPreview(material, json[material + "_visTreeTransparent"]);
+					m_propVisTreeTransparent.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+				}
+				if (json.contains(material + "_drawOrderHigh"))
+				{
+					m_propDrawOrderHigh.SetPreview(material, json[material + "_drawOrderHigh"]);
+					m_propDrawOrderHigh.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+				}
+				if (json.contains(material + "_water"))
+				{
+					m_propWater.SetPreview(material, json[material + "_water"]);
+					m_propWater.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 				}
 			}
 		}
@@ -1372,26 +1379,31 @@ bool Level::SavePreset(const std::filesystem::path& path)
 	}
 	SaveJSON(dirPath / "path.json", pathJson);
 
-	if (!m_materialToQuadFaces.empty())
+	if (!m_materialToTexture.empty())
 	{
 		nlohmann::json materialJson = {};
 		materialJson["header"] = PresetHeader::MATERIAL;
-		std::vector<std::string> materials; materials.reserve(m_materialToQuadFaces.size());
-		for (const auto& [key, value] : m_materialToQuadFaces)
+		std::vector<std::string> materials; materials.reserve(m_materialToTexture.size());
+		for (const auto& [key, texture] : m_materialToTexture)
 		{
 			materials.push_back(key);
-			materialJson[key + "_terrain"] = m_propTerrain.GetBackup(key);
-			materialJson[key + "_quadflags"] = m_propQuadFlags.GetBackup(key);
-			materialJson[key + "_drawflags"] = m_propDoubleSided.GetBackup(key);
-			materialJson[key + "_checkpoint"] = m_propCheckpoints.GetBackup(key);
-			materialJson[key + "_checkpointPathable"] = m_propCheckpointPathable.GetBackup(key);
-			materialJson[key + "_visTreeTransparent"] = m_propVisTreeTransparent.GetBackup(key);
-			materialJson[key + "_trigger"] = m_propTurboPads.GetBackup(key);
-			materialJson[key + "_speedImpact"] = m_propSpeedImpact.GetBackup(key);
-			materialJson[key + "_drawOrderHigh"] = m_propDrawOrderHigh.GetBackup(key);
-			materialJson[key + "_water"] = m_propWater.GetBackup(key);
-			materialJson[key + "_weatherIntensity"] = m_propWeatherIntensity.GetBackup(key);
-			materialJson[key + "_weatherVanishRate"] = m_propWeatherVanishRate.GetBackup(key);
+			materialJson[key + "_blendMode"] = texture.GetBlendMode();
+
+			if (m_materialToQuadFaces.contains(key))
+			{
+				materialJson[key + "_terrain"] = m_propTerrain.GetBackup(key);
+				materialJson[key + "_quadflags"] = m_propQuadFlags.GetBackup(key);
+				materialJson[key + "_drawflags"] = m_propDoubleSided.GetBackup(key);
+				materialJson[key + "_checkpoint"] = m_propCheckpoints.GetBackup(key);
+				materialJson[key + "_checkpointPathable"] = m_propCheckpointPathable.GetBackup(key);
+				materialJson[key + "_visTreeTransparent"] = m_propVisTreeTransparent.GetBackup(key);
+				materialJson[key + "_trigger"] = m_propTurboPads.GetBackup(key);
+				materialJson[key + "_speedImpact"] = m_propSpeedImpact.GetBackup(key);
+				materialJson[key + "_drawOrderHigh"] = m_propDrawOrderHigh.GetBackup(key);
+				materialJson[key + "_water"] = m_propWater.GetBackup(key);
+				materialJson[key + "_weatherIntensity"] = m_propWeatherIntensity.GetBackup(key);
+				materialJson[key + "_weatherVanishRate"] = m_propWeatherVanishRate.GetBackup(key);
+			}
 		}
 		materialJson["materials"] = materials;
 		SaveJSON(dirPath / "material.json", materialJson);
