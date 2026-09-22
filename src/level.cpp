@@ -1035,7 +1035,7 @@ enum class PresetHeader : unsigned
 	SPAWN, LEVEL, PATH, MATERIAL, TURBO_PAD, ANIM_TEXTURES, SCRIPT, MINIMAP, QUADBLOCK, CHECKPOINT, INSTANCE, GEOMETRY
 };
 
-bool Level::LoadPreset(const std::filesystem::path& filename)
+bool Level::LoadPreset(const std::filesystem::path& filename, bool autoLoad)
 {
 	m_showLogWindow = true;
 	nlohmann::json json = nlohmann::json::parse(std::ifstream(filename));
@@ -1284,7 +1284,7 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 		}
 		GenerateRenderInstanceData();
 	}
-	else if (header == PresetHeader::GEOMETRY)
+	else if (!autoLoad && header == PresetHeader::GEOMETRY)
 	{
 		m_bsp.Clear();
 		m_bspVis.Clear();
@@ -4198,17 +4198,17 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 
 	if (m_loaded && isLevel)
 	{
+		GenerateBSP();
 		std::filesystem::path presetFolder = m_parentPath / (m_name + "_presets");
 		if (std::filesystem::is_directory(presetFolder))
 		{
 			for (const auto& entry : std::filesystem::directory_iterator(presetFolder))
 			{
 				const std::filesystem::path json = entry.path();
-				if (json.has_extension() && json.extension() == ".json") { LoadPreset(json); }
+				if (json.has_extension() && json.extension() == ".json") { LoadPreset(json, true); }
 			}
 		}
 		GenerateRenderLevData();
-		GenerateBSP();
 	}
 	return ret;
 }

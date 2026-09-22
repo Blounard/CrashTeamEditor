@@ -582,7 +582,7 @@ void init_crashteameditor(py::module_& m)
 		.def_property_readonly("parent_path", &Level::GetParentPath, py::return_value_policy::copy)
 		.def("get_material_names", &Level::GetMaterialNames, py::return_value_policy::copy)
 		.def("get_material_quadblock_indexes", &Level::GetMaterialQuadblockIndexes, py::arg("material"), py::return_value_policy::copy)
-		.def("load_preset", &Level::LoadPreset, py::arg("filename"))
+		.def("load_preset", &Level::LoadPreset, py::arg("filename"), py::arg("autoLoad"))
 		.def("save_preset", &Level::SavePreset, py::arg("path"))
 		.def("generate_vistree", &Level::GenerateVisTreeLev)
 		.def("get_renderer_selected_data", [](Level& level) {

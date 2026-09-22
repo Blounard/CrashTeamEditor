@@ -78,7 +78,7 @@ public:
 	bool GenerateBSP();
 	bool GenerateVisTreeLev();
 	void GenerateBotPathChangeCode();
-	bool LoadPreset(const std::filesystem::path& filename);
+	bool LoadPreset(const std::filesystem::path& filename, bool autoLoad);
 	bool SavePreset(const std::filesystem::path& path);
 	void ResetFilter();
 	void ResetRendererSelection();

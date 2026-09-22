@@ -102,7 +102,7 @@ void UI::MainMenu()
 					auto selection = pfd::open_file("Preset File", presetsFolder.string(), {"Preset Files", "*.json"}, pfd::opt::multiselect | pfd::opt::force_path).result();
 					for (const std::string& filename : selection)
 					{
-						m_lev.LoadPreset(filename);
+						m_lev.LoadPreset(filename, false);
 					}
 				}
 				if (ImGui::MenuItem("Save"))
