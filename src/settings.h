@@ -102,3 +102,20 @@ struct InstanceLoadPathSettings
 	static bool loop;
 	static bool rolling;
 };
+
+struct SavePresetSettings
+{
+	static bool spawn;
+	static bool level;
+	static bool path;
+	static bool material;
+	static bool turboPad;
+	static bool animTex;
+	static bool script;
+	static bool minimap;
+	static bool quadblock;
+	static bool checkpoint;
+	static bool instance;
+	static bool geometry;
+	static bool bot;
+};

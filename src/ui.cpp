@@ -102,17 +102,12 @@ void UI::MainMenu()
 					auto selection = pfd::open_file("Preset File", presetsFolder.string(), {"Preset Files", "*.json"}, pfd::opt::multiselect | pfd::opt::force_path).result();
 					for (const std::string& filename : selection)
 					{
-						m_lev.LoadPreset(filename);
+						m_lev.LoadPreset(filename, false);
 					}
 				}
 				if (ImGui::MenuItem("Save"))
 				{
-					auto selection = pfd::select_folder("Presets Root Directory", m_lev.GetParentPath().string(), pfd::opt::force_path).result();
-					if (!selection.empty())
-					{
-						const std::filesystem::path path = selection + "\\";
-						m_lev.SavePreset(path);
-					}
+					m_lev.OpenSavePresetWindow();
 				}
 				ImGui::EndMenu();
 			}

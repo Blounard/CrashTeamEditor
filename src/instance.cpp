@@ -887,7 +887,11 @@ void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, cons
 		if (!texName.empty() && texIt != materialToTexture.end() && !texIt->second.IsEmpty())
 		{
 			std::filesystem::path src = texIt->second.GetPath();
-			std::filesystem::copy_file(src, modelDir / src.filename(), std::filesystem::copy_options::overwrite_existing);
+			std::filesystem::path dst = modelDir / src.filename();
+			bool same = std::filesystem::exists(dst) && std::filesystem::equivalent(src, dst);
+			if (!same)
+				std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing);
+
 			std::string filename = src.filename().string();
 
 			int imgIdx;

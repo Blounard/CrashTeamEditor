@@ -5,6 +5,12 @@
 #include "quadblock.h"
 #include "animtexture.h"
 #include "minimap.h"
+#include "checkpoint.h"
+#include "instance.h"
+#include "bsp.h"
+#include "vistree.h"
+#include "bots.h"
+
 
 #include <nlohmann/json.hpp>
 
@@ -14,6 +20,9 @@
 
 void to_json(nlohmann::json& json, const Vec3& v);
 void from_json(const nlohmann::json& json, Vec3& v);
+
+void to_json(nlohmann::json& json, const BoundingBox& bbox);
+void from_json(const nlohmann::json& json, BoundingBox& bbox);
 
 void to_json(nlohmann::json& json, const Color& c);
 void from_json(const nlohmann::json& json, Color& c);
@@ -32,6 +41,12 @@ void from_json(const nlohmann::json& json, Weather& weather);
 
 void to_json(nlohmann::json& json, const Minimap& minimap);
 void from_json(const nlohmann::json& json, Minimap& minimap);
+
+void to_json(nlohmann::json& json, const InstanceHitbox& hitbox);
+void from_json(const nlohmann::json& json, InstanceHitbox& hitbox);
+
+void to_json(nlohmann::json& json, const BotFlags& flags);
+void from_json(const nlohmann::json& json, BotFlags& flags);
 
 void ReadBinaryFile(std::vector<uint8_t>& v, const std::filesystem::path& path);
 

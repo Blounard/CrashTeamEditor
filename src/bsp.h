@@ -5,6 +5,7 @@
 #include "settings.h"
 
 #include <vector>
+#include <nlohmann/json.hpp>
 
 enum class BSPNode
 {
@@ -92,6 +93,8 @@ public:
 	void Generate(const std::vector<Quadblock>& quadblocks);
 	std::vector<uint8_t> Serialize(size_t offQuads, const std::vector<Quadblock>& quadblocks) const;
 	void RenderUI(const std::vector<Quadblock>& quadblocks);
+	void ToJson(nlohmann::json& json) const;
+	void FromJson(const nlohmann::json& json);
 
 	uint32_t GetOffHitbox() const { return m_offHitbox; }
 

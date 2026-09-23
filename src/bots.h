@@ -102,6 +102,9 @@ public:
 
     void SetSpecialMode(BotSpecialBits v) { m_specialBits = v; }
 
+    void ToJson(nlohmann::json& json) const;
+    void FromJson(const nlohmann::json& json);
+
 private:
     Vec3 m_pos = {};
     Vec3 m_rot = {};
@@ -146,6 +149,9 @@ public:
 
     uint16_t GetPhysUnk(size_t i) const { return m_physUnk[i]; }
     void     SetPhysUnk(size_t i, uint16_t v) { m_physUnk[i] = v; }
+    void ToJson(nlohmann::json& json) const;
+    void FromJson(const nlohmann::json& json);
+
 
 private:
     std::vector<BotNode> m_nodes;

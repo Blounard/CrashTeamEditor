@@ -137,6 +137,56 @@ void from_json(const nlohmann::json& json, Minimap& minimap)
 	}
 }
 
+void to_json(nlohmann::json& json, const InstanceHitbox& hitbox)
+{
+	json["enabled"] = hitbox.enabled;
+	json["preset"] = hitbox.preset;
+	json["flags"] = hitbox.flags;
+	json["halfExtent"] = hitbox.halfExtent;
+	json["yOffset"] = hitbox.yOffset;
+}
+
+void to_json(nlohmann::json& json, const BotFlags& flags)
+{
+	json["turboPad"] = flags.turboPad;
+	json["skidmarkFront"] = flags.skidmarkFront;
+	json["skidmarkBack"] = flags.skidmarkBack;
+	json["turboPadLow"] = flags.turboPadLow;
+	json["maskGrabSTP"] = flags.maskGrabSTP;
+	json["jump"] = flags.jump;
+	json["driftLeft"] = flags.driftLeft;
+	json["driftRight"] = flags.driftRight;
+	json["echo"] = flags.echo;
+	json["midAir"] = flags.midAir;
+	json["sink"] = flags.sink;
+	json["lowGrav"] = flags.lowGrav;
+}
+
+void from_json(const nlohmann::json& json, BotFlags& flags)
+{
+	if (json.contains("turboPad")) { json.at("turboPad").get_to(flags.turboPad); }
+	if (json.contains("skidmarkFront")) { json.at("skidmarkFront").get_to(flags.skidmarkFront); }
+	if (json.contains("skidmarkBack")) { json.at("skidmarkBack").get_to(flags.skidmarkBack); }
+	if (json.contains("turboPadLow")) { json.at("turboPadLow").get_to(flags.turboPadLow); }
+	if (json.contains("maskGrabSTP")) { json.at("maskGrabSTP").get_to(flags.maskGrabSTP); }
+	if (json.contains("jump")) { json.at("jump").get_to(flags.jump); }
+	if (json.contains("driftLeft")) { json.at("driftLeft").get_to(flags.driftLeft); }
+	if (json.contains("driftRight")) { json.at("driftRight").get_to(flags.driftRight); }
+	if (json.contains("echo")) { json.at("echo").get_to(flags.echo); }
+	if (json.contains("midAir")) { json.at("midAir").get_to(flags.midAir); }
+	if (json.contains("sink")) { json.at("sink").get_to(flags.sink); }
+	if (json.contains("lowGrav")) { json.at("lowGrav").get_to(flags.lowGrav); }
+}
+
+void from_json(const nlohmann::json& json, InstanceHitbox& hitbox)
+{
+	if (json.contains("enabled")) { json.at("enabled").get_to(hitbox.enabled); }
+	if (json.contains("preset")) { json.at("preset").get_to(hitbox.preset); }
+	if (json.contains("flags")) { json.at("flags").get_to(hitbox.flags); }
+	if (json.contains("halfExtent")) { json.at("halfExtent").get_to(hitbox.halfExtent); }
+	if (json.contains("yOffset")) { json.at("yOffset").get_to(hitbox.yOffset); }
+}
+
 void ReadBinaryFile(std::vector<uint8_t>& v, const std::filesystem::path& path)
 {
 	std::ifstream file(path, std::ios::binary);
@@ -263,4 +313,225 @@ void AnimTexture::ToJson(nlohmann::json& json, const std::vector<Quadblock>& qua
 	std::vector<uint16_t> blendModes;
 	for (const Texture& tex : m_textures) { blendModes.push_back(tex.GetBlendMode()); }
 	json["blendModes"] = blendModes;
+}
+
+void Quadblock::ToJsonMetadata(nlohmann::json& json) const
+{
+	json["checkpointPathable"] = m_checkpointPathable;
+	json["checkpointStatus"] = m_checkpointStatus;
+	json["visTreeTransparent"] = m_visTreeTransparent;
+	json["drawOrderHigh"] = m_drawOrderHigh;
+	json["checkpointIndex"] = m_checkpointIndex;
+	json["doubleSided"] = m_doubleSided;
+	json["flags"] = m_flags;
+	json["terrain"] = m_terrain;
+	json["water"] = m_water;
+	json["downforce"] = m_downforce;
+	json["weatherIntensity"] = m_weatherIntensity;
+	json["weatherVanishRate"] = m_weatherVanishRate;
+}
+
+void Quadblock::FromJsonMetadata(const nlohmann::json& json)
+{
+	if (json.contains("checkpointPathable")) { json.at("checkpointPathable").get_to(m_checkpointPathable); }
+	if (json.contains("checkpointStatus")) { json.at("checkpointStatus").get_to(m_checkpointStatus); }
+	if (json.contains("visTreeTransparent")) { json.at("visTreeTransparent").get_to(m_visTreeTransparent); }
+	if (json.contains("drawOrderHigh")) { json.at("drawOrderHigh").get_to(m_drawOrderHigh); }
+	if (json.contains("checkpointIndex")) { json.at("checkpointIndex").get_to(m_checkpointIndex); }
+	if (json.contains("doubleSided")) { json.at("doubleSided").get_to(m_doubleSided); }
+	if (json.contains("flags")) { json.at("flags").get_to(m_flags); }
+	if (json.contains("terrain")) { json.at("terrain").get_to(m_terrain); }
+	if (json.contains("water")) { json.at("water").get_to(m_water); }
+	if (json.contains("downforce")) { json.at("downforce").get_to(m_downforce); }
+	if (json.contains("weatherIntensity")) { json.at("weatherIntensity").get_to(m_weatherIntensity); }
+	if (json.contains("weatherVanishRate")) { json.at("weatherVanishRate").get_to(m_weatherVanishRate); }
+}
+
+void Quadblock::ToJsonGeometry(nlohmann::json& json) const
+{
+	json["bspID"] = m_bspID;
+	json["bbox"] = m_bbox;
+	json["hasRawNormalData"] = m_hasRawNormalData;
+	if (m_hasRawNormalData)
+	{
+		json["triNormalVecBitshift"] = m_triNormalVecBitshift;
+		json["triNormalVecDividend"] = std::vector<int16_t>(m_triNormalVecDividend, m_triNormalVecDividend + 10);
+	}
+}
+
+void Quadblock::FromJsonGeometry(const nlohmann::json& json)
+{
+	if (json.contains("bspID")) { json.at("bspID").get_to(m_bspID); }
+	if (json.contains("bbox")) { json.at("bbox").get_to(m_bbox); }
+	if (json.contains("hasRawNormalData")) { json.at("hasRawNormalData").get_to(m_hasRawNormalData); }
+	if (m_hasRawNormalData)
+	{
+		if (json.contains("triNormalVecBitshift")) { json.at("triNormalVecBitshift").get_to(m_triNormalVecBitshift); }
+		if (json.contains("triNormalVecDividend"))
+		{
+			const std::vector<int16_t> dividend = json.at("triNormalVecDividend").get<std::vector<int16_t>>();
+			for (size_t i = 0; i < dividend.size() && i < 10; i++) { m_triNormalVecDividend[i] = dividend[i]; }
+		}
+	}
+}
+
+void Checkpoint::ToJson(nlohmann::json& json) const
+{
+	json["pos"] = m_pos;
+	json["distToFinish"] = m_distToFinish;
+	json["up"] = m_up;
+	json["down"] = m_down;
+	json["left"] = m_left;
+	json["right"] = m_right;
+}
+
+void Checkpoint::FromJson(const nlohmann::json& json)
+{
+	if (json.contains("pos")) { json.at("pos").get_to(m_pos); }
+	if (json.contains("distToFinish")) { json.at("distToFinish").get_to(m_distToFinish); }
+	if (json.contains("up")) { json.at("up").get_to(m_up); }
+	if (json.contains("down")) { json.at("down").get_to(m_down); }
+	if (json.contains("left")) { json.at("left").get_to(m_left); }
+	if (json.contains("right")) { json.at("right").get_to(m_right); }
+}
+
+void Instance::ToJson(nlohmann::json& json) const
+{
+	json["name"] = m_name;
+	json["scale"] = m_scale;
+	json["pos"] = m_pos;
+	json["rot"] = m_rot;
+	json["modelID"] = static_cast<int16_t>(m_modelID);
+	json["color"] = m_color;
+	json["modelKey"] = m_modelKey;
+	json["flags"] = m_flags;
+	json["hitbox"] = m_hitbox;
+}
+
+void Instance::FromJson(const nlohmann::json& json)
+{
+	if (json.contains("name")) { json.at("name").get_to(m_name); }
+	if (json.contains("scale")) { json.at("scale").get_to(m_scale); }
+	if (json.contains("pos")) { json.at("pos").get_to(m_pos); }
+	if (json.contains("rot")) { json.at("rot").get_to(m_rot); }
+	if (json.contains("modelID")) { m_modelID = static_cast<ModelId>(json.at("modelID").get<int16_t>()); }
+	if (json.contains("color")) { json.at("color").get_to(m_color); }
+	if (json.contains("flags")) { json.at("flags").get_to(m_flags); }
+	if (json.contains("hitbox")) { json.at("hitbox").get_to(m_hitbox); }
+}
+
+void BSP::ToJson(nlohmann::json& json) const
+{
+	json["id"] = m_id;
+	json["node"] = static_cast<int>(m_node);
+	json["axis"] = static_cast<int>(m_axis);
+	json["splitPoint"] = m_splitPoint;
+	json["flags"] = m_flags;
+	json["bbox"] = m_bbox;
+
+	if (m_left)
+	{ 
+		json["left"] = nlohmann::json(); 
+		m_left->ToJson(json["left"]);
+	}
+	if (m_right)
+	{ 
+		json["right"] = nlohmann::json(); 
+		m_right->ToJson(json["right"]);
+	}
+}
+
+void BSP::FromJson(const nlohmann::json& json)
+{
+	if (json.contains("id")) { json.at("id").get_to(m_id); }
+	if (json.contains("node")) { m_node = static_cast<BSPNode>(json.at("node").get<int>()); }
+	if (json.contains("axis")) { m_axis = static_cast<AxisSplit>(json.at("axis").get<int>()); }
+	if (json.contains("splitPoint")) { json.at("splitPoint").get_to(m_splitPoint); }
+	if (json.contains("flags")) { json.at("flags").get_to(m_flags); }
+	if (json.contains("bbox")) { json.at("bbox").get_to(m_bbox); }
+
+	if (json.contains("left"))
+	{
+		m_left = new BSP();
+		m_left->FromJson(json.at("left"));
+		m_left->SetParent(this);
+	}
+	if (json.contains("right"))
+	{
+		m_right = new BSP();
+		m_right->FromJson(json.at("right"));
+		m_right->SetParent(this);
+	}
+}
+
+void BitMatrix::ToJson(nlohmann::json& json) const
+{
+	json["width"] = m_width;
+	json["height"] = m_height;
+	json["data"] = m_data;
+}
+
+void BitMatrix::FromJson(const nlohmann::json& json)
+{
+	if (json.contains("width")) { json.at("width").get_to(m_width); }
+	if (json.contains("height")) { json.at("height").get_to(m_height); }
+	m_data.assign(m_width * m_height, 0);
+
+	if (json.contains("data"))
+	{
+		std::vector<uint8_t> data = json.at("data").get<std::vector<uint8_t>>();
+		if (data.size() == m_data.size()) { m_data = data; }
+	}
+}
+
+void BotNode::ToJson(nlohmann::json& json) const
+{
+	json["pos"] = m_pos;
+	json["rot"] = m_rot;
+	json["flags"] = m_flags;
+	json["specialBits"] = static_cast<int>(m_specialBits);
+	json["splitLineID"] = m_splitLineID;
+	json["ramPhysID"] = m_ramPhysID;
+	json["shadow"] = m_shadow;
+	json["terrain"] = m_terrain;
+	json["pathChange"] = m_pathChange;
+	json["pathChangeIndex"] = m_pathChangeIndex;
+	json["checkpoint"] = m_checkpoint;
+}
+
+void BotNode::FromJson(const nlohmann::json& json)
+{
+	if (json.contains("pos")) { json.at("pos").get_to(m_pos); }
+	if (json.contains("rot")) { json.at("rot").get_to(m_rot); }
+	if (json.contains("flags")) { json.at("flags").get_to(m_flags); }
+	if (json.contains("specialBits")) { m_specialBits = static_cast<BotSpecialBits>(json.at("specialBits").get<int>()); }
+	if (json.contains("splitLineID")) { json.at("splitLineID").get_to(m_splitLineID); }
+	if (json.contains("ramPhysID")) { json.at("ramPhysID").get_to(m_ramPhysID); }
+	if (json.contains("shadow")) { json.at("shadow").get_to(m_shadow); }
+	if (json.contains("terrain")) { json.at("terrain").get_to(m_terrain); }
+	if (json.contains("pathChange")) { json.at("pathChange").get_to(m_pathChange); }
+	if (json.contains("pathChangeIndex")) { json.at("pathChangeIndex").get_to(m_pathChangeIndex); }
+	if (json.contains("checkpoint")) { json.at("checkpoint").get_to(m_checkpoint); }
+}
+
+void BotPath::ToJson(nlohmann::json& json) const
+{
+	json = nlohmann::json::array();
+	for (const BotNode& node : m_nodes)
+	{
+		nlohmann::json nodeJson = nlohmann::json();
+		node.ToJson(nodeJson);
+		json.push_back(nodeJson);
+	}
+}
+
+void BotPath::FromJson(const nlohmann::json& json)
+{
+	m_nodes.clear();
+	for (const nlohmann::json& nodeJson : json)
+	{
+		BotNode node;
+		node.FromJson(nodeJson);
+		m_nodes.push_back(node);
+	}
 }

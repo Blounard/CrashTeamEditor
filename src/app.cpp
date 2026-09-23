@@ -301,6 +301,23 @@ void App::InitUISettings()
 		if (instanceLoadPathSettings.contains("Loop")) { InstanceLoadPathSettings::loop = instanceLoadPathSettings["Loop"]; }
 		if (instanceLoadPathSettings.contains("Rolling")) { InstanceLoadPathSettings::rolling = instanceLoadPathSettings["Rolling"]; }
 	}
+	if (json.contains("SavePresetSettings"))
+	{
+		const nlohmann::json& savePresetSettings = json["SavePresetSettings"];
+		if (savePresetSettings.contains("Spawn")) { SavePresetSettings::spawn = savePresetSettings["Spawn"]; }
+		if (savePresetSettings.contains("Level")) { SavePresetSettings::level = savePresetSettings["Level"]; }
+		if (savePresetSettings.contains("Path")) { SavePresetSettings::path = savePresetSettings["Path"]; }
+		if (savePresetSettings.contains("Material")) { SavePresetSettings::material = savePresetSettings["Material"]; }
+		if (savePresetSettings.contains("TurboPad")) { SavePresetSettings::turboPad = savePresetSettings["TurboPad"]; }
+		if (savePresetSettings.contains("AnimTex")) { SavePresetSettings::animTex = savePresetSettings["AnimTex"]; }
+		if (savePresetSettings.contains("Script")) { SavePresetSettings::script = savePresetSettings["Script"]; }
+		if (savePresetSettings.contains("Minimap")) { SavePresetSettings::minimap = savePresetSettings["Minimap"]; }
+		if (savePresetSettings.contains("Quadblock")) { SavePresetSettings::quadblock = savePresetSettings["Quadblock"]; }
+		if (savePresetSettings.contains("Checkpoint")) { SavePresetSettings::checkpoint = savePresetSettings["Checkpoint"]; }
+		if (savePresetSettings.contains("Instance")) { SavePresetSettings::instance = savePresetSettings["Instance"]; }
+		if (savePresetSettings.contains("Geometry")) { SavePresetSettings::geometry = savePresetSettings["Geometry"]; }
+		if (savePresetSettings.contains("Bot")) { SavePresetSettings::bot = savePresetSettings["Bot"]; }
+	}
 }
 	
 void App::SaveUISettings(bool useDefault)
@@ -449,6 +466,21 @@ void App::SaveUISettings(bool useDefault)
 		{"Radius", InstanceLoadPathSettings::radius},
 		{"Loop", InstanceLoadPathSettings::loop},
 		{"Rolling", InstanceLoadPathSettings::rolling},
+	};
+	json["SavePresetSettings"] = {
+		{"Spawn", SavePresetSettings::spawn},
+		{"Level", SavePresetSettings::level},
+		{"Path", SavePresetSettings::path},
+		{"Material", SavePresetSettings::material},
+		{"TurboPad", SavePresetSettings::turboPad},
+		{"AnimTex", SavePresetSettings::animTex},
+		{"Script", SavePresetSettings::script},
+		{"Minimap", SavePresetSettings::minimap},
+		{"Quadblock", SavePresetSettings::quadblock},
+		{"Checkpoint", SavePresetSettings::checkpoint},
+		{"Instance", SavePresetSettings::instance},
+		{"Geometry", SavePresetSettings::geometry},
+		{"Bot", SavePresetSettings::bot},
 	};
 	std::ofstream file = std::ofstream(m_configFile);
 	file << std::setw(4) << json << std::endl;

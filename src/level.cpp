@@ -49,10 +49,16 @@ void Level::OpenHotReloadWindow()
 	m_showHotReloadWindow = true;
 }
 
+void Level::OpenSavePresetWindow()
+{
+	m_showSavePresetWindow = true;
+}
+
 void Level::Clear(bool clearErrors)
 {
 	m_loaded = false;
 	m_showHotReloadWindow = false;
+	m_showSavePresetWindow = false;
 	for (size_t i = 0; i < NUM_DRIVERS; i++) { m_spawn[i] = Spawn(); }
 	for (size_t i = 0; i < NUM_GRADIENT; i++) { m_skyGradient[i] = ColorGradient(); }
 	if (clearErrors)
@@ -1032,10 +1038,10 @@ bool Level::GenerateMinimap()
 
 enum class PresetHeader : unsigned
 {
-	SPAWN, LEVEL, PATH, MATERIAL, TURBO_PAD, ANIM_TEXTURES, SCRIPT, MINIMAP
+	SPAWN, LEVEL, PATH, MATERIAL, TURBO_PAD, ANIM_TEXTURES, SCRIPT, MINIMAP, QUADBLOCK, CHECKPOINT, INSTANCE, GEOMETRY, BOT
 };
 
-bool Level::LoadPreset(const std::filesystem::path& filename)
+bool Level::LoadPreset(const std::filesystem::path& filename, bool autoLoad)
 {
 	m_showLogWindow = true;
 	nlohmann::json json = nlohmann::json::parse(std::ifstream(filename));
@@ -1075,6 +1081,23 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 			}
 		}
 	}
+	else if (header == PresetHeader::CHECKPOINT)
+	{
+		if (json.contains("checkpoints"))
+		{
+			m_checkpoints.clear();
+			const nlohmann::json& checkpointsJson = json["checkpoints"];
+			int index = 0;
+			for (const nlohmann::json& cpJson : checkpointsJson)
+			{
+				Checkpoint checkpoint(index);
+				checkpoint.FromJson(cpJson);
+				m_checkpoints.push_back(checkpoint);
+				index++;
+			}
+			UpdateRenderCheckpointData();
+		}
+	}
 	else if (header == PresetHeader::PATH)
 	{
 		if (json.contains("pathCount"))
@@ -1102,73 +1125,97 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 			std::vector<std::string> materials = json["materials"];
 			for (const std::string& material : materials)
 			{
-				if (m_materialToQuadFaces.contains(material))
+				if (!m_materialToTexture.contains(material)) { continue; }
+
+				if (json.contains(material + "_blendMode"))
 				{
-					if (json.contains(material + "_terrain"))
-					{
-						m_propTerrain.SetPreview(material, json[material + "_terrain"]);
-						m_propTerrain.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
-					if (json.contains(material + "_quadflags"))
-					{
-						m_propQuadFlags.SetPreview(material, json[material + "_quadflags"]);
-						m_propQuadFlags.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
-					if (json.contains(material + "_drawflags"))
-					{
-						m_propDoubleSided.SetPreview(material, json[material + "_drawflags"]);
-						m_propDoubleSided.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
-					if (json.contains(material + "_checkpoint"))
-					{
-						m_propCheckpoints.SetPreview(material, json[material + "_checkpoint"]);
-						m_propCheckpoints.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
-					if (json.contains(material + "_trigger"))
-					{
-						QuadblockTrigger trigger = json[material + "_trigger"];
-						m_propTurboPads.GetBackup(material) = trigger;
-						m_propTurboPads.GetPreview(material) = trigger;
-					}
-					if (json.contains(material + "_speedImpact"))
-					{
-						m_propSpeedImpact.SetPreview(material, json[material + "_speedImpact"]);
-						m_propSpeedImpact.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
-					if (json.contains(material + "_weatherIntensity"))
-					{
-						m_propWeatherIntensity.SetPreview(material, json[material + "_weatherIntensity"]);
-						m_propWeatherIntensity.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
-					if (json.contains(material + "_weatherVanishRate"))
-					{
-						m_propWeatherVanishRate.SetPreview(material, json[material + "_weatherVanishRate"]);
-						m_propWeatherVanishRate.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
-					if (json.contains(material + "_checkpointPathable"))
-					{
-						m_propCheckpointPathable.SetPreview(material, json[material + "_checkpointPathable"]);
-						m_propCheckpointPathable.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
-					if (json.contains(material + "_visTreeTransparent"))
-					{
-						m_propVisTreeTransparent.SetPreview(material, json[material + "_visTreeTransparent"]);
-						m_propVisTreeTransparent.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
-					if (json.contains(material + "_drawOrderHigh"))
-					{
-						m_propDrawOrderHigh.SetPreview(material, json[material + "_drawOrderHigh"]);
-						m_propDrawOrderHigh.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
-					if (json.contains(material + "_water"))
-					{
-						m_propWater.SetPreview(material, json[material + "_water"]);
-						m_propWater.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
-					}
+					uint16_t blendMode = json[material + "_blendMode"];
+					m_materialToTexture[material].SetBlendMode(blendMode);
+				}
+
+				if (!m_materialToQuadFaces.contains(material)) { continue; }
+
+				if (json.contains(material + "_terrain"))
+				{
+					m_propTerrain.SetPreview(material, json[material + "_terrain"]);
+					m_propTerrain.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+				}
+				if (json.contains(material + "_quadflags"))
+				{
+					m_propQuadFlags.SetPreview(material, json[material + "_quadflags"]);
+					m_propQuadFlags.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+				}
+				if (json.contains(material + "_drawflags"))
+				{
+					m_propDoubleSided.SetPreview(material, json[material + "_drawflags"]);
+					m_propDoubleSided.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+				}
+				if (json.contains(material + "_checkpoint"))
+				{
+					m_propCheckpoints.SetPreview(material, json[material + "_checkpoint"]);
+					m_propCheckpoints.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+				}
+				if (json.contains(material + "_trigger"))
+				{
+					QuadblockTrigger trigger = json[material + "_trigger"];
+					m_propTurboPads.GetBackup(material) = trigger;
+					m_propTurboPads.GetPreview(material) = trigger;
+				}
+				if (json.contains(material + "_speedImpact"))
+				{
+					m_propSpeedImpact.SetPreview(material, json[material + "_speedImpact"]);
+					m_propSpeedImpact.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+				}
+				if (json.contains(material + "_weatherIntensity"))
+				{
+					m_propWeatherIntensity.SetPreview(material, json[material + "_weatherIntensity"]);
+					m_propWeatherIntensity.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+				}
+				if (json.contains(material + "_weatherVanishRate"))
+				{
+					m_propWeatherVanishRate.SetPreview(material, json[material + "_weatherVanishRate"]);
+					m_propWeatherVanishRate.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+				}
+				if (json.contains(material + "_checkpointPathable"))
+				{
+					m_propCheckpointPathable.SetPreview(material, json[material + "_checkpointPathable"]);
+					m_propCheckpointPathable.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+				}
+				if (json.contains(material + "_visTreeTransparent"))
+				{
+					m_propVisTreeTransparent.SetPreview(material, json[material + "_visTreeTransparent"]);
+					m_propVisTreeTransparent.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+				}
+				if (json.contains(material + "_drawOrderHigh"))
+				{
+					m_propDrawOrderHigh.SetPreview(material, json[material + "_drawOrderHigh"]);
+					m_propDrawOrderHigh.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
+				}
+				if (json.contains(material + "_water"))
+				{
+					m_propWater.SetPreview(material, json[material + "_water"]);
+					m_propWater.Apply(material, m_materialToQuadFaces[material], m_quadblocks);
 				}
 			}
 		}
 	}
+
+	else if (header == PresetHeader::QUADBLOCK)
+	{
+		if (json.contains("quadblocks"))
+		{
+			const nlohmann::json& quadblocksJson = json["quadblocks"];
+			for (Quadblock& quadblock : m_quadblocks)
+			{
+				const std::string& quadName = quadblock.GetName();
+				if (quadblocksJson.contains(quadName))
+				{
+					quadblock.FromJsonMetadata(quadblocksJson[quadName]);
+				}
+			}
+		}
+	}
+
 	else if (header == PresetHeader::ANIM_TEXTURES)
 	{
 		if (json.contains("animCount"))
@@ -1216,6 +1263,96 @@ bool Level::LoadPreset(const std::filesystem::path& filename)
 			m_minimap = json["minimap"];
 		}
 	}
+	else if (header == PresetHeader::INSTANCE)
+	{
+		if (json.contains("models") && json.contains("instances"))
+		{
+			std::unordered_map<size_t, size_t> oldToNewModelKey;
+			for (const auto& [keyStr, pathValue] : json["models"].items())
+			{
+				const size_t oldKey = static_cast<size_t>(std::stoull(keyStr));
+				const std::filesystem::path metadataPath = filename.parent_path() / pathValue.get<std::string>(); // Todo use relative path instead of absolute
+
+				InstanceModel model(metadataPath, m_materialToTexture);
+				if (!model.IsValid()) { continue; }
+
+				const size_t newKey = GenerateUniqueModelKey();
+				oldToNewModelKey[oldKey] = newKey;
+				m_instanceModels.emplace(newKey, model);
+			}
+
+			for (const nlohmann::json& instJson : json["instances"])
+			{
+				size_t newKey = 0;
+				if (instJson.contains("modelKey"))
+				{
+					const size_t oldModelKey = instJson.at("modelKey").get<size_t>();
+					if (oldToNewModelKey.contains(oldModelKey))
+						newKey = oldToNewModelKey[oldModelKey];
+				}
+				Instance instance(newKey);
+				instance.FromJson(instJson);
+				m_instances.push_back(instance);
+			}
+
+			if (json.contains("spawntypes")) { json.at("spawntypes").get_to(m_spawntypes); }
+			if (json.contains("spawntypesPosRot")) { json.at("spawntypesPosRot").get_to(m_spawntypesPosRot); }
+		}
+		GenerateRenderInstanceData();
+	}
+	else if (!autoLoad && header == PresetHeader::GEOMETRY)
+	{
+		m_bsp.Clear();
+		m_bspVis.Clear();
+		ResetAllBSPID();
+		m_bsp.SetId(0);
+		for (Quadblock& quad : m_quadblocks) { quad.SetBSPID(0); }
+
+		if (json.contains("quadblocks"))
+		{
+			const nlohmann::json& geoQuadblocksJson = json["quadblocks"];
+			for (Quadblock& quadblock : m_quadblocks)
+			{
+				const std::string& quadName = quadblock.GetName();
+				if (geoQuadblocksJson.contains(quadName))
+				{
+					quadblock.FromJsonGeometry(geoQuadblocksJson[quadName]);
+				}
+			}
+		}
+
+		if (json.contains("bsp"))
+		{
+			m_bsp.FromJson(json["bsp"]);
+			std::unordered_map<size_t, std::vector<size_t>> bspIdToQuadIndexes;
+			for (size_t i = 0; i < m_quadblocks.size(); i++)
+			{
+				bspIdToQuadIndexes[m_quadblocks[i].GetBSPID()].push_back(i);
+			}
+			for (BSP* node : m_bsp.GetTree())
+			{
+				node->SetQuadblockIndexes(bspIdToQuadIndexes[node->GetId()], m_quadblocks);
+			}
+			m_bsp.PopulateBranchQuadIndexes();
+		}
+
+		if (json.contains("visTree"))
+		{
+			m_bspVis.FromJson(json["visTree"]);
+		}
+	}
+	else if (header == PresetHeader::BOT)
+	{
+		if (json.contains("paths"))
+		{
+			const nlohmann::json& pathsArray = json["paths"];
+			for (size_t i = 0; i < pathsArray.size() && i < 3; i++)
+			{
+				m_botPaths[i].FromJson(pathsArray[i]);
+			}
+			UpdateRenderBotData();
+		}
+	}
 	else
 	{
 		m_logMessage += "\nFailed loaded preset: " + filename.string();
@@ -1236,59 +1373,73 @@ bool Level::SavePreset(const std::filesystem::path& path)
 			pathFile << std::setw(4) << json << std::endl;
 		};
 
-	nlohmann::json spawnJson = {};
-	spawnJson["header"] = PresetHeader::SPAWN;
-	spawnJson["spawn"] = m_spawn;
-	SaveJSON(dirPath / "spawn.json", spawnJson);
-
-	nlohmann::json levelJson = {};
-	levelJson["header"] = PresetHeader::LEVEL;
-	levelJson["configFlags"] = m_configFlags;
-	levelJson["skyGradient"] = m_skyGradient;
-	levelJson["clearColor"] = m_clearColor;
-	levelJson["stars"] = m_stars;
-	levelJson["jumpYSpeedCap"] = m_jumpYSpeedCap;
-	levelJson["splitLines"] = { m_splitLines[0], m_splitLines[1] };
-	levelJson["weather"] = m_weather;
-	if (!m_skybox.m_objPath.empty()) { levelJson["skyboxObjPath"] = m_skybox.m_objPath.string(); }
-	SaveJSON(dirPath / "level.json", levelJson);
-
-	nlohmann::json pathJson = {};
-	pathJson["header"] = PresetHeader::PATH;
-	pathJson["pathCount"] = m_checkpointPaths.size();
-	for (size_t i = 0; i < m_checkpointPaths.size(); i++)
+	if (SavePresetSettings::spawn)
 	{
-		pathJson["path" + std::to_string(i)] = nlohmann::json();
-		m_checkpointPaths[i].ToJson(pathJson["path" + std::to_string(i)], m_quadblocks);
+		nlohmann::json spawnJson = {};
+		spawnJson["header"] = PresetHeader::SPAWN;
+		spawnJson["spawn"] = m_spawn;
+		SaveJSON(dirPath / "spawn.json", spawnJson);
 	}
-	SaveJSON(dirPath / "path.json", pathJson);
 
-	if (!m_materialToQuadFaces.empty())
+	if (SavePresetSettings::level)
+	{
+		nlohmann::json levelJson = {};
+		levelJson["header"] = PresetHeader::LEVEL;
+		levelJson["configFlags"] = m_configFlags;
+		levelJson["skyGradient"] = m_skyGradient;
+		levelJson["clearColor"] = m_clearColor;
+		levelJson["stars"] = m_stars;
+		levelJson["jumpYSpeedCap"] = m_jumpYSpeedCap;
+		levelJson["splitLines"] = { m_splitLines[0], m_splitLines[1] };
+		levelJson["weather"] = m_weather;
+		if (!m_skybox.m_objPath.empty()) { levelJson["skyboxObjPath"] = m_skybox.m_objPath.string(); }
+		SaveJSON(dirPath / "level.json", levelJson);
+	}
+
+	if (SavePresetSettings::path)
+	{
+		nlohmann::json pathJson = {};
+		pathJson["header"] = PresetHeader::PATH;
+		pathJson["pathCount"] = m_checkpointPaths.size();
+		for (size_t i = 0; i < m_checkpointPaths.size(); i++)
+		{
+			pathJson["path" + std::to_string(i)] = nlohmann::json();
+			m_checkpointPaths[i].ToJson(pathJson["path" + std::to_string(i)], m_quadblocks);
+		}
+		SaveJSON(dirPath / "path.json", pathJson);
+	}
+
+	if (SavePresetSettings::material && !m_materialToTexture.empty())
 	{
 		nlohmann::json materialJson = {};
 		materialJson["header"] = PresetHeader::MATERIAL;
-		std::vector<std::string> materials; materials.reserve(m_materialToQuadFaces.size());
-		for (const auto& [key, value] : m_materialToQuadFaces)
+		std::vector<std::string> materials; materials.reserve(m_materialToTexture.size());
+		for (const auto& [key, texture] : m_materialToTexture)
 		{
 			materials.push_back(key);
-			materialJson[key + "_terrain"] = m_propTerrain.GetBackup(key);
-			materialJson[key + "_quadflags"] = m_propQuadFlags.GetBackup(key);
-			materialJson[key + "_drawflags"] = m_propDoubleSided.GetBackup(key);
-			materialJson[key + "_checkpoint"] = m_propCheckpoints.GetBackup(key);
-			materialJson[key + "_checkpointPathable"] = m_propCheckpointPathable.GetBackup(key);
-			materialJson[key + "_visTreeTransparent"] = m_propVisTreeTransparent.GetBackup(key);
-			materialJson[key + "_trigger"] = m_propTurboPads.GetBackup(key);
-			materialJson[key + "_speedImpact"] = m_propSpeedImpact.GetBackup(key);
-			materialJson[key + "_drawOrderHigh"] = m_propDrawOrderHigh.GetBackup(key);
-			materialJson[key + "_water"] = m_propWater.GetBackup(key);
-			materialJson[key + "_weatherIntensity"] = m_propWeatherIntensity.GetBackup(key);
-			materialJson[key + "_weatherVanishRate"] = m_propWeatherVanishRate.GetBackup(key);
+			materialJson[key + "_blendMode"] = texture.GetBlendMode();
+
+			if (m_materialToQuadFaces.contains(key))
+			{
+				materialJson[key + "_terrain"] = m_propTerrain.GetBackup(key);
+				materialJson[key + "_quadflags"] = m_propQuadFlags.GetBackup(key);
+				materialJson[key + "_drawflags"] = m_propDoubleSided.GetBackup(key);
+				materialJson[key + "_checkpoint"] = m_propCheckpoints.GetBackup(key);
+				materialJson[key + "_checkpointPathable"] = m_propCheckpointPathable.GetBackup(key);
+				materialJson[key + "_visTreeTransparent"] = m_propVisTreeTransparent.GetBackup(key);
+				materialJson[key + "_trigger"] = m_propTurboPads.GetBackup(key);
+				materialJson[key + "_speedImpact"] = m_propSpeedImpact.GetBackup(key);
+				materialJson[key + "_drawOrderHigh"] = m_propDrawOrderHigh.GetBackup(key);
+				materialJson[key + "_water"] = m_propWater.GetBackup(key);
+				materialJson[key + "_weatherIntensity"] = m_propWeatherIntensity.GetBackup(key);
+				materialJson[key + "_weatherVanishRate"] = m_propWeatherVanishRate.GetBackup(key);
+			}
 		}
 		materialJson["materials"] = materials;
 		SaveJSON(dirPath / "material.json", materialJson);
 	}
 
-	if (!m_animTextures.empty())
+	if (SavePresetSettings::animTex && !m_animTextures.empty())
 	{
 		nlohmann::json animJson = {};
 		animJson["header"] = PresetHeader::ANIM_TEXTURES;
@@ -1301,23 +1452,26 @@ bool Level::SavePreset(const std::filesystem::path& path)
 		SaveJSON(dirPath / "animtex.json", animJson);
 	}
 
-	std::unordered_set<std::string> turboPads;
-	nlohmann::json turboPadJson = {};
-	for (const Quadblock& quadblock : m_quadblocks)
+	if (SavePresetSettings::turboPad)
 	{
-		if (quadblock.GetTurboPadIndex() == TURBO_PAD_INDEX_NONE) { continue; }
-		const std::string& quadName = quadblock.GetName();
-		turboPads.insert(quadName);
-		turboPadJson[quadName + "_trigger"] = quadblock.GetTrigger();
-	}
-	if (!turboPads.empty())
-	{
-		turboPadJson["header"] = PresetHeader::TURBO_PAD;
-		turboPadJson["turbopads"] = turboPads;
-		SaveJSON(dirPath / "turbopad.json", turboPadJson);
+		std::unordered_set<std::string> turboPads;
+		nlohmann::json turboPadJson = {};
+		for (const Quadblock& quadblock : m_quadblocks)
+		{
+			if (quadblock.GetTurboPadIndex() == TURBO_PAD_INDEX_NONE) { continue; }
+			const std::string& quadName = quadblock.GetName();
+			turboPads.insert(quadName);
+			turboPadJson[quadName + "_trigger"] = quadblock.GetTrigger();
+		}
+		if (!turboPads.empty())
+		{
+			turboPadJson["header"] = PresetHeader::TURBO_PAD;
+			turboPadJson["turbopads"] = turboPads;
+			SaveJSON(dirPath / "turbopad.json", turboPadJson);
+		}
 	}
 
-	if (m_saveScript)
+	if (SavePresetSettings::script)
 	{
 		nlohmann::json scriptJson = {};
 		scriptJson["header"] = PresetHeader::SCRIPT;
@@ -1325,11 +1479,104 @@ bool Level::SavePreset(const std::filesystem::path& path)
 		SaveJSON(dirPath / "script.json", scriptJson);
 	}
 
-	nlohmann::json minimapJson = {};
-	minimapJson["header"] = PresetHeader::MINIMAP;
-	minimapJson["minimap"] = m_minimap;
-	SaveJSON(dirPath / "minimap.json", minimapJson);
-	
+	if (SavePresetSettings::minimap && !m_minimap.texture.IsEmpty())
+	{
+		nlohmann::json minimapJson = {};
+		minimapJson["header"] = PresetHeader::MINIMAP;
+		minimapJson["minimap"] = m_minimap;
+		SaveJSON(dirPath / "minimap.json", minimapJson);
+	}
+
+	if (SavePresetSettings::quadblock)
+	{
+		nlohmann::json quadblockJson = {};
+		quadblockJson["header"] = PresetHeader::QUADBLOCK;
+		quadblockJson["quadblocks"] = nlohmann::json::object();
+		for (const Quadblock& quadblock : m_quadblocks)
+		{
+			quadblockJson["quadblocks"][quadblock.GetName()] = nlohmann::json();
+			quadblock.ToJsonMetadata(quadblockJson["quadblocks"][quadblock.GetName()]);
+		}
+		SaveJSON(dirPath / "quadblock.json", quadblockJson);
+	}
+
+	if (SavePresetSettings::checkpoint && !m_checkpoints.empty())
+	{
+		nlohmann::json checkpointJson = {};
+		checkpointJson["header"] = PresetHeader::CHECKPOINT;
+		checkpointJson["checkpoints"] = nlohmann::json::array();
+		for (const Checkpoint& checkpoint : m_checkpoints)
+		{
+			nlohmann::json cpJson = nlohmann::json();
+			checkpoint.ToJson(cpJson);
+			checkpointJson["checkpoints"].push_back(cpJson);
+		}
+		SaveJSON(dirPath / "checkpoint.json", checkpointJson);
+	}
+
+	if (SavePresetSettings::instance && (!m_instances.empty() || !m_instanceModels.empty()))
+	{
+		std::filesystem::path instanceDir = dirPath / "Instance";
+		if (!std::filesystem::exists(instanceDir)) { std::filesystem::create_directory(instanceDir); }
+
+		nlohmann::json instanceJson = {};
+		instanceJson["header"] = PresetHeader::INSTANCE;
+
+		nlohmann::json modelsJson = nlohmann::json::object();
+		for (auto& [key, model] : m_instanceModels)
+		{
+			model.Export(instanceDir, m_materialToTexture);
+			modelsJson[std::to_string(key)] = (std::filesystem::path("Instance") / model.GetName() / "metadata.json").string();
+		}
+		instanceJson["models"] = modelsJson;
+
+		nlohmann::json instancesArray = nlohmann::json::array();
+		for (const Instance& instance : m_instances)
+		{
+			nlohmann::json instJson = nlohmann::json();
+			instance.ToJson(instJson);
+			instancesArray.push_back(instJson);
+		}
+		instanceJson["instances"] = instancesArray;
+		instanceJson["spawntypes"] = m_spawntypes;
+		instanceJson["spawntypesPosRot"] = m_spawntypesPosRot;
+
+		SaveJSON(dirPath / "instance.json", instanceJson);
+	}
+
+	if (SavePresetSettings::geometry && m_bsp.IsValid())
+	{
+		nlohmann::json geometryJson = {};
+		geometryJson["header"] = PresetHeader::GEOMETRY;
+		nlohmann::json geoQuadblocksJson = nlohmann::json::object();
+		for (const Quadblock& quadblock : m_quadblocks)
+		{
+			geoQuadblocksJson[quadblock.GetName()] = nlohmann::json();
+			quadblock.ToJsonGeometry(geoQuadblocksJson[quadblock.GetName()]);
+		}
+		geometryJson["quadblocks"] = geoQuadblocksJson;
+		geometryJson["bsp"] = nlohmann::json();
+		m_bsp.ToJson(geometryJson["bsp"]);
+		geometryJson["visTree"] = nlohmann::json();
+		m_bspVis.ToJson(geometryJson["visTree"]);
+		SaveJSON(dirPath / "geometry.json", geometryJson);
+	}
+
+	if (SavePresetSettings::bot)
+	{
+		nlohmann::json botJson = {};
+		botJson["header"] = PresetHeader::BOT;
+		nlohmann::json pathsArray = nlohmann::json::array();
+		for (size_t i = 0; i < 3; i++)
+		{
+			nlohmann::json pathJson = nlohmann::json();
+			m_botPaths[i].ToJson(pathJson);
+			pathsArray.push_back(pathJson);
+		}
+		botJson["paths"] = pathsArray;
+		SaveJSON(dirPath / "bot.json", botJson);
+	}
+
 	return true;
 }
 
@@ -4016,17 +4263,17 @@ bool Level::LoadOBJ(const std::filesystem::path& objFile, bool isLevel)
 
 	if (m_loaded && isLevel)
 	{
+		GenerateBSP();
 		std::filesystem::path presetFolder = m_parentPath / (m_name + "_presets");
 		if (std::filesystem::is_directory(presetFolder))
 		{
 			for (const auto& entry : std::filesystem::directory_iterator(presetFolder))
 			{
 				const std::filesystem::path json = entry.path();
-				if (json.has_extension() && json.extension() == ".json") { LoadPreset(json); }
+				if (json.has_extension() && json.extension() == ".json") { LoadPreset(json, true); }
 			}
 		}
 		GenerateRenderLevData();
-		GenerateBSP();
 	}
 	return ret;
 }

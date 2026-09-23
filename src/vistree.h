@@ -6,6 +6,7 @@
 
 #include <vector>
 #include <cstdint>
+#include <nlohmann/json.hpp>
 
 
 
@@ -22,6 +23,8 @@ public:
 	void SetRow(const std::vector<uint8_t>& rowData, size_t y);
 	bool IsEmpty() const;
 	void Clear();
+	void ToJson(nlohmann::json& json) const;
+	void FromJson(const nlohmann::json& json);
 
 private:
 	size_t m_width;
