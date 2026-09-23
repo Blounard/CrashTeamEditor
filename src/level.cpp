@@ -1294,6 +1294,9 @@ bool Level::LoadPreset(const std::filesystem::path& filename, bool autoLoad)
 				instance.FromJson(instJson);
 				m_instances.push_back(instance);
 			}
+
+			if (json.contains("spawntypes")) { json.at("spawntypes").get_to(m_spawntypes); }
+			if (json.contains("spawntypesPosRot")) { json.at("spawntypesPosRot").get_to(m_spawntypesPosRot); }
 		}
 		GenerateRenderInstanceData();
 	}
@@ -1535,6 +1538,8 @@ bool Level::SavePreset(const std::filesystem::path& path)
 			instancesArray.push_back(instJson);
 		}
 		instanceJson["instances"] = instancesArray;
+		instanceJson["spawntypes"] = m_spawntypes;
+		instanceJson["spawntypesPosRot"] = m_spawntypesPosRot;
 
 		SaveJSON(dirPath / "instance.json", instanceJson);
 	}
