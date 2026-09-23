@@ -9,6 +9,7 @@
 #include "instance.h"
 #include "bsp.h"
 #include "vistree.h"
+#include "bots.h"
 
 
 #include <nlohmann/json.hpp>
@@ -43,6 +44,9 @@ void from_json(const nlohmann::json& json, Minimap& minimap);
 
 void to_json(nlohmann::json& json, const InstanceHitbox& hitbox);
 void from_json(const nlohmann::json& json, InstanceHitbox& hitbox);
+
+void to_json(nlohmann::json& json, const BotFlags& flags);
+void from_json(const nlohmann::json& json, BotFlags& flags);
 
 void ReadBinaryFile(std::vector<uint8_t>& v, const std::filesystem::path& path);
 

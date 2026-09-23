@@ -1338,6 +1338,18 @@ bool Level::LoadPreset(const std::filesystem::path& filename, bool autoLoad)
 			m_bspVis.FromJson(json["visTree"]);
 		}
 	}
+	else if (header == PresetHeader::BOT)
+	{
+		if (json.contains("paths"))
+		{
+			const nlohmann::json& pathsArray = json["paths"];
+			for (size_t i = 0; i < pathsArray.size() && i < 3; i++)
+			{
+				m_botPaths[i].FromJson(pathsArray[i]);
+			}
+			UpdateRenderBotData();
+		}
+	}
 	else
 	{
 		m_logMessage += "\nFailed loaded preset: " + filename.string();
@@ -1543,6 +1555,21 @@ bool Level::SavePreset(const std::filesystem::path& path)
 		geometryJson["visTree"] = nlohmann::json();
 		m_bspVis.ToJson(geometryJson["visTree"]);
 		SaveJSON(dirPath / "geometry.json", geometryJson);
+	}
+
+	if (SavePresetSettings::bot)
+	{
+		nlohmann::json botJson = {};
+		botJson["header"] = PresetHeader::BOT;
+		nlohmann::json pathsArray = nlohmann::json::array();
+		for (size_t i = 0; i < 3; i++)
+		{
+			nlohmann::json pathJson = nlohmann::json();
+			m_botPaths[i].ToJson(pathJson);
+			pathsArray.push_back(pathJson);
+		}
+		botJson["paths"] = pathsArray;
+		SaveJSON(dirPath / "bot.json", botJson);
 	}
 
 	return true;

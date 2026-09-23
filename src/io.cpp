@@ -146,6 +146,38 @@ void to_json(nlohmann::json& json, const InstanceHitbox& hitbox)
 	json["yOffset"] = hitbox.yOffset;
 }
 
+void to_json(nlohmann::json& json, const BotFlags& flags)
+{
+	json["turboPad"] = flags.turboPad;
+	json["skidmarkFront"] = flags.skidmarkFront;
+	json["skidmarkBack"] = flags.skidmarkBack;
+	json["turboPadLow"] = flags.turboPadLow;
+	json["maskGrabSTP"] = flags.maskGrabSTP;
+	json["jump"] = flags.jump;
+	json["driftLeft"] = flags.driftLeft;
+	json["driftRight"] = flags.driftRight;
+	json["echo"] = flags.echo;
+	json["midAir"] = flags.midAir;
+	json["sink"] = flags.sink;
+	json["lowGrav"] = flags.lowGrav;
+}
+
+void from_json(const nlohmann::json& json, BotFlags& flags)
+{
+	if (json.contains("turboPad")) { json.at("turboPad").get_to(flags.turboPad); }
+	if (json.contains("skidmarkFront")) { json.at("skidmarkFront").get_to(flags.skidmarkFront); }
+	if (json.contains("skidmarkBack")) { json.at("skidmarkBack").get_to(flags.skidmarkBack); }
+	if (json.contains("turboPadLow")) { json.at("turboPadLow").get_to(flags.turboPadLow); }
+	if (json.contains("maskGrabSTP")) { json.at("maskGrabSTP").get_to(flags.maskGrabSTP); }
+	if (json.contains("jump")) { json.at("jump").get_to(flags.jump); }
+	if (json.contains("driftLeft")) { json.at("driftLeft").get_to(flags.driftLeft); }
+	if (json.contains("driftRight")) { json.at("driftRight").get_to(flags.driftRight); }
+	if (json.contains("echo")) { json.at("echo").get_to(flags.echo); }
+	if (json.contains("midAir")) { json.at("midAir").get_to(flags.midAir); }
+	if (json.contains("sink")) { json.at("sink").get_to(flags.sink); }
+	if (json.contains("lowGrav")) { json.at("lowGrav").get_to(flags.lowGrav); }
+}
+
 void from_json(const nlohmann::json& json, InstanceHitbox& hitbox)
 {
 	if (json.contains("enabled")) { json.at("enabled").get_to(hitbox.enabled); }
@@ -449,5 +481,57 @@ void BitMatrix::FromJson(const nlohmann::json& json)
 	{
 		std::vector<uint8_t> data = json.at("data").get<std::vector<uint8_t>>();
 		if (data.size() == m_data.size()) { m_data = data; }
+	}
+}
+
+void BotNode::ToJson(nlohmann::json& json) const
+{
+	json["pos"] = m_pos;
+	json["rot"] = m_rot;
+	json["flags"] = m_flags;
+	json["specialBits"] = static_cast<int>(m_specialBits);
+	json["splitLineID"] = m_splitLineID;
+	json["ramPhysID"] = m_ramPhysID;
+	json["shadow"] = m_shadow;
+	json["terrain"] = m_terrain;
+	json["pathChange"] = m_pathChange;
+	json["pathChangeIndex"] = m_pathChangeIndex;
+	json["checkpoint"] = m_checkpoint;
+}
+
+void BotNode::FromJson(const nlohmann::json& json)
+{
+	if (json.contains("pos")) { json.at("pos").get_to(m_pos); }
+	if (json.contains("rot")) { json.at("rot").get_to(m_rot); }
+	if (json.contains("flags")) { json.at("flags").get_to(m_flags); }
+	if (json.contains("specialBits")) { m_specialBits = static_cast<BotSpecialBits>(json.at("specialBits").get<int>()); }
+	if (json.contains("splitLineID")) { json.at("splitLineID").get_to(m_splitLineID); }
+	if (json.contains("ramPhysID")) { json.at("ramPhysID").get_to(m_ramPhysID); }
+	if (json.contains("shadow")) { json.at("shadow").get_to(m_shadow); }
+	if (json.contains("terrain")) { json.at("terrain").get_to(m_terrain); }
+	if (json.contains("pathChange")) { json.at("pathChange").get_to(m_pathChange); }
+	if (json.contains("pathChangeIndex")) { json.at("pathChangeIndex").get_to(m_pathChangeIndex); }
+	if (json.contains("checkpoint")) { json.at("checkpoint").get_to(m_checkpoint); }
+}
+
+void BotPath::ToJson(nlohmann::json& json) const
+{
+	json = nlohmann::json::array();
+	for (const BotNode& node : m_nodes)
+	{
+		nlohmann::json nodeJson = nlohmann::json();
+		node.ToJson(nodeJson);
+		json.push_back(nodeJson);
+	}
+}
+
+void BotPath::FromJson(const nlohmann::json& json)
+{
+	m_nodes.clear();
+	for (const nlohmann::json& nodeJson : json)
+	{
+		BotNode node;
+		node.FromJson(nodeJson);
+		m_nodes.push_back(node);
 	}
 }
