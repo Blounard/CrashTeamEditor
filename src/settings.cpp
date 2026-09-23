@@ -107,4 +107,4 @@ bool SavePresetSettings::quadblock = false;
 bool SavePresetSettings::checkpoint = false;
 bool SavePresetSettings::instance = true;
 bool SavePresetSettings::geometry = false;
-bool SavePresetSettings::bot = true;
+bool SavePresetSettings::bot = false;
