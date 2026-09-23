@@ -1002,18 +1002,45 @@ void Level::RenderUI(Renderer& renderer)
 		{
 
 			ImGui::Checkbox("Spawn", &SavePresetSettings::spawn);
+			ImGui::SetItemTooltip("Save spawn positions and rotation to presets");
 			ImGui::Checkbox("Level", &SavePresetSettings::level);
+			ImGui::SetItemTooltip("Save level data to presets");
 			ImGui::Checkbox("Path", &SavePresetSettings::path);
+			ImGui::SetItemTooltip("Save checkpoint path settings to presets");
 			ImGui::Checkbox("Material", &SavePresetSettings::material);
+			ImGui::SetItemTooltip("Save material properties to presets");
 			ImGui::Checkbox("TurboPad", &SavePresetSettings::turboPad);
+			ImGui::SetItemTooltip("Save turbopads trigger to presets");
 			ImGui::Checkbox("Animated Textures", &SavePresetSettings::animTex);
+			ImGui::SetItemTooltip("Save animated textures to presets");
 			ImGui::Checkbox("Script", &SavePresetSettings::script);
+			ImGui::SetItemTooltip("Save script code to presets");
 			ImGui::Checkbox("Minimap", &SavePresetSettings::minimap);
+			ImGui::SetItemTooltip("Save minimap settings to presets");
 			ImGui::Checkbox("Quadblock", &SavePresetSettings::quadblock);
+			ImGui::SetItemTooltip("Save quadblock individual settings to presets");
 			ImGui::Checkbox("Checkpoint", &SavePresetSettings::checkpoint);
+			ImGui::SetItemTooltip("Save raw checkpoints to presets");
 			ImGui::Checkbox("Instance", &SavePresetSettings::instance);
+			ImGui::SetItemTooltip("Save instance, moving instance and models to presets");
 			ImGui::Checkbox("Geometry", &SavePresetSettings::geometry);
+			ImGui::SetItemTooltip("Save BSP, VisTree and Quadblocks's geometry (Bounding box, raw normals) to presets");
+			if (SavePresetSettings::geometry)
+			{
+				const ImVec4 redColor = { 247.0f / 255.0f, 44.0f / 255.0f, 37.0f / 255.0f, 1.0f };
+				ImGui::PushStyleColor(ImGuiCol_Text, redColor);
+				ImGui::Text("Warning : Do not load Geometry preset if you modified the vertices position of quadblocks");
+				ImGui::PopStyleColor();
+			}			
 			ImGui::Checkbox("Bot", &SavePresetSettings::bot);
+			ImGui::SetItemTooltip("Save bot data to presets");
+			if (SavePresetSettings::bot)
+			{
+				const ImVec4 redColor = { 247.0f / 255.0f, 44.0f / 255.0f, 37.0f / 255.0f, 1.0f };
+				ImGui::PushStyleColor(ImGuiCol_Text, redColor);
+				ImGui::Text("Warning : Do not load Bot preset if you modified the attributes of quadblocks");
+				ImGui::PopStyleColor();
+			}
 
 			if (ImGui::Button("Save Selected"))
 			{
