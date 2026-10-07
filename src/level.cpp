@@ -1862,7 +1862,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 						PSX::TextureGroup group = {};
 						Read(file, group);
 						file.seekg(currentPos);
-						const PSX::TextureLayout& layout = group.middle;
+						const PSX::TextureLayout& layout = group.near;
 						LayoutKey key(layout);
 
 						if (!m_materialCache.contains(key))
@@ -1880,7 +1880,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				file.seekg(offLev + static_cast<std::streamoff>(texOffset));
 				PSX::TextureGroup group = {};
 				Read(file, group);
-				const PSX::TextureLayout& layout = group.middle;
+				const PSX::TextureLayout& layout = group.near;
 				LayoutKey key(layout);
 
 				if (!m_materialCache.contains(key))
@@ -2293,7 +2293,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 				PSX::TextureGroup group = {};
 				Read(file, group);
 
-				const PSX::TextureLayout& layout = group.middle;
+				const PSX::TextureLayout& layout = group.near;
 				LayoutKey key(layout);
 
 				qbMatName = m_materialCache[key];
@@ -2319,7 +2319,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 						file.seekg(offLev + static_cast<std::streamoff>(frameTexOffset));
 						PSX::TextureGroup group = {};
 						Read(file, group);
-						const PSX::TextureLayout& layout = group.middle;
+						const PSX::TextureLayout& layout = group.near;
 						LayoutKey key(layout);
 
 						qbMatName = m_materialCache[key];
@@ -2377,7 +2377,7 @@ bool Level::LoadLEV(const std::filesystem::path& levFile)
 					PSX::TextureGroup group = {};
 					Read(file, group);
 
-					const PSX::TextureLayout& layout = group.middle;
+					const PSX::TextureLayout& layout = group.near;
 					LayoutKey key(layout);
 					const PixelBounds& bounds = m_textureToPixelBounds[key];
 					RawUV rawUV(layout);
