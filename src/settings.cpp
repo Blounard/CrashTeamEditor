@@ -87,7 +87,8 @@ float WaterAnimSettings::brightAmp = 2.5f;
 int WaterAnimSettings::brightWaveCycle = 1;
 
 bool InstanceLoadPathSettings::normalize = true;
-float InstanceLoadPathSettings::normalizeDist = 5.0f;
+float InstanceLoadPathSettings::normalizeMinDist = 5.0f;
+float InstanceLoadPathSettings::normalizeMaxDist = 5.0f;
 bool InstanceLoadPathSettings::groundSnap = true;
 float InstanceLoadPathSettings::negSnapDist = -10.0f;
 float InstanceLoadPathSettings::posSnapDist = 8.0f;

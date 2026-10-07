@@ -642,15 +642,15 @@ std::vector<Vec3> ComputeYaw(const std::vector<Vec3>& pos, bool loop)
 	return rots;
 }
 
-std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist, bool loop)
+std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, float minDist, float maxDist, bool loop)
 {
+	const int numPoint = static_cast<int>(pos.size());
+	if (numPoint < 2 || minDist <= 0.0f || maxDist <= 0.0f) return pos;
+	if (minDist > maxDist) std::swap(minDist, maxDist);
 
-	int numPoint = static_cast<int>(pos.size());
-	if (numPoint < 2 || dist <= 0.0f) return pos;
-
-	auto catmullRomAlpha = [](const Vec3& p0, const Vec3& p1, const Vec3& p2, const Vec3& p3, float t, float alpha = 0.5f) -> Vec3 
+	auto catmullRomAlpha = [](const Vec3& p0, const Vec3& p1, const Vec3& p2, const Vec3& p3, float t, float alpha = 0.5f) -> Vec3
 		{
-			auto getT = [alpha](float t, const Vec3& p0, const Vec3& p1) -> float 
+			auto getT = [alpha](float t, const Vec3& p0, const Vec3& p1) -> float
 				{
 					float d = (p1 - p0).Length();
 					return t + std::pow(std::max(d, EPSILON), alpha);
@@ -673,13 +673,13 @@ std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist, b
 			return B1 * ((t2 - s) / (t2 - t1)) + B2 * ((s - t1) / (t2 - t1));
 		};
 
-	auto getPoint = [&](int i) -> const Vec3& 
+	auto getPoint = [&](int i) -> const Vec3&
 		{
-			if (loop) 
+			if (loop)
 			{
 				return pos[((i % numPoint) + numPoint) % numPoint];
 			}
-			else 
+			else
 			{
 				int clamped = std::clamp(i, 0, numPoint - 1);
 				return pos[clamped];
@@ -689,36 +689,60 @@ std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist, b
 	// 1. Generate Dense Samples
 	const int stepsPerSegment = 64;
 	std::vector<Vec3> denseSamples;
-	denseSamples.reserve(numPoint * stepsPerSegment);
+	denseSamples.reserve(numPoint * stepsPerSegment + 1);
 
 	const int segmentCount = loop ? numPoint : (numPoint - 1);
-	for (int i = 0; i < segmentCount; i++) 
+	for (int i = 0; i < segmentCount; i++)
 	{
 		const Vec3& p0 = getPoint(i - 1);
 		const Vec3& p1 = getPoint(i);
 		const Vec3& p2 = getPoint(i + 1);
 		const Vec3& p3 = getPoint(i + 2);
-		for (int step = 0; step < stepsPerSegment; step++) 
+		for (int step = 0; step < stepsPerSegment; step++)
 		{
 			float t = (float)step / (float)stepsPerSegment;
 			denseSamples.push_back(catmullRomAlpha(p0, p1, p2, p3, t));
 		}
 	}
 
-
 	if (loop)
 		denseSamples.push_back(denseSamples.front());
 	else
 		denseSamples.push_back(getPoint(numPoint - 1));
 
-	// 2. Distribute points by 'dist'
+	// 2. Height -> node distance mapping (energy conservation)
+	// Min/max are taken on the smoothed curve, since Catmull-Rom can slightly overshoot the control points.
+	float yMin = denseSamples.front().y;
+	float yMax = yMin;
+	for (const Vec3& p : denseSamples)
+	{
+		yMin = std::min(yMin, p.y);
+		yMax = std::max(yMax, p.y);
+	}
+
+	const float yRange = yMax - yMin;
+	const float minD2 = minDist * minDist;
+	const float maxD2 = maxDist * maxDist;
+	// Flat path or minDist == maxDist: no variation possible, use minDist everywhere
+	const bool variableDist = (maxDist - minDist) > EPSILON && yRange > EPSILON;
+
+	auto distAtHeight = [&](float y) -> float
+		{
+			if (!variableDist)
+				return minDist;
+			const float t = std::clamp((yMax - y) / yRange, 0.0f, 1.0f); // 0 at the top, 1 at the bottom
+			return std::sqrt(minD2 + (maxD2 - minD2) * t);
+		};
+
+	// 3. Distribute points, with the spacing depending on the height of the last placed point
 	std::vector<Vec3> result;
 	float accumulated = 0.0f;
 
 	// We start by adding the first point
 	result.push_back(denseSamples.front());
+	float currentDist = distAtHeight(result.back().y);
 
-	for (size_t i = 1; i < denseSamples.size(); i++) 
+	for (size_t i = 1; i < denseSamples.size(); i++)
 	{
 		Vec3 segment = denseSamples[i] - denseSamples[i - 1];
 		float segLen = segment.Length();
@@ -726,14 +750,16 @@ std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist, b
 
 		accumulated += segLen;
 
-		while (accumulated >= dist) 
+		while (accumulated >= currentDist)
 		{
-			float overshot = accumulated - dist;
+			float overshot = accumulated - currentDist;
 			float ratio = (segLen - overshot) / segLen;
 			Vec3 newPoint = denseSamples[i - 1] + segment * ratio;
 			result.push_back(newPoint);
 			accumulated = overshot;
+			currentDist = distAtHeight(newPoint.y); // spacing to the next node depends on where we are now
 		}
 	}
 	return result;
 }
+

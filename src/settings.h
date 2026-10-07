@@ -94,7 +94,8 @@ struct WaterAnimSettings
 struct InstanceLoadPathSettings
 {
 	static bool normalize;
-	static float normalizeDist;
+	static float normalizeMinDist;
+	static float normalizeMaxDist;
 	static bool groundSnap;
 	static float negSnapDist; // MUST BE NEGATIVE
 	static float posSnapDist; // MUST BE POSITIVE

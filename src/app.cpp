@@ -293,7 +293,8 @@ void App::InitUISettings()
 	{
 		const nlohmann::json& instanceLoadPathSettings = json["InstanceLoadPathSettings"];
 		if (instanceLoadPathSettings.contains("Normalize")) { InstanceLoadPathSettings::normalize = instanceLoadPathSettings["Normalize"]; }
-		if (instanceLoadPathSettings.contains("NormalizeDist")) { InstanceLoadPathSettings::normalizeDist = instanceLoadPathSettings["NormalizeDist"]; }
+		if (instanceLoadPathSettings.contains("NormalizeMinDist")) { InstanceLoadPathSettings::normalizeMinDist = instanceLoadPathSettings["NormalizeMinDist"]; }
+		if (instanceLoadPathSettings.contains("NormalizeMaxDist")) { InstanceLoadPathSettings::normalizeMaxDist = instanceLoadPathSettings["NormalizeMaxDist"]; }
 		if (instanceLoadPathSettings.contains("GroundSnap")) { InstanceLoadPathSettings::groundSnap = instanceLoadPathSettings["GroundSnap"]; }
 		if (instanceLoadPathSettings.contains("NegSnapDist")) { InstanceLoadPathSettings::negSnapDist = instanceLoadPathSettings["NegSnapDist"]; }
 		if (instanceLoadPathSettings.contains("PosSnapDist")) { InstanceLoadPathSettings::posSnapDist = instanceLoadPathSettings["PosSnapDist"]; }
@@ -459,7 +460,8 @@ void App::SaveUISettings(bool useDefault)
 	};
 	json["InstanceLoadPathSettings"] = {
 		{"Normalize", InstanceLoadPathSettings::normalize},
-		{"NormalizeDist", InstanceLoadPathSettings::normalizeDist},
+		{"NormalizeMinDist", InstanceLoadPathSettings::normalizeMinDist},
+		{"NormalizeMaxDist", InstanceLoadPathSettings::normalizeMaxDist},
 		{"GroundSnap", InstanceLoadPathSettings::groundSnap},
 		{"NegSnapDist", InstanceLoadPathSettings::negSnapDist},
 		{"PosSnapDist", InstanceLoadPathSettings::posSnapDist},

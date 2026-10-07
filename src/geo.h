@@ -273,4 +273,4 @@ bool SnapTriangle(const Vec3& A, const Vec3& B, const Vec3& C, Vec3& pos, Vec3& 
 std::vector<Vec3> LoadPath(const std::filesystem::path& path);
 std::vector<Vec3> LoadGhostPath(const std::filesystem::path& path, float startTime, float endTime);
 std::vector<Vec3> ComputeYaw(const std::vector<Vec3>& pos, bool loop);
-std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, const float dist, bool loop);
+std::vector<Vec3> NormalizePos(const std::vector<Vec3>& pos, float minDist, float maxDist, bool loop);

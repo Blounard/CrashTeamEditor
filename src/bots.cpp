@@ -133,7 +133,7 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, const std::vector<Quadbl
 
 
     if (BotPathSettings::normalizeNodeDist)
-        nodesPos = NormalizePos(nodesPos, BotPathSettings::nodeDistance, true);
+        nodesPos = NormalizePos(nodesPos, BotPathSettings::nodeDistance, BotPathSettings::nodeDistance, true);
 
     if (!BotPathSettings::useManualPath)
     {
@@ -164,7 +164,7 @@ bool BotPath::GeneratePath(std::vector<Vec3>& nodesPos, const std::vector<Quadbl
             if (currLateralOffset * currLateralOffset < lateralOffset * lateralOffset)
                 currLateralOffset /= 0.85f;
         }
-        nodesPos = NormalizePos(lateralPos, BotPathSettings::nodeDistance, true);
+        nodesPos = NormalizePos(lateralPos, BotPathSettings::nodeDistance, BotPathSettings::nodeDistance, true);
     }
 
 

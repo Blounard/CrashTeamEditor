@@ -1258,7 +1258,10 @@ void Level::RenderUI(Renderer& renderer)
 				ImGui::BeginDisabled(!InstanceLoadPathSettings::normalize);
 				ImGui::SameLine();
 				ImGui::SetNextItemWidth(200.0f);
-				ImGui::DragFloat("Node Distance", &InstanceLoadPathSettings::normalizeDist, 0.1f, 0.1f, 100.0f, "%.1f");
+				ImGui::DragFloat("Min Speed", &InstanceLoadPathSettings::normalizeMinDist, 0.1f, 0.1f, 100.0f, "%.1f");
+				ImGui::SameLine();
+				ImGui::SetNextItemWidth(200.0f);
+				ImGui::DragFloat("Max Speed", &InstanceLoadPathSettings::normalizeMaxDist, 0.1f, 0.1f, 100.0f, "%.1f");
 				ImGui::EndDisabled();
 				ImGui::Checkbox("Snap to Ground##mip", &InstanceLoadPathSettings::groundSnap);
 				ImGui::BeginDisabled(!InstanceLoadPathSettings::groundSnap);
@@ -1297,7 +1300,7 @@ void Level::RenderUI(Renderer& renderer)
 							{
 								std::vector<Vec3> vec = LoadPath(selection[0]);
 								if (InstanceLoadPathSettings::normalize)
-									vec = NormalizePos(vec, InstanceLoadPathSettings::normalizeDist, InstanceLoadPathSettings::loop);
+									vec = NormalizePos(vec, InstanceLoadPathSettings::normalizeMinDist, InstanceLoadPathSettings::normalizeMaxDist, InstanceLoadPathSettings::loop);
 								if (InstanceLoadPathSettings::groundSnap)
 								{
 									std::vector<size_t> quadindexes;
@@ -1367,7 +1370,7 @@ void Level::RenderUI(Renderer& renderer)
 							{
 								std::vector<Vec3> posvec = LoadPath(selection[0]);
 								if (InstanceLoadPathSettings::normalize)
-									posvec = NormalizePos(posvec, InstanceLoadPathSettings::normalizeDist, InstanceLoadPathSettings::loop);
+									posvec = NormalizePos(posvec, InstanceLoadPathSettings::normalizeMinDist, InstanceLoadPathSettings::normalizeMaxDist, InstanceLoadPathSettings::loop);
 								std::vector<Vec3> rotvec = ComputeYaw(posvec, InstanceLoadPathSettings::loop);
 								std::vector<Vec3> upvec(rotvec.size(), Vec3(0.0f, 1.0f, 0.0f));
 								if (InstanceLoadPathSettings::groundSnap)
