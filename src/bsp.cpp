@@ -358,7 +358,7 @@ bool BSP::SplitLeafGeometry(const std::vector<Quadblock>& quadblocks, const Axis
 		const Quadblock& quad = quadblocks[quad_index];
 		if (axis == AxisSplit::NONE)
 			return false;
-		float centerValue = ProjectionAxis(quad.GetCenter(), axis);
+		float centerValue = ProjectionAxis(quad.GetBoundingBox().Midpoint(), axis);
 
 		if (centerValue >= midpoint)
 			left_quad_indexes.push_back(quad_index);
