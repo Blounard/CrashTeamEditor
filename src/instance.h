@@ -291,6 +291,7 @@ static const std::map<ModelId, const char*> ModelIdLabels = {
 	{ModelId::PIRANHA_PLANT,      "Piranha Plant"},
 	{ModelId::GATE,               "Gate"},
 	{ModelId::START_LINE,         "Start Line"},
+	{ModelId::DYNAMIC_MINE_CART,  "Minecart"},
 	{ModelId::TEMP_SNOWBALL,      "Temp Snowball"},
 	{ModelId::FINISH_LINE,        "Finish Line"},
 	{ModelId::ARMADILLO,          "Armadillo"},
