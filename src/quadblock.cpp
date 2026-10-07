@@ -373,9 +373,9 @@ Quadblock::Quadblock(const std::string& name, const std::vector<Point>& points,
 			int nextEdgeOffset = 1;
 			size_t nextQuadFaceId = FindRelativeFaceQuad(quadFaceId, nextEdgeOffset);
 			size_t nextEdgeQuadVertInFace = FindRelativePointQuad(quadFaceId, centerQuadVertId, nextEdgeOffset);
-
 			vertQuadtoOBJ[uniqueQuadVertInFace] = vertQuadtoOBJ[centerQuadVertId];
-			if (faceQuadtoOBJ[prevQuadFaceId] != INVALID && faceQuadtoOBJ[nextQuadFaceId] != INVALID) // Check that logic
+
+			if (faceQuadtoOBJ[prevQuadFaceId] != INVALID && faceQuadtoOBJ[nextQuadFaceId] != INVALID)
 			{
 				if (vertQuadtoOBJ[prevEdgeQuadVertInFace] != INVALID && vertQuadtoOBJ[nextEdgeQuadVertInFace] != INVALID)
 				{
@@ -385,6 +385,32 @@ Quadblock::Quadblock(const std::string& name, const std::vector<Point>& points,
 					}
 					else
 						noRotation = true;
+				}
+			}
+			if (faceQuadtoOBJ[prevQuadFaceId] != INVALID && faceQuadtoOBJ[nextQuadFaceId] == INVALID)
+			{
+				if (vertQuadtoOBJ[prevEdgeQuadVertInFace] != INVALID)
+					vertQuadtoOBJ[uniqueQuadVertInFace] = vertQuadtoOBJ[prevEdgeQuadVertInFace];
+				else
+				{
+					size_t prevFaceUniqueVert = FindRelativePointQuad(prevQuadFaceId, centerQuadVertId, uniqueVertOffset);
+					if (vertQuadtoOBJ[prevFaceUniqueVert] != INVALID)
+						vertQuadtoOBJ[uniqueQuadVertInFace] = vertQuadtoOBJ[prevFaceUniqueVert];
+					else
+						throw QuadException("Unexpected behavior : 2 missing vert in a face.");
+				}
+			}
+			if (faceQuadtoOBJ[prevQuadFaceId] == INVALID && faceQuadtoOBJ[nextQuadFaceId] != INVALID)
+			{
+				if (vertQuadtoOBJ[nextEdgeQuadVertInFace] != INVALID)
+					vertQuadtoOBJ[uniqueQuadVertInFace] = vertQuadtoOBJ[nextEdgeQuadVertInFace];
+				else
+				{
+					size_t nextFaceUniqueVert = FindRelativePointQuad(nextQuadFaceId, centerQuadVertId, uniqueVertOffset);
+					if (vertQuadtoOBJ[nextFaceUniqueVert] != INVALID)
+						vertQuadtoOBJ[uniqueQuadVertInFace] = vertQuadtoOBJ[nextFaceUniqueVert];
+					else
+						throw QuadException("Unexpected behavior : 2 missing vert in a face.");
 				}
 			}
 		}
@@ -1109,6 +1135,16 @@ std::vector<uint8_t> Quadblock::Serialize(size_t id, size_t offTextures, const s
 		quadblock.triNormalVecDividend[7] = CalculateNormalDividend(6, 4, 7, scaler);
 		quadblock.triNormalVecDividend[9] = CalculateNormalDividend(2, 8, 6, scaler); /* low LoD */
 		quadblock.triNormalVecDividend[8] = CalculateNormalDividend(0, 2, 6, scaler); /* low LoD */
+		quadblock.triNormalVecDividend[8] = std::max({ quadblock.triNormalVecDividend[0],
+														quadblock.triNormalVecDividend[1],
+														quadblock.triNormalVecDividend[2],
+														quadblock.triNormalVecDividend[3],
+														quadblock.triNormalVecDividend[8], });
+		quadblock.triNormalVecDividend[9] = std::max({ quadblock.triNormalVecDividend[4],
+														quadblock.triNormalVecDividend[5],
+														quadblock.triNormalVecDividend[6],
+														quadblock.triNormalVecDividend[7],
+														quadblock.triNormalVecDividend[9], });
 	}
 	else
 	{
