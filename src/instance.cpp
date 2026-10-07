@@ -791,7 +791,7 @@ void InstanceModelHeader::ExportGLTF(const std::filesystem::path& modelDir, cons
 	const size_t numTargets = targetFrames.size();
 
 	tinygltf::Model model;
-	model.asset.version = "1.0";
+	model.asset.version = "2.0";
 	model.asset.generator = "CTE Instance Model Exporter";
 
 	std::vector<uint8_t> bin;
