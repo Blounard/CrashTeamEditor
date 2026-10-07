@@ -285,14 +285,17 @@ std::vector<Checkpoint> Path::GeneratePath(size_t pathStartIndex, std::vector<Qu
 				Quadblock& quadStart = quadblocks[quadStartID];
 				for (Vertex& v1 : quadStart.GetVertices())
 				{
-					for (size_t quadIgnoreID : m_quadIndexesIgnore)
+					for (const std::vector<size_t>* indexes : { &m_quadIndexesIgnore, &m_quadIndexesEnd })
 					{
-						Quadblock& quadIgnore = quadblocks[quadIgnoreID];
-						for (Vertex& v2 : quadIgnore.GetVertices())
+						for (size_t quadID : *indexes)
 						{
-							constexpr float thresholdSquared = 0.01f;
-							if ((v1.m_pos - v2.m_pos).LengthSquared() < thresholdSquared)
-								sharedVert.emplace_back(v1.m_pos);
+							Quadblock& quad = quadblocks[quadID];
+							for (Vertex& v2 : quad.GetVertices())
+							{
+								constexpr float thresholdSquared = 0.01f;
+								if ((v1.m_pos - v2.m_pos).LengthSquared() < thresholdSquared)
+									sharedVert.emplace_back(v1.m_pos);
+							}
 						}
 					}
 				}
