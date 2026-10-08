@@ -893,17 +893,20 @@ bool Level::GenerateMinimap()
 			usedQuadIds.push_back(i);
 		else if (MinimapSettings::checkpointPathableQuads && m_quadblocks[i].GetCheckpointPathable() && m_quadblocks[i].GetCheckpointStatus())
 			usedQuadIds.push_back(i);
-		else
+
+		for (size_t f = 0; f < NUM_FACES_QUADBLOCK + 1; f++)
 		{
-			for (size_t f = 0; f < NUM_FACES_QUADBLOCK + 1; f++)
+			if (MinimapSettings::materials.contains(m_quadblocks[i].GetMaterial(f)))
 			{
-				if (MinimapSettings::materials.contains(m_quadblocks[i].GetMaterial(f)))
-				{
-					usedQuadIds.push_back(i);
-					break;
-				}
+				usedQuadIds.push_back(i);
+				break;
 			}
 		}
+	}
+	if (MinimapSettings::selectedQuads)
+	{
+		for (size_t i : m_rendererSelectedQuadblockIndexes)
+			usedQuadIds.push_back(i);
 	}
 	if (usedQuadIds.empty()) return false;
 

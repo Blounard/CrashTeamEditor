@@ -1486,6 +1486,7 @@ void Level::RenderUI(Renderer& renderer)
 				ImGui::InputInt("Target Height##minimap", &MinimapSettings::textureHeight);
 				ImGui::Checkbox("Use checkpoint quads##minimap", &MinimapSettings::checkpointQuads);
 				ImGui::Checkbox("Use checkpoint pathable quads##minimap", &MinimapSettings::checkpointPathableQuads);
+				ImGui::Checkbox("Use selected quads##minimap", &MinimapSettings::selectedQuads);
 				const char* orientationModes[] = { "0°", "90°", "180°", "270°", "Auto" };
 				int selectOrientation = MinimapSettings::orientation;
 				if (ImGui::Combo("Relative rotation##minimapsettings", &selectOrientation, orientationModes, 5))

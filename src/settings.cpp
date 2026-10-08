@@ -41,6 +41,7 @@ int MinimapSettings::textureHeight = 87;
 int MinimapSettings::orientation = 4;
 bool MinimapSettings::checkpointQuads = true;
 bool MinimapSettings::checkpointPathableQuads = true;
+bool MinimapSettings::selectedQuads = false;
 std::set<std::string> MinimapSettings::materials = {};
 
 

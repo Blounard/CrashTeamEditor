@@ -31,6 +31,7 @@ struct MinimapSettings
 	static int orientation;
 	static bool checkpointQuads;
 	static bool checkpointPathableQuads;
+	static bool selectedQuads;
 	static std::set<std::string> materials;
 };
 

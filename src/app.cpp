@@ -224,6 +224,7 @@ void App::InitUISettings()
 		if (minimapSettings.contains("Orientation")) { MinimapSettings::orientation = minimapSettings["Orientation"]; }
 		if (minimapSettings.contains("CheckpointQuads")) { MinimapSettings::checkpointQuads = minimapSettings["CheckpointQuads"]; }
 		if (minimapSettings.contains("CheckpointPathableQuads")) { MinimapSettings::checkpointPathableQuads = minimapSettings["CheckpointPathableQuads"]; }
+		if (minimapSettings.contains("SelectedQuads")) { MinimapSettings::selectedQuads = minimapSettings["SelectedQuads"]; }
 		// materials intentionally not loaded
 	}
 	if (json.contains("HotReloadSettings"))
@@ -414,6 +415,7 @@ void App::SaveUISettings(bool useDefault)
 		{"Orientation", MinimapSettings::orientation},
 		{"CheckpointQuads", MinimapSettings::checkpointQuads},
 		{"CheckpointPathableQuads", MinimapSettings::checkpointPathableQuads},
+		{"SelectedQuads", MinimapSettings::selectedQuads},
 	};
 	json["HotReloadSettings"] = {
 		{"RelicSapphire", HotReloadSettings::relicSapphire},
