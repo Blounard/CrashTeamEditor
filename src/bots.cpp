@@ -88,7 +88,7 @@ std::vector<uint8_t> BotNode::Serialize(const Vec3& nextPos, std::vector<Instanc
         if (inst.GetHitbox().enabled)
         {
             BoundingBox bbox = inst.ComputeBBox();
-            if (bbox.Distance(m_pos) < EPSILON)
+            if (bbox.Distance(m_pos) < 6.0f) // We make it a bit lenient, since the botNode may be further away from the instance, while still crossing it's path.
                 frame.specialBits |= PSXBotNodeFlags2::INSTANCE_COLL;
         }
     }
